@@ -36,8 +36,9 @@ export async function POST(request: Request) {
     });
     const name = await resolveAvailableName(drive, parentId, body.name, settings.upload.duplicateBehavior);
     const accessToken = await getAccessToken();
+    const origin = request.headers.get("origin") || request.headers.get("referer") || process.env.NEXT_PUBLIC_APP_URL;
 
-    const uploadUrl = await uploadSessionRequest(accessToken, { name, mimeType, parentId }, body.size);
+    const uploadUrl = await uploadSessionRequest(accessToken, { name, mimeType, parentId }, body.size, origin);
     const pendingToken = await signPendingUpload({ name, parentFolderId: parentId, mimeType, size: body.size });
 
     return NextResponse.json({ uploadUrl, pendingToken, name, parentId });

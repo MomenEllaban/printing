@@ -348,7 +348,8 @@ const ar = {
   "error.driveUnavailable": "تعذر الوصول إلى Google Drive حاليًا. تحقق من الاتصال وحاول مرة أخرى.",
   "error.driveApiDisabled": "Google Drive API غير مفعّل في مشروع Google Cloud. فعّله ثم أعد المحاولة.",
   "error.driveBadRequest": "رفض Google Drive الطلب. تحقق من مجلد العمل الجذر وإعدادات التطبيق ثم أعد المحاولة.",
-} as const;
+  "error.uploadCors": "حظر المتصفح الرفع بسبب سياسة CORS من Google. تأكد من إضافة رابط الموقع إلى Authorized JavaScript origins في Google Cloud Console.",
+};
 
 type MessageKey = keyof typeof ar;
 
@@ -697,6 +698,7 @@ const en: Record<MessageKey, string> = {
   "error.driveUnavailable": "Could not reach Google Drive right now. Check the connection and try again.",
   "error.driveApiDisabled": "The Google Drive API is not enabled for this Google Cloud project. Enable it and try again.",
   "error.driveBadRequest": "Google Drive rejected the request. Check the configured root folder and app settings, then try again.",
+  "error.uploadCors": "Upload blocked by Google CORS policy. Ensure this domain is added to Authorized JavaScript origins in Google Cloud Console.",
 };
 
 export const dictionaries: Record<Locale, Record<MessageKey, string>> = { ar, en };

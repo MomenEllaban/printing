@@ -115,6 +115,7 @@ export async function uploadSessionRequest(
   accessToken: string,
   metadata: { name: string; mimeType: string; parentId: string },
   size: number,
+  origin?: string | null,
 ): Promise<string> {
   const params = new URLSearchParams({
     uploadType: "resumable",
@@ -122,14 +123,22 @@ export async function uploadSessionRequest(
     fields:
       "id,name,mimeType,size,fileExtension,modifiedTime,createdTime,webViewLink,thumbnailLink,iconLink,parents",
   });
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json; charset=UTF-8",
+    "X-Upload-Content-Type": metadata.mimeType,
+    "X-Upload-Content-Length": String(size),
+  };
+  if (origin) {
+    try {
+      headers["Origin"] = new URL(origin).origin;
+    } catch {
+      headers["Origin"] = origin.trim();
+    }
+  }
   const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files?${params.toString()}`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json; charset=UTF-8",
-      "X-Upload-Content-Type": metadata.mimeType,
-      "X-Upload-Content-Length": String(size),
-    },
+    headers,
     body: JSON.stringify({
       name: metadata.name,
       mimeType: metadata.mimeType,

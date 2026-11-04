@@ -163,6 +163,23 @@ If you do not want to manage test users, publish the app from the same OAuth
 consent screen. Google may require verification because the Drive scope is
 sensitive.
 
+## Resolving Google Drive Upload CORS Errors
+
+If file uploads fail with `blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource`:
+
+1. Open Google Cloud Console:
+   https://console.cloud.google.com/apis/credentials?project=printing-513609
+2. Under **OAuth 2.0 Client IDs**, click your Web client name (e.g. `Web client 1`).
+3. Under **Authorized JavaScript origins** (أصول JavaScript المصرح بها), click **+ Add URI**.
+4. Add your production domain:
+   - `https://printing-momenellaban.vercel.app`
+   - (And `http://localhost:3000` if developing locally).
+   *(Make sure there is NO trailing slash `/` at the end of the URI).*
+5. Click **Save** at the bottom of the page.
+6. The change usually takes 1-5 minutes to take effect on Google's edge servers.
+
+The application also includes an automatic server-side fallback (`/api/drive/upload/direct`) for files under 4.2 MB, so smaller files upload seamlessly even if CORS is propagating.
+
 ## Security notes
 
 - The Vercel token shared during setup should be revoked and regenerated from

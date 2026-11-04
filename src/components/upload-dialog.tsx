@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { CheckCircle2, FileUp, Loader2, RotateCcw, Trash2, UploadCloud, XCircle } from "lucide-react";
@@ -108,53 +108,87 @@ export function UploadDialog({
           const init = await initResponse.json().catch(() => ({}));
           if (!initResponse.ok) throw new Error(init.message || t("error.uploadInit"));
 
-          const fileId = await new Promise<string>((resolveUpload, rejectUpload) => {
-            const xhr = new XMLHttpRequest();
-            activeRef.current[item.key] = xhr;
-            xhr.open("PUT", init.uploadUrl as string, true);
-            xhr.setRequestHeader("Content-Type", item.file.type || "application/octet-stream");
-            xhr.upload.onprogress = (event) => {
-              if (event.lengthComputable) {
-                update(item.key, { progress: Math.round((event.loaded / event.total) * 100) });
-              }
-            };
-            xhr.onload = () => {
-              activeRef.current[item.key] = null;
-              if (xhr.status >= 200 && xhr.status < 300) {
-                try {
-                  const file = JSON.parse(xhr.responseText) as { id?: string };
-                  if (!file.id) rejectUpload(new Error(t("common.uploadFailed")));
-                  else resolveUpload(file.id);
-                } catch {
+          let fileId: string | null = null;
+          let uploadedItemName: string | undefined = undefined;
+
+          try {
+            fileId = await new Promise<string>((resolveUpload, rejectUpload) => {
+              const xhr = new XMLHttpRequest();
+              activeRef.current[item.key] = xhr;
+              xhr.open("PUT", init.uploadUrl as string, true);
+              xhr.setRequestHeader("Content-Type", item.file.type || "application/octet-stream");
+              xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                  update(item.key, { progress: Math.round((event.loaded / event.total) * 100) });
+                }
+              };
+              xhr.onload = () => {
+                activeRef.current[item.key] = null;
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  try {
+                    const file = JSON.parse(xhr.responseText) as { id?: string };
+                    if (!file.id) rejectUpload(new Error(t("common.uploadFailed")));
+                    else resolveUpload(file.id);
+                  } catch {
+                    rejectUpload(new Error(t("common.uploadFailed")));
+                  }
+                } else {
                   rejectUpload(new Error(t("common.uploadFailed")));
                 }
-              } else {
-                rejectUpload(new Error(t("common.uploadFailed")));
-              }
-            };
-            xhr.onerror = () => {
-              activeRef.current[item.key] = null;
-              rejectUpload(new Error(t("error.network")));
-            };
-            xhr.onabort = () => {
-              activeRef.current[item.key] = null;
-              rejectUpload(new Error(t("common.cancel")));
-            };
-            xhr.send(item.file);
-          });
+              };
+              xhr.onerror = () => {
+                activeRef.current[item.key] = null;
+                rejectUpload(new Error(t("error.uploadCors")));
+              };
+              xhr.onabort = () => {
+                activeRef.current[item.key] = null;
+                rejectUpload(new Error(t("common.cancel")));
+              };
+              xhr.send(item.file);
+            });
+          } catch (directError) {
+            const isAborted = directError instanceof Error && /cancel/i.test(directError.message);
+            if (isAborted) throw directError;
 
-          const completeResponse = await fetch("/api/drive/upload/complete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileId, pendingToken: init.pendingToken }),
-          });
-          const completed = await completeResponse.json().catch(() => ({}));
-          if (!completeResponse.ok) throw new Error(completed.message || t("common.uploadFailed"));
+            // If direct upload fails (e.g. CORS block) and file is within serverless limit, fallback to server upload
+            if (item.file.size <= 4.2 * 1024 * 1024) {
+              const formData = new FormData();
+              formData.append("file", item.file);
+              if (targetFolderId) {
+                formData.append("parentId", targetFolderId);
+              }
+              const directResponse = await fetch("/api/drive/upload/direct", {
+                method: "POST",
+                body: formData,
+              });
+              const directData = await directResponse.json().catch(() => ({}));
+              if (!directResponse.ok) {
+                throw new Error(
+                  directData.message || (directError instanceof Error ? directError.message : t("common.uploadFailed")),
+                );
+              }
+              fileId = directData.id;
+              uploadedItemName = directData.name;
+            } else {
+              throw directError;
+            }
+          }
+
+          if (!uploadedItemName && fileId) {
+            const completeResponse = await fetch("/api/drive/upload/complete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fileId, pendingToken: init.pendingToken }),
+            });
+            const completed = await completeResponse.json().catch(() => ({}));
+            if (!completeResponse.ok) throw new Error(completed.message || t("common.uploadFailed"));
+            uploadedItemName = typeof completed.name === "string" ? completed.name : init.name;
+          }
 
           update(item.key, {
             status: "done",
             progress: 100,
-            uploadedName: typeof completed.name === "string" ? completed.name : init.name,
+            uploadedName: uploadedItemName || init.name,
           });
           uploadedRef.current = true;
           resolve(true);
