@@ -192,6 +192,15 @@ export function AppShell({
         <p className="px-2 text-center text-[10px] text-muted/70">
           DriveDesk · Next.js + Neon
         </p>
+        <div className="flex items-center justify-center gap-2 text-[10px] font-semibold text-muted/70">
+          <Link href="/privacy" className="transition-colors hover:text-foreground">
+            Privacy
+          </Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/terms" className="transition-colors hover:text-foreground">
+            Terms
+          </Link>
+        </div>
       </div>
     </div>
   );

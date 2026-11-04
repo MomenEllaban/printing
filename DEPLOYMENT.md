@@ -23,7 +23,7 @@ These are configured for Production, Preview, and Development:
 - `ENCRYPTION_KEY`
 - `NEXT_PUBLIC_APP_URL` = `https://printing-momenellaban.vercel.app`
 - `GOOGLE_REDIRECT_URI` = `https://printing-momenellaban.vercel.app/api/auth/google/callback`
-- `DEMO_MODE` = `1`
+- `DEMO_MODE` = `0`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 
@@ -35,8 +35,9 @@ environment variables. They are intentionally not stored in this repository.
 - OAuth client: configured
 - Client ID and Client Secret: added to Vercel
 - Redirect URI: configured
-- Next step: add the Google account you will sign in with as a **test user**
-  on the OAuth consent screen, then open the production URL and connect Drive.
+- Consent screen: must be moved from **Testing** to **Production** (see below)
+- Privacy policy: https://printing-momenellaban.vercel.app/privacy
+- Terms of service: https://printing-momenellaban.vercel.app/terms
 
 Optional:
 
@@ -71,6 +72,49 @@ Do **not** commit these values or the `.env` file to GitHub.
 8. Redeploy the project:
    - Vercel → Deployments → latest deployment → “Redeploy”.
    - Or push a new commit to `main`; the project is linked to GitHub and deploys automatically.
+
+## Publish the OAuth app (leave Testing mode)
+
+Publishing is done from the Google Cloud project `printing-513609`. Only the
+Google account that owns the project can click **Publish**; there is no CLI/API
+for this step.
+
+1. Open the **Google Auth Platform** for the project:
+   - New UI: https://console.cloud.google.com/auth/audience?project=printing-513609
+   - Legacy UI: https://console.cloud.google.com/apis/credentials/consent?project=printing-513609
+2. Confirm **User type** is **External**.
+3. Open the **Audience** tab.
+4. Under **Publishing status**, click **Publish app** and confirm.
+5. The status becomes **In production**. Existing test users are no longer
+   needed.
+
+### Verification for the Drive scope
+
+`https://www.googleapis.com/auth/drive` is a **restricted** Google scope. After
+publishing, Google may still require OAuth verification before arbitrary users
+can connect:
+
+- Add the privacy policy URL, terms URL, homepage URL, authorized domain, and a
+  developer contact email in the **Branding** tab.
+- Complete the **Data Access** / verification form and explain why the full
+  Drive scope is required.
+- Google may ask for a CASA security assessment. This can take days to weeks.
+
+Until verification finishes, users may see a **"Google hasn't verified this
+app"** screen. Signing in with the project owner account usually still works;
+other accounts may be blocked. For immediate personal use, adding the account
+as a **Test user** works instantly.
+
+### Values for the Google verification form
+
+| Field | Value |
+| --- | --- |
+| App name | DriveDesk |
+| Homepage | `https://printing-momenellaban.vercel.app` |
+| Privacy policy | `https://printing-momenellaban.vercel.app/privacy` |
+| Terms of service | `https://printing-momenellaban.vercel.app/terms` |
+| Authorized domain | `printing-momenellaban.vercel.app` |
+| Developer contact | `momenellaban210@gmail.com` |
 
 ## Verify the OAuth flow
 
