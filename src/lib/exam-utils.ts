@@ -73,3 +73,4 @@ export function parseExamInfoFromFileName(name: string): {
     room: roomMatch ? roomMatch[1] : undefined,
   };
 }
+

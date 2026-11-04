@@ -30,6 +30,7 @@ import { Button, ConfirmDialog, EmptyState, Input, Modal, Select, Spinner } from
 import { UploadDialog } from "./upload-dialog";
 import { FolderPicker } from "./folder-picker";
 import { FileIcon } from "./file-icon";
+import { BatchPrintDialog } from "./batch-print-dialog";
 import { useI18n } from "./locale-provider";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/file-utils";
@@ -193,6 +194,90 @@ export function FileBrowser({
   const [deleting, setDeleting] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
+  // Multi-selection & batch actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchPrintOpen, setBatchPrintOpen] = useState(false);
+
+  const selectedItems = useMemo(() => items.filter((i) => selectedIds.has(i.id)), [items, selectedIds]);
+
+  const toggleSelect = (id: string, e?: React.MouseEvent | React.ChangeEvent) => {
+    e?.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (items.length > 0 && selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((i) => i.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!requireWritable()) return;
+    setBatchDeleting(true);
+    try {
+      const res = await fetch("/api/drive/files/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds: Array.from(selectedIds) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || t("batch.deleteFailed"));
+
+      toast.success(t("batch.deleteSuccess", { count: data.deletedCount || selectedIds.size }));
+      clearSelection();
+      setBatchDeleteOpen(false);
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("batch.deleteFailed"));
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
+  const handleBatchPrint = () => {
+    if (selectedItems.length === 0) return;
+    const printable = selectedItems.filter((i) => !i.isFolder);
+    if (printable.length === 0) {
+      toast.error(t("print.notAvailable"));
+      return;
+    }
+    if (printable.length === 1) {
+      window.open(`/print/${printable[0].id}`, "_blank");
+      return;
+    }
+    setBatchPrintOpen(true);
+  };
+
+  const handleBatchDownload = () => {
+    const downloadable = selectedItems.filter((i) => !i.isFolder);
+    if (downloadable.length === 0) return;
+    toast.info(t("batch.downloadStarted", { count: downloadable.length }));
+    downloadable.forEach((item, index) => {
+      setTimeout(() => {
+        const link = document.createElement("a");
+        link.href = `/api/drive/files/${item.id}/content?download=1`;
+        link.download = item.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }, index * 250);
+    });
+  };
+
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -280,6 +365,7 @@ export function FileBrowser({
 
   const navigateFolder = (id: string | null) => {
     setFolderId(id);
+    setSelectedIds(new Set());
     setSearch("");
     setDebouncedSearch("");
     setMenuId(null);
@@ -634,11 +720,26 @@ export function FileBrowser({
       ) : effectiveView === "grid" ? (
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {items.map((item) => (
-            <div key={item.id} className="file-card">
+            <div
+              key={item.id}
+              className={cn(
+                "file-card relative transition-all",
+                selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
+              )}
+            >
               <div className="flex items-start justify-between gap-2">
-                <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start">
-                  <FileIcon category={item.category} extension={item.extension} size="lg" />
-                </button>
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(item.id)}
+                    onChange={(e) => toggleSelect(item.id, e)}
+                    className="size-4 rounded border-border accent-accent cursor-pointer"
+                    aria-label={`Select ${item.name}`}
+                  />
+                  <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start">
+                    <FileIcon category={item.category} extension={item.extension} size="lg" />
+                  </button>
+                </div>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -713,6 +814,16 @@ export function FileBrowser({
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-soft text-start text-xs text-muted">
+                  <th className="w-10 px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={items.length > 0 && selectedIds.size === items.length}
+                      onChange={selectAll}
+                      className="size-4 rounded border-border accent-accent cursor-pointer"
+                      title={t("batch.selectAll")}
+                      aria-label={t("batch.selectAll")}
+                    />
+                  </th>
                   <th className="px-4 py-3 text-start font-semibold">{t("common.fileName")}</th>
                   <th className="px-4 py-3 text-start font-semibold">{t("common.fileType")}</th>
                   <th className="px-4 py-3 text-start font-semibold">{t("common.fileSize")}</th>
@@ -722,7 +833,22 @@ export function FileBrowser({
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-soft/60">
+                  <tr
+                    key={item.id}
+                    className={cn(
+                      "border-b border-border last:border-0 hover:bg-surface-soft/60 transition-colors",
+                      selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
+                    )}
+                  >
+                    <td className="w-10 px-3 py-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={(e) => toggleSelect(item.id, e)}
+                        className="size-4 rounded border-border accent-accent cursor-pointer"
+                        aria-label={`Select ${item.name}`}
+                      />
+                    </td>
                     <td className="max-w-[340px] px-4 py-2.5">
                       <div className="flex items-center gap-2.5">
                         <FileIcon category={item.category} extension={item.extension} size="sm" />
@@ -916,6 +1042,74 @@ export function FileBrowser({
         description={`${deleteTarget?.name ?? ""} — ${t("common.deleteConfirm")}`}
         confirmLabel={t("common.delete")}
         loading={deleting}
+      />
+
+      {/* Floating Batch Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 start-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 rounded-2xl border border-border bg-surface-strong/95 px-4 sm:px-6 py-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2 border-e border-border/60 pe-3 text-xs font-bold text-foreground">
+            <span className="flex size-6 items-center justify-center rounded-full bg-accent text-white text-[11px] font-mono">
+              {selectedIds.size}
+            </span>
+            <span className="hidden sm:inline">{t("batch.selected", { count: selectedIds.size })}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button
+              variant="primary"
+              onClick={handleBatchPrint}
+              className="text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm"
+            >
+              <Printer className="size-4" />
+              <span>{t("batch.printSelected")}</span>
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={handleBatchDownload}
+              className="text-xs py-1.5 px-3 flex items-center gap-1.5"
+            >
+              <Download className="size-4" />
+              <span>{t("batch.downloadSelected")}</span>
+            </Button>
+
+            <Button
+              variant="danger"
+              onClick={() => setBatchDeleteOpen(true)}
+              className="text-xs py-1.5 px-3 flex items-center gap-1.5"
+            >
+              <Trash2 className="size-4" />
+              <span>{t("batch.deleteSelected")}</span>
+            </Button>
+
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="icon-btn size-7 text-muted hover:text-foreground ms-1"
+              title={t("batch.deselectAll")}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={batchDeleteOpen}
+        onClose={() => setBatchDeleteOpen(false)}
+        onConfirm={() => void handleBatchDelete()}
+        title={t("batch.deleteConfirmTitle")}
+        description={t("batch.deleteConfirmDesc", { count: selectedIds.size })}
+        confirmLabel={t("common.delete")}
+        loading={batchDeleting}
+      />
+
+      {/* Batch Print Dialog */}
+      <BatchPrintDialog
+        open={batchPrintOpen}
+        onClose={() => setBatchPrintOpen(false)}
+        selectedItems={selectedItems}
       />
     </div>
   );
