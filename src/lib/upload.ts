@@ -57,20 +57,26 @@ export async function resolveExamFolder(
 ): Promise<string> {
   let currentParentId = baseFolderId;
 
+  // Avoid creating a duplicate subfolder if base folder already has this name
+  const parentMeta = await getFileMeta(drive, baseFolderId).catch(() => null);
+  const parentName = parentMeta?.name?.trim().toLowerCase();
+
   const institution = meta.institution?.trim();
-  if (institution) {
+  if (institution && (!parentName || parentName !== institution.toLowerCase())) {
     currentParentId = await findOrCreateNamedFolder(drive, currentParentId, institution);
   }
 
   const examType = meta.examType?.trim();
-  if (examType) {
+  if (examType && (!parentName || parentName !== examType.toLowerCase())) {
     currentParentId = await findOrCreateNamedFolder(drive, currentParentId, examType);
   }
 
   const floor = meta.floor?.trim();
   if (floor) {
     const floorFolder = /^دور|floor/i.test(floor) ? floor : `الدور ${floor}`;
-    currentParentId = await findOrCreateNamedFolder(drive, currentParentId, floorFolder);
+    if (!parentName || parentName !== floorFolder.toLowerCase()) {
+      currentParentId = await findOrCreateNamedFolder(drive, currentParentId, floorFolder);
+    }
   }
 
   return currentParentId;
@@ -80,11 +86,18 @@ export async function resolveUploadFolder(
   drive: drive_v3.Drive,
   rootId: string,
   settings: AppSettings,
-  requestedParentId: string | undefined,
+  rawParentId: string | undefined,
   item: { name: string; mimeType: string },
   examMeta?: ExamUploadMeta,
 ): Promise<string> {
+  const requestedParentId = rawParentId?.trim() || undefined;
   const baseFolder = requestedParentId ? await validateParentFolder(drive, requestedParentId) : rootId;
+
+  // When uploading inside an active folder (requestedParentId is set)
+  // and autoFolder is not explicitly requested, upload directly into baseFolder!
+  if (requestedParentId && !examMeta?.autoFolder) {
+    return baseFolder;
+  }
 
   if (examMeta?.autoFolder && (examMeta.institution?.trim() || examMeta.floor?.trim())) {
     return resolveExamFolder(drive, baseFolder, examMeta);
@@ -209,14 +222,15 @@ export async function uploadSessionRequest(
 
 export function itemFromDriveFile(file: drive_v3.Schema$File): DriveItem {
   const mimeType = file.mimeType ?? "application/octet-stream";
-  const isFolder = mimeType === "application/vnd.google-apps.folder";
   const name = file.name ?? "untitled";
+  const extension = file.fileExtension ?? extensionOf(name, mimeType);
+  const isFolder = mimeType === "application/vnd.google-apps.folder" && !file.fileExtension && !extension;
   return {
     id: file.id ?? "",
     name,
     mimeType,
     size: file.size ? Number(file.size) : 0,
-    extension: file.fileExtension ?? extensionOf(name, mimeType),
+    extension,
     modifiedTime: file.modifiedTime ?? null,
     createdTime: file.createdTime ?? null,
     webViewLink: file.webViewLink ?? null,

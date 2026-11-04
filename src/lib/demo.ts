@@ -88,13 +88,14 @@ function modifiedDate(offsetDays: number): string {
 }
 
 function toItem(record: DemoRecord): DriveItem {
-  const isFolder = record.mimeType === MIME.folder;
+  const extension = extensionOf(record.name, record.mimeType);
+  const isFolder = record.mimeType === MIME.folder && !extension;
   return {
     id: record.id,
     name: record.name,
     mimeType: record.mimeType,
     size: record.size,
-    extension: extensionOf(record.name, record.mimeType),
+    extension,
     modifiedTime: modifiedDate(record.modifiedOffsetDays),
     createdTime: modifiedDate(record.modifiedOffsetDays + 2),
     webViewLink: null,

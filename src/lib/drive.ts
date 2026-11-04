@@ -19,14 +19,15 @@ const FOLDER_MIME = MIME.folder;
 
 export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string>): DriveItem {
   const mimeType = file.mimeType ?? "application/octet-stream";
-  const isFolder = mimeType === FOLDER_MIME;
   const name = file.name ?? "(untitled)";
+  const extension = file.fileExtension ?? extensionOf(name, mimeType);
+  const isFolder = mimeType === FOLDER_MIME && !file.fileExtension && !extension;
   return {
     id: file.id ?? "",
     name,
     mimeType,
     size: file.size ? Number(file.size) : 0,
-    extension: file.fileExtension ?? extensionOf(name, mimeType),
+    extension,
     modifiedTime: file.modifiedTime ?? null,
     createdTime: file.createdTime ?? null,
     webViewLink: file.webViewLink ?? null,

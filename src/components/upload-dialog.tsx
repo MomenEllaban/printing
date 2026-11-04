@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, FileText, FileUp, Loader2, RotateCcw, Trash2, UploadCloud, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Button, Input, ProgressBar, Spinner } from "./ui";
@@ -64,7 +64,15 @@ export function UploadDialog({
   const [examType, setExamType] = useState<ExamLevel>("EST 1");
   const [floor, setFloor] = useState("");
   const [room, setRoom] = useState("");
-  const [autoFolder, setAutoFolder] = useState(true);
+  const [autoFolder, setAutoFolder] = useState(!targetFolderId);
+
+  useEffect(() => {
+    if (open) {
+      // If user is inside a folder, default to direct upload into this folder (autoFolder = false)
+      // Only enable autoFolder hierarchy by default when uploading from root (targetFolderId is falsy)
+      setAutoFolder(!targetFolderId);
+    }
+  }, [open, targetFolderId]);
 
   const maxBytes = maxUploadSizeMb * 1024 * 1024;
   const allowed = useMemo(() => new Set(allowedExtensions.map((item) => item.toLowerCase())), [allowedExtensions]);
@@ -309,12 +317,31 @@ export function UploadDialog({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-          <span>
-            {t("upload.toFolder")}: <strong className="text-foreground">{targetFolderName || t("upload.targetDefault")}</strong>
-          </span>
-          <span>{t("upload.maxSize", { size: formatBytes(maxBytes, locale as Locale) })}</span>
-        </div>
+        {targetFolderId ? (
+          <div className="rounded-xl border border-accent/40 bg-accent/10 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 font-semibold text-accent-strong">
+              <span className="text-base">📁</span>
+              <span>
+                {locale === "ar" ? "الرفع المباشر داخل المجلد الحالي:" : "Uploading inside current folder:"}{" "}
+                <strong className="underline decoration-accent font-bold text-foreground">
+                  {targetFolderName || (locale === "ar" ? "المجلد الحالي" : "Current Folder")}
+                </strong>
+              </span>
+            </div>
+            <span className="rounded-md bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent-strong">
+              {autoFolder
+                ? (locale === "ar" ? "تفرع مجلدات إضافي" : "Nested subfolders")
+                : (locale === "ar" ? "✓ رفع مباشر في هذا المجلد" : "✓ Direct upload in this folder")}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+            <span>
+              {t("upload.toFolder")}: <strong className="text-foreground">{t("upload.targetDefault")}</strong>
+            </span>
+            <span>{t("upload.maxSize", { size: formatBytes(maxBytes, locale as Locale) })}</span>
+          </div>
+        )}
 
         {/* Exam Metadata Card */}
         <div className="rounded-2xl border border-border bg-surface-soft p-4 space-y-3.5">
@@ -449,15 +476,32 @@ export function UploadDialog({
           </div>
 
           {/* Auto Folder Option */}
-          <div className="pt-1 flex items-center justify-between text-xs text-muted border-t border-border/40">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+          <div className="pt-2 border-t border-border/40">
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={autoFolder}
                 onChange={(e) => setAutoFolder(e.target.checked)}
-                className="size-4 rounded border-border accent-accent"
+                className="mt-0.5 size-4 rounded border-border accent-accent"
               />
-              <span className="font-medium text-foreground">{t("upload.autoFolder")}</span>
+              <div className="text-xs">
+                <span className="font-semibold text-foreground">
+                  {targetFolderId
+                    ? (locale === "ar"
+                        ? `إنشاء مجلدات فرعية جديدة داخل "${targetFolderName || 'المجلد الحالي'}"`
+                        : `Create nested subfolders inside "${targetFolderName || 'current folder'}"`)
+                    : t("upload.autoFolder")}
+                </span>
+                <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
+                  {targetFolderId
+                    ? (locale === "ar"
+                        ? "افتراضياً (غير مفعّل): يتم حفظ الملف مباشرة داخل هذا المجلد بدون إنشاء أي مجلدات داخله."
+                        : "Default (unchecked): file is placed directly in this folder without creating subfolders.")
+                    : (locale === "ar"
+                        ? "يتم تنظيم الملفات تلقائياً في مجلدات (المؤسسة > نوع الامتحان > الدور)"
+                        : "Auto-organizes files into (Institution > Exam Level > Floor)")}
+                </p>
+              </div>
             </label>
           </div>
 

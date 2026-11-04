@@ -69,16 +69,16 @@ export function extensionOf(name: string, mimeType?: string | null): string | nu
 }
 
 export function categoryFor(mimeType: string, name = ""): FileCategory | "folder" {
-  if (mimeType === MIME.folder) return "folder";
-  if (mimeType === MIME.pdf) return "pdf";
-  if (EXCEL_MIMES.includes(mimeType)) return "excel";
-  if (WORD_MIMES.includes(mimeType)) return "word";
-  if (IMAGE_MIMES.includes(mimeType)) return "image";
   const ext = extensionOf(name, mimeType);
   if (ext === "pdf") return "pdf";
   if (ext && ["xlsx", "xls", "csv"].includes(ext)) return "excel";
   if (ext && ["docx", "doc"].includes(ext)) return "word";
   if (ext && ["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return "image";
+  if (mimeType === MIME.folder && !ext) return "folder";
+  if (mimeType === MIME.pdf) return "pdf";
+  if (EXCEL_MIMES.includes(mimeType)) return "excel";
+  if (WORD_MIMES.includes(mimeType)) return "word";
+  if (IMAGE_MIMES.includes(mimeType)) return "image";
   return "other";
 }
 
