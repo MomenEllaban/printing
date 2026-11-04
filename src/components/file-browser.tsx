@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CloudUpload,
   Download,
@@ -234,7 +238,72 @@ export function FileBrowser({
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchPrintOpen, setBatchPrintOpen] = useState(false);
 
-  const selectedItems = useMemo(() => items.filter((i) => selectedIds.has(i.id)), [items, selectedIds]);
+  // Expandable folder tree in list view
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+  const [folderChildren, setFolderChildren] = useState<Record<string, DriveItem[]>>({});
+  const [loadingFolderIds, setLoadingFolderIds] = useState<Set<string>>(new Set());
+
+  const fetchFolderChildren = useCallback(async (fId: string) => {
+    setLoadingFolderIds((prev) => new Set(prev).add(fId));
+    try {
+      const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(fId)}&pageSize=100`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) {
+        setFolderChildren((prev) => ({ ...prev, [fId]: data.items }));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingFolderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(fId);
+        return next;
+      });
+    }
+  }, []);
+
+  const toggleFolderExpand = useCallback(
+    (fId: string) => {
+      setExpandedFolderIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(fId)) {
+          next.delete(fId);
+        } else {
+          next.add(fId);
+          if (!folderChildren[fId]) {
+            void fetchFolderChildren(fId);
+          }
+        }
+        return next;
+      });
+    },
+    [fetchFolderChildren, folderChildren],
+  );
+
+  useEffect(() => {
+    setExpandedFolderIds(new Set());
+    setFolderChildren({});
+  }, [folderId]);
+
+  useEffect(() => {
+    if (expandedFolderIds.size > 0) {
+      expandedFolderIds.forEach((id) => void fetchFolderChildren(id));
+    }
+  }, [refreshKey, fetchFolderChildren]);
+
+  const allKnownItems = useMemo(() => {
+    const map = new Map<string, DriveItem>();
+    items.forEach((i) => map.set(i.id, i));
+    Object.values(folderChildren).forEach((children) => {
+      children.forEach((c) => map.set(c.id, c));
+    });
+    return Array.from(map.values());
+  }, [items, folderChildren]);
+
+  const selectedItems = useMemo(
+    () => allKnownItems.filter((i) => selectedIds.has(i.id)),
+    [allKnownItems, selectedIds],
+  );
 
   const displayItems = useMemo(() => {
     if (printFilter === "all") return items;
@@ -841,11 +910,11 @@ export function FileBrowser({
                   "file-card relative transition-all",
                   selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
                   !selectedIds.has(item.id) &&
-                    isPrinted &&
-                    "border-emerald-500/40 bg-emerald-500/[0.04] shadow-sm shadow-emerald-500/5 hover:border-emerald-500/60",
+                  isPrinted &&
+                  "border-emerald-500/40 bg-emerald-500/[0.04] shadow-sm shadow-emerald-500/5 hover:border-emerald-500/60",
                   !selectedIds.has(item.id) &&
-                    isPending &&
-                    "border-amber-500/40 bg-amber-500/[0.03] hover:border-amber-500/60",
+                  isPending &&
+                  "border-amber-500/40 bg-amber-500/[0.03] hover:border-amber-500/60",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -986,123 +1055,310 @@ export function FileBrowser({
                 {displayItems.map((item) => {
                   const isPrinted = !item.isFolder && printedIds.has(item.id);
                   const isPending = !item.isFolder && !printedIds.has(item.id);
+                  const isExpanded = item.isFolder && expandedFolderIds.has(item.id);
+                  const isLoadingChildren = item.isFolder && loadingFolderIds.has(item.id);
+                  const children = folderChildren[item.id] || [];
 
                   return (
-                    <tr
-                      key={item.id}
-                      className={cn(
-                        "border-b border-border last:border-0 hover:bg-surface-soft/60 transition-colors",
-                        selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
-                        !selectedIds.has(item.id) &&
+                    <Fragment key={item.id}>
+                      <tr
+                        className={cn(
+                          "border-b border-border last:border-0 hover:bg-surface-soft/60 transition-colors",
+                          selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
+                          !selectedIds.has(item.id) &&
                           isPrinted &&
                           "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
-                        !selectedIds.has(item.id) &&
+                          !selectedIds.has(item.id) &&
                           isPending &&
                           "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
-                      )}
-                    >
-                      <td className="w-10 px-3 py-2.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(item.id)}
-                          onChange={(e) => toggleSelect(item.id, e)}
-                          className="size-4 rounded border-border accent-accent cursor-pointer"
-                          aria-label={`Select ${item.name}`}
-                        />
-                      </td>
-                      <td className="max-w-[340px] px-4 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <FileIcon category={item.category} extension={item.extension} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent block max-w-full">
-                              {item.name}
-                            </button>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                              <ExamBadges name={item.name} />
-                              {!item.isFolder && (
-                                isPrinted ? (
-                                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                                    <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
-                                    {t("print.statusPrinted")}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                                    <Clock className="size-3 text-amber-600 dark:text-amber-400" />
-                                    {t("print.statusPending")}
-                                  </span>
-                                )
-                              )}
-                            </div>
-                          </div>
-                          {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 text-muted">
-                        {item.isFolder ? t("common.folder") : (item.extension || "—").toUpperCase()}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">
-                        {item.isFolder ? "—" : formatBytes(item.size, locale as Locale)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatDate(item.modifiedTime, locale as Locale)}</td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center justify-end gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => void toggleFavorite(item)}
-                            className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
-                            title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
-                          >
-                            <Star className={cn("size-4", item.isFavorite && "fill-current")} />
-                          </button>
-                          {!item.isFolder && (
-                            <a
-                              href={`/print/${item.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="icon-btn size-8"
-                              title={t("common.print")}
-                            >
-                              <Printer className="size-4" />
-                            </a>
-                          )}
-                          {!item.isFolder && (
-                            <a
-                              href={`/api/drive/files/${item.id}/content?download=1`}
-                              className="icon-btn size-8"
-                              title={t("common.download")}
-                            >
-                              <Download className="size-4" />
-                            </a>
-                          )}
-                          <ItemMenu
-                            item={item}
-                            isPrinted={isPrinted}
-                            onTogglePrint={() => void togglePrintStatus(item)}
-                            open={menuId === item.id}
-                            onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
-                            onClose={() => setMenuId(null)}
-                            onPreview={() => openItem(item)}
-                            onRename={() => {
-                              if (!requireWritable()) return;
-                              setRenameTarget(item);
-                              setRenameValue(item.name);
-                              setMenuId(null);
-                            }}
-                            onMove={() => {
-                              if (!requireWritable()) return;
-                              setMoveTarget(item);
-                              setMenuId(null);
-                            }}
-                            onDelete={() => {
-                              if (!requireWritable()) return;
-                              setDeleteTarget(item);
-                              setMenuId(null);
-                            }}
-                            demo={demoActive}
+                        )}
+                      >
+                        <td className="w-10 px-3 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(item.id)}
+                            onChange={(e) => toggleSelect(item.id, e)}
+                            className="size-4 rounded border-border accent-accent cursor-pointer"
+                            aria-label={`Select ${item.name}`}
                           />
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="max-w-[340px] px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            {item.isFolder ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void toggleFolderExpand(item.id);
+                                }}
+                                className="icon-btn size-6 text-muted hover:text-accent hover:bg-surface-strong shrink-0 rounded-md transition-all"
+                                title={
+                                  isExpanded
+                                    ? locale === "ar"
+                                      ? "طي المجلد"
+                                      : "Collapse folder"
+                                    : locale === "ar"
+                                      ? "توسيع وعرض محتويات المجلد"
+                                      : "Expand folder"
+                                }
+                                aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+                              >
+                                {isLoadingChildren ? (
+                                  <Loader2 className="size-3.5 animate-spin text-accent" />
+                                ) : isExpanded ? (
+                                  <ChevronDown className="size-3.5 text-accent" />
+                                ) : locale === "ar" ? (
+                                  <ChevronLeft className="size-3.5" />
+                                ) : (
+                                  <ChevronRight className="size-3.5" />
+                                )}
+                              </button>
+                            ) : (
+                              <span className="w-6 shrink-0" />
+                            )}
+                            <FileIcon category={item.category} extension={item.extension} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent block max-w-full">
+                                {item.name}
+                              </button>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                <ExamBadges name={item.name} />
+                                {!item.isFolder && (
+                                  isPrinted ? (
+                                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                      <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                      {t("print.statusPrinted")}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                      <Clock className="size-3 text-amber-600 dark:text-amber-400" />
+                                      {t("print.statusPending")}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                            {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted">
+                          {item.isFolder ? t("common.folder") : (item.extension || "—").toUpperCase()}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-muted">
+                          {item.isFolder ? "—" : formatBytes(item.size, locale as Locale)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatDate(item.modifiedTime, locale as Locale)}</td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => void toggleFavorite(item)}
+                              className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
+                              title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
+                            >
+                              <Star className={cn("size-4", item.isFavorite && "fill-current")} />
+                            </button>
+                            {!item.isFolder && (
+                              <a
+                                href={`/print/${item.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="icon-btn size-8"
+                                title={t("common.print")}
+                              >
+                                <Printer className="size-4" />
+                              </a>
+                            )}
+                            {!item.isFolder && (
+                              <a
+                                href={`/api/drive/files/${item.id}/content?download=1`}
+                                className="icon-btn size-8"
+                                title={t("common.download")}
+                              >
+                                <Download className="size-4" />
+                              </a>
+                            )}
+                            <ItemMenu
+                              item={item}
+                              isPrinted={isPrinted}
+                              onTogglePrint={() => void togglePrintStatus(item)}
+                              open={menuId === item.id}
+                              onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
+                              onClose={() => setMenuId(null)}
+                              onPreview={() => openItem(item)}
+                              onRename={() => {
+                                if (!requireWritable()) return;
+                                setRenameTarget(item);
+                                setRenameValue(item.name);
+                                setMenuId(null);
+                              }}
+                              onMove={() => {
+                                if (!requireWritable()) return;
+                                setMoveTarget(item);
+                                setMenuId(null);
+                              }}
+                              onDelete={() => {
+                                if (!requireWritable()) return;
+                                setDeleteTarget(item);
+                                setMenuId(null);
+                              }}
+                              demo={demoActive}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expanded Sub-Tree for this Folder */}
+                      {isExpanded && (
+                        <>
+                          {isLoadingChildren ? (
+                            <tr key={`${item.id}-loading`} className="border-b border-border/40 bg-surface-soft/30 animate-pulse">
+                              <td colSpan={6} className="py-2.5 ps-14 pe-4 text-xs text-muted">
+                                <div className="flex items-center gap-2">
+                                  <Loader2 className="size-3.5 animate-spin text-accent" />
+                                  <span>{t("common.loading")}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : children.length === 0 ? (
+                            <tr key={`${item.id}-empty`} className="border-b border-border/40 bg-surface-soft/20 text-muted">
+                              <td colSpan={6} className="py-2.5 ps-14 pe-4 text-xs italic">
+                                {locale === "ar" ? "المجلد فارغ لا يحتوي على ملفات أو مجلدات" : "Folder is empty"}
+                              </td>
+                            </tr>
+                          ) : (
+                            children.map((child) => {
+                              const isChildPrinted = !child.isFolder && printedIds.has(child.id);
+                              const isChildPending = !child.isFolder && !printedIds.has(child.id);
+
+                              return (
+                                <tr
+                                  key={child.id}
+                                  className={cn(
+                                    "border-b border-border/50 last:border-0 hover:bg-surface-soft/60 transition-colors bg-surface-soft/20",
+                                    selectedIds.has(child.id) && "bg-accent/10 hover:bg-accent/15",
+                                    !selectedIds.has(child.id) &&
+                                    isChildPrinted &&
+                                    "bg-emerald-500/[0.03] hover:bg-emerald-500/[0.06] border-s-4 border-s-emerald-500/70",
+                                    !selectedIds.has(child.id) &&
+                                    isChildPending &&
+                                    "bg-amber-500/[0.02] hover:bg-amber-500/[0.05] border-s-4 border-s-amber-500/60",
+                                  )}
+                                >
+                                  <td className="w-10 px-3 py-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedIds.has(child.id)}
+                                      onChange={(e) => toggleSelect(child.id, e)}
+                                      className="size-4 rounded border-border accent-accent cursor-pointer"
+                                      aria-label={`Select ${child.name}`}
+                                    />
+                                  </td>
+                                  <td className="max-w-[340px] px-4 py-2">
+                                    <div className="flex items-center gap-2 ps-5 border-s-2 border-accent/40 ms-5">
+                                      <FileIcon category={child.category} extension={child.extension} size="sm" />
+                                      <div className="min-w-0 flex-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => openItem(child)}
+                                          className="truncate text-start font-medium hover:text-accent block max-w-full text-xs sm:text-sm"
+                                        >
+                                          {child.name}
+                                        </button>
+                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                          <ExamBadges name={child.name} />
+                                          {!child.isFolder && (
+                                            isChildPrinted ? (
+                                              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                                <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                                {t("print.statusPrinted")}
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                                <Clock className="size-3 text-amber-600 dark:text-amber-400" />
+                                                {t("print.statusPending")}
+                                              </span>
+                                            )
+                                          )}
+                                        </div>
+                                      </div>
+                                      {child.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2 text-xs text-muted">
+                                    {child.isFolder ? t("common.folder") : (child.extension || "—").toUpperCase()}
+                                  </td>
+                                  <td className="whitespace-nowrap px-4 py-2 text-xs text-muted">
+                                    {child.isFolder ? "—" : formatBytes(child.size, locale as Locale)}
+                                  </td>
+                                  <td className="whitespace-nowrap px-4 py-2 text-xs text-muted">
+                                    {formatDate(child.modifiedTime, locale as Locale)}
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <div className="flex items-center justify-end gap-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => void toggleFavorite(child)}
+                                        className={cn("icon-btn size-7", child.isFavorite && "text-amber-500")}
+                                        title={child.isFavorite ? t("common.unfavorite") : t("common.favorite")}
+                                      >
+                                        <Star className={cn("size-3.5", child.isFavorite && "fill-current")} />
+                                      </button>
+                                      {!child.isFolder && (
+                                        <a
+                                          href={`/print/${child.id}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="icon-btn size-7"
+                                          title={t("common.print")}
+                                        >
+                                          <Printer className="size-3.5" />
+                                        </a>
+                                      )}
+                                      {!child.isFolder && (
+                                        <a
+                                          href={`/api/drive/files/${child.id}/content?download=1`}
+                                          className="icon-btn size-7"
+                                          title={t("common.download")}
+                                        >
+                                          <Download className="size-3.5" />
+                                        </a>
+                                      )}
+                                      <ItemMenu
+                                        item={child}
+                                        isPrinted={isChildPrinted}
+                                        onTogglePrint={() => void togglePrintStatus(child)}
+                                        open={menuId === child.id}
+                                        onToggle={() => setMenuId(menuId === child.id ? null : child.id)}
+                                        onClose={() => setMenuId(null)}
+                                        onPreview={() => openItem(child)}
+                                        onRename={() => {
+                                          if (!requireWritable()) return;
+                                          setRenameTarget(child);
+                                          setRenameValue(child.name);
+                                          setMenuId(null);
+                                        }}
+                                        onMove={() => {
+                                          if (!requireWritable()) return;
+                                          setMoveTarget(child);
+                                          setMenuId(null);
+                                        }}
+                                        onDelete={() => {
+                                          if (!requireWritable()) return;
+                                          setDeleteTarget(child);
+                                          setMenuId(null);
+                                        }}
+                                        demo={demoActive}
+                                      />
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -1225,7 +1481,7 @@ export function FileBrowser({
 
       {/* Floating Batch Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-4 sm:bottom-6 start-1/2 -translate-x-1/2 z-40 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 rounded-2xl border border-border bg-surface-strong/95 px-3 sm:px-5 py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 duration-200 max-w-[95vw] sm:max-w-fit">
+        <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 rounded-2xl border border-border bg-surface-strong/95 px-3 sm:px-5 py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 duration-200 max-w-[95vw] sm:max-w-fit">
           <div className="flex items-center gap-1.5 border-e border-border/60 pe-2 sm:pe-3 text-xs font-bold text-foreground">
             <span className="flex size-5 sm:size-6 items-center justify-center rounded-full bg-accent text-white text-[10px] sm:text-[11px] font-mono">
               {selectedIds.size}
@@ -1328,37 +1584,174 @@ function ItemMenu({
   onTogglePrint?: () => void;
   demo: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const updatePosition = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuEl = menuRef.current;
+    const menuWidth = menuEl?.offsetWidth || 208;
+    const menuHeight = menuEl?.offsetHeight || 290;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Vertical positioning: flip above if close to bottom
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const placeAbove = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+
+    let top: number;
+    if (placeAbove) {
+      top = Math.max(8, rect.top - menuHeight - 4);
+    } else {
+      top = Math.min(viewportHeight - menuHeight - 8, rect.bottom + 4);
+    }
+
+    // Horizontal positioning: RTL vs LTR aware
+    const isRtl = document.documentElement.dir === "rtl" || locale === "ar";
+    let left: number;
+    if (isRtl) {
+      if (rect.left < menuWidth) {
+        left = rect.left;
+      } else {
+        left = rect.right - menuWidth;
+      }
+    } else {
+      if (viewportWidth - rect.right < menuWidth) {
+        left = rect.right - menuWidth;
+      } else {
+        left = rect.left;
+      }
+    }
+
+    if (left + menuWidth > viewportWidth - 8) {
+      left = viewportWidth - menuWidth - 8;
+    }
+    if (left < 8) {
+      left = 8;
+    }
+
+    setPosition({ top, left });
+  }, [locale]);
+
+  useEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+
+    updatePosition();
+    const frameId = requestAnimationFrame(() => {
+      updatePosition();
+    });
+
+    const handleScrollOrResize = () => {
+      updatePosition();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose, updatePosition]);
+
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={onToggle}
-        className="icon-btn size-8"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className={cn("icon-btn size-8 transition-colors", open && "bg-surface-soft text-foreground ring-2 ring-accent/30")}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={t("common.actions")}
       >
         <MoreVertical className="size-4" />
       </button>
-      {open && (
+
+      {open && mounted && createPortal(
         <>
-          <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label={t("common.close")} onClick={onClose} />
+          <button
+            type="button"
+            className="fixed inset-0 z-[9990] cursor-default bg-transparent"
+            aria-label={t("common.close")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+          />
           <div
+            ref={menuRef}
             role="menu"
-            className="absolute end-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-xl"
+            style={
+              position
+                ? { top: `${position.top}px`, left: `${position.left}px` }
+                : { visibility: "hidden", top: 0, left: 0 }
+            }
+            className="fixed z-[9999] w-52 overflow-hidden rounded-2xl border border-border/80 bg-surface/95 backdrop-blur-md p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+            onClick={(e) => e.stopPropagation()}
           >
-            <button type="button" role="menuitem" className="menu-item" onClick={() => { onPreview(); onClose(); }}>
-              <Eye className="size-4" />
-              {item.isFolder ? t("common.open") : t("common.preview")}
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              onClick={() => {
+                onPreview();
+                onClose();
+              }}
+            >
+              <Eye className="size-4 text-accent" />
+              <span>{item.isFolder ? t("common.open") : t("common.preview")}</span>
             </button>
-            <button type="button" role="menuitem" className="menu-item" onClick={onRename} disabled={demo}>
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              onClick={() => {
+                onRename();
+                onClose();
+              }}
+              disabled={demo}
+            >
               <Pencil className="size-4" />
-              {t("common.rename")}
+              <span>{t("common.rename")}</span>
             </button>
-            <button type="button" role="menuitem" className="menu-item" onClick={onMove} disabled={demo}>
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              onClick={() => {
+                onMove();
+                onClose();
+              }}
+              disabled={demo}
+            >
               <Move className="size-4" />
-              {t("common.move")}
+              <span>{t("common.move")}</span>
             </button>
             {!item.isFolder && onTogglePrint && (
               <button
@@ -1390,8 +1783,8 @@ function ItemMenu({
                 href={`/api/drive/files/${item.id}/content?download=1`}
                 onClick={onClose}
               >
-                <Download className="size-4" />
-                {t("common.download")}
+                <Download className="size-4 text-sky-500" />
+                <span>{t("common.download")}</span>
               </a>
             )}
             {!item.isFolder && (
@@ -1402,8 +1795,8 @@ function ItemMenu({
                 target="_blank"
                 onClick={onClose}
               >
-                <Printer className="size-4" />
-                {t("common.print")}
+                <Printer className="size-4 text-accent" />
+                <span>{t("common.print")}</span>
               </Link>
             )}
             {item.webViewLink && (
@@ -1415,16 +1808,27 @@ function ItemMenu({
                 rel="noopener noreferrer"
                 onClick={onClose}
               >
-                <ExternalLink className="size-4" />
-                {t("common.openInDrive")}
+                <ExternalLink className="size-4 text-muted" />
+                <span>{t("common.openInDrive")}</span>
               </a>
             )}
-            <button type="button" role="menuitem" className="menu-item menu-item-danger" onClick={onDelete} disabled={demo}>
+            <div className="my-1 border-t border-border/60" />
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item menu-item-danger text-rose-600 dark:text-rose-400 hover:bg-rose-500/10"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              disabled={demo}
+            >
               <Trash2 className="size-4" />
-              {t("common.delete")}
+              <span>{t("common.delete")}</span>
             </button>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
