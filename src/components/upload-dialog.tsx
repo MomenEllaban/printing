@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CheckCircle2, FileUp, Loader2, RotateCcw, Trash2, UploadCloud, XCircle } from "lucide-react";
+import { CheckCircle2, FileText, FileUp, Loader2, RotateCcw, Trash2, UploadCloud, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { Modal, Button, ProgressBar, Spinner } from "./ui";
+import { Modal, Button, Input, ProgressBar, Spinner } from "./ui";
 import { useI18n } from "./locale-provider";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/file-utils";
+import { buildExamFileName, type ExamLevel, type ExamRegisterType, type ExamUploadMeta } from "@/lib/exam-utils";
 import type { Locale } from "@/lib/types";
 
 type UploadStatus = "queued" | "uploading" | "done" | "failed" | "cancelled";
@@ -18,6 +19,7 @@ interface QueueItem {
   progress: number;
   error?: string;
   uploadedName?: string;
+  room?: string;
 }
 
 interface UploadDialogProps {
@@ -55,6 +57,15 @@ export function UploadDialog({
   const [starting, setStarting] = useState(false);
   const activeRef = useRef<Record<string, XMLHttpRequest | null>>({});
   const uploadedRef = useRef(false);
+
+  // Exam registration metadata states
+  const [registerType, setRegisterType] = useState<ExamRegisterType>("student");
+  const [institution, setInstitution] = useState("");
+  const [examType, setExamType] = useState<ExamLevel>("EST 1");
+  const [floor, setFloor] = useState("");
+  const [room, setRoom] = useState("");
+  const [autoFolder, setAutoFolder] = useState(true);
+
   const maxBytes = maxUploadSizeMb * 1024 * 1024;
   const allowed = useMemo(() => new Set(allowedExtensions.map((item) => item.toLowerCase())), [allowedExtensions]);
 
@@ -95,6 +106,15 @@ export function UploadDialog({
       new Promise(async (resolve) => {
         update(item.key, { status: "uploading", progress: 0, error: undefined });
         try {
+          const examMetadata: ExamUploadMeta = {
+            registerType,
+            institution: institution.trim() || undefined,
+            examType,
+            floor: floor.trim() || undefined,
+            room: registerType === "student" ? (item.room || room).trim() || undefined : undefined,
+            autoFolder,
+          };
+
           const initResponse = await fetch("/api/drive/upload/init", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -103,6 +123,7 @@ export function UploadDialog({
               mimeType: item.file.type || "application/octet-stream",
               size: item.file.size,
               parentId: targetFolderId || undefined,
+              examMetadata,
             }),
           });
           const init = await initResponse.json().catch(() => ({}));
@@ -157,6 +178,8 @@ export function UploadDialog({
               if (targetFolderId) {
                 formData.append("parentId", targetFolderId);
               }
+              formData.append("examMetadata", JSON.stringify(examMetadata));
+
               const directResponse = await fetch("/api/drive/upload/direct", {
                 method: "POST",
                 body: formData,
@@ -202,7 +225,7 @@ export function UploadDialog({
           resolve(false);
         }
       }),
-    [targetFolderId, t, update],
+    [autoFolder, examType, floor, institution, registerType, room, targetFolderId, t, update],
   );
 
   const start = useCallback(async () => {
@@ -293,6 +316,166 @@ export function UploadDialog({
           <span>{t("upload.maxSize", { size: formatBytes(maxBytes, locale as Locale) })}</span>
         </div>
 
+        {/* Exam Metadata Card */}
+        <div className="rounded-2xl border border-border bg-surface-soft p-4 space-y-3.5">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <span className="text-xs font-bold text-foreground flex items-center gap-2">
+              <FileText className="size-4 text-accent" />
+              {t("upload.examSectionTitle")}
+            </span>
+            <span className="text-[11px] font-mono text-muted bg-surface px-2 py-0.5 rounded-md border border-border/50">
+              EST Exam Center
+            </span>
+          </div>
+
+          {/* Row 1: Register Type (Student Register vs Proctor Register) */}
+          <div>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">
+              {t("upload.registerType")}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setRegisterType("student")}
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+                  registerType === "student"
+                    ? "border-accent bg-accent text-white shadow-sm"
+                    : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
+                )}
+              >
+                <span>🎓</span>
+                <span>{t("upload.registerTypeStudent")}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRegisterType("proctor");
+                  setRoom("");
+                }}
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+                  registerType === "proctor"
+                    ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
+                    : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
+                )}
+              >
+                <span>📋</span>
+                <span>{t("upload.registerTypeProctor")}</span>
+              </button>
+            </div>
+            {registerType === "proctor" && (
+              <p className="mt-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <span>ℹ️</span>
+                <span>{t("upload.proctorNote")}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Row 2: Institution & Exam Level */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                {t("upload.institution")}
+              </label>
+              <Input
+                value={institution}
+                onChange={(e) => setInstitution(e.target.value)}
+                placeholder={t("upload.institutionPlaceholder")}
+                className="text-xs py-1.5"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                {t("upload.examType")}
+              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setExamType("EST 1")}
+                  className={cn(
+                    "rounded-xl border py-1.5 text-xs font-bold transition-all",
+                    examType === "EST 1"
+                      ? "border-accent bg-accent text-white shadow-sm"
+                      : "border-border bg-surface text-muted hover:text-foreground",
+                  )}
+                >
+                  EST 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExamType("EST 2")}
+                  className={cn(
+                    "rounded-xl border py-1.5 text-xs font-bold transition-all",
+                    examType === "EST 2"
+                      ? "border-accent bg-accent text-white shadow-sm"
+                      : "border-border bg-surface text-muted hover:text-foreground",
+                  )}
+                >
+                  EST 2
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Floor & Room (Room is conditionally hidden if registerType === "proctor") */}
+          <div className={cn("grid gap-3 transition-all", registerType === "student" ? "grid-cols-2" : "grid-cols-1")}>
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                {t("upload.floor")}
+              </label>
+              <Input
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+                placeholder={t("upload.floorPlaceholder")}
+                className="text-xs py-1.5"
+              />
+            </div>
+
+            {registerType === "student" && (
+              <div>
+                <label className="text-xs font-semibold text-foreground mb-1 block">
+                  {t("upload.room")}
+                </label>
+                <Input
+                  value={room}
+                  onChange={(e) => setRoom(e.target.value)}
+                  placeholder={t("upload.roomPlaceholder")}
+                  className="text-xs py-1.5"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Auto Folder Option */}
+          <div className="pt-1 flex items-center justify-between text-xs text-muted border-t border-border/40">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoFolder}
+                onChange={(e) => setAutoFolder(e.target.checked)}
+                className="size-4 rounded border-border accent-accent"
+              />
+              <span className="font-medium text-foreground">{t("upload.autoFolder")}</span>
+            </label>
+          </div>
+
+          {/* Live Preview of File Name */}
+          <div className="rounded-xl border border-border/80 bg-surface px-3 py-2 text-[11px]">
+            <span className="font-semibold text-muted block mb-0.5">{t("upload.generatedName")}</span>
+            <span className="font-mono text-accent-strong break-all">
+              {buildExamFileName(queue[0]?.file.name || "attendance_sheet.pdf", {
+                registerType,
+                institution: institution.trim() || undefined,
+                examType,
+                floor: floor.trim() || undefined,
+                room: registerType === "student" ? room.trim() || undefined : undefined,
+              })}
+            </span>
+          </div>
+        </div>
+
         <div
           onDragOver={(event) => {
             event.preventDefault();
@@ -361,7 +544,28 @@ export function UploadDialog({
                       )}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{item.uploadedName || item.file.name}</p>
+                      <p className="truncate text-sm font-medium">
+                        {item.uploadedName ||
+                          buildExamFileName(item.file.name, {
+                            registerType,
+                            institution: institution.trim() || undefined,
+                            examType,
+                            floor: floor.trim() || undefined,
+                            room: registerType === "student" ? (item.room || room).trim() || undefined : undefined,
+                          })}
+                      </p>
+                      {allowMultiple && registerType === "student" && item.status === "queued" && (
+                        <div className="mt-1 flex items-center gap-2 text-xs">
+                          <span className="text-muted">{t("upload.room")}:</span>
+                          <input
+                            type="text"
+                            value={item.room ?? room}
+                            onChange={(e) => update(item.key, { room: e.target.value })}
+                            placeholder={room || "101"}
+                            className="input py-0.5 px-2 text-xs w-28 h-7"
+                          />
+                        </div>
+                      )}
                       <p className="text-[11px] text-muted">
                         {formatBytes(item.file.size, locale as Locale)} Â·{" "}
                         {item.status === "queued"

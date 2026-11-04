@@ -34,14 +34,63 @@ async function findOrCreateTypeFolder(drive: drive_v3.Drive, rootId: string, nam
   return created.id;
 }
 
+import { buildExamFileName, type ExamUploadMeta } from "./exam-utils";
+export { buildExamFileName, type ExamUploadMeta } from "./exam-utils";
+
+export async function findOrCreateNamedFolder(drive: drive_v3.Drive, parentId: string, name: string): Promise<string> {
+  const existing = await drive.files.list({
+    q: `name = '${escapeDriveQuery(name)}' and '${escapeDriveQuery(parentId)}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id)",
+    pageSize: 1,
+    supportsAllDrives: true,
+  });
+  if (existing.data.files?.[0]?.id) return existing.data.files[0].id;
+  const created = await createFolder(drive, name, parentId);
+  if (!created.id) throw new AppError(`Could not create folder ${name}`, { code: "invalidRequest" });
+  return created.id;
+}
+
+export async function resolveExamFolder(
+  drive: drive_v3.Drive,
+  baseFolderId: string,
+  meta: ExamUploadMeta,
+): Promise<string> {
+  let currentParentId = baseFolderId;
+
+  const institution = meta.institution?.trim();
+  if (institution) {
+    currentParentId = await findOrCreateNamedFolder(drive, currentParentId, institution);
+  }
+
+  const examType = meta.examType?.trim();
+  if (examType) {
+    currentParentId = await findOrCreateNamedFolder(drive, currentParentId, examType);
+  }
+
+  const floor = meta.floor?.trim();
+  if (floor) {
+    const floorFolder = /^دور|floor/i.test(floor) ? floor : `الدور ${floor}`;
+    currentParentId = await findOrCreateNamedFolder(drive, currentParentId, floorFolder);
+  }
+
+  return currentParentId;
+}
+
 export async function resolveUploadFolder(
   drive: drive_v3.Drive,
   rootId: string,
   settings: AppSettings,
   requestedParentId: string | undefined,
   item: { name: string; mimeType: string },
+  examMeta?: ExamUploadMeta,
 ): Promise<string> {
-  if (requestedParentId) return validateParentFolder(drive, requestedParentId);
+  const baseFolder = requestedParentId ? await validateParentFolder(drive, requestedParentId) : rootId;
+
+  if (examMeta?.autoFolder && (examMeta.institution?.trim() || examMeta.floor?.trim())) {
+    return resolveExamFolder(drive, baseFolder, examMeta);
+  }
+
+  if (requestedParentId) return baseFolder;
   if (settings.upload.defaultDestinationFolderId) {
     return validateParentFolder(drive, settings.upload.defaultDestinationFolderId);
   }

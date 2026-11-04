@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 import { getDriveContextWithRoot } from "@/lib/auth";
 import { enforceRateLimit, jsonError, requireSession } from "@/lib/api-utils";
 import { getSettings } from "@/lib/settings";
-import { resolveAvailableName, resolveUploadFolder, validateUploadInput } from "@/lib/upload";
+import { buildExamFileName, resolveAvailableName, resolveUploadFolder, validateUploadInput, type ExamUploadMeta } from "@/lib/upload";
 import { isValidFileName } from "@/lib/file-utils";
 import { AppError } from "@/lib/errors";
 import { toDriveItem } from "@/lib/drive";
@@ -26,6 +26,14 @@ export async function POST(request: Request) {
     }
 
     const requestedParentId = (formData.get("parentId") as string | null) || undefined;
+    const examMetaRaw = formData.get("examMetadata");
+    let examMetadata: ExamUploadMeta | undefined = undefined;
+    if (typeof examMetaRaw === "string") {
+      try {
+        examMetadata = JSON.parse(examMetaRaw);
+      } catch {}
+    }
+
     const name = file.name;
     const mimeType = file.type?.trim() || "application/octet-stream";
     const size = file.size;
@@ -44,12 +52,21 @@ export async function POST(request: Request) {
       });
     }
 
+    const targetName = buildExamFileName(name, examMetadata);
+
     const { drive, rootFolderId } = await getDriveContextWithRoot();
-    const parentId = await resolveUploadFolder(drive, rootFolderId, settings, requestedParentId, {
-      name,
-      mimeType,
-    });
-    const finalName = await resolveAvailableName(drive, parentId, name, settings.upload.duplicateBehavior);
+    const parentId = await resolveUploadFolder(
+      drive,
+      rootFolderId,
+      settings,
+      requestedParentId,
+      {
+        name: targetName,
+        mimeType,
+      },
+      examMetadata,
+    );
+    const finalName = await resolveAvailableName(drive, parentId, targetName, settings.upload.duplicateBehavior);
 
     const arrayBuffer = await file.arrayBuffer();
     const stream = Readable.from(Buffer.from(arrayBuffer));
@@ -81,3 +98,4 @@ export async function POST(request: Request) {
     return jsonError(error);
   }
 }
+

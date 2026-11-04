@@ -34,6 +34,7 @@ import { useI18n } from "./locale-provider";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/file-utils";
 import { formatDate, formatNumber } from "@/lib/format";
+import { parseExamInfoFromFileName } from "@/lib/exam-utils";
 import type { Breadcrumb, DriveItem, DriveListResult, FileCategory, Locale } from "@/lib/types";
 
 export type BrowserMode = "all" | "category" | "recent" | "favorites";
@@ -104,6 +105,41 @@ function sortLabelKey(sort: string) {
     default:
       return "common.sortModifiedDesc";
   }
+}
+
+function ExamBadges({ name }: { name: string }) {
+  const info = parseExamInfoFromFileName(name);
+  if (!info) return null;
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {info.examType && (
+        <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
+          {info.examType}
+        </span>
+      )}
+      {info.registerType === "proctor" && (
+        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+          📋 Proctor Register
+        </span>
+      )}
+      {info.registerType === "student" && (
+        <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+          🎓 Student Register
+        </span>
+      )}
+      {info.floor && (
+        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+          دور {info.floor}
+        </span>
+      )}
+      {info.room && (
+        <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 dark:text-cyan-300">
+          روم {info.room}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function FileBrowser({
@@ -645,6 +681,7 @@ export function FileBrowser({
                 <button type="button" onClick={() => openItem(item)} className="block w-full truncate text-start text-sm font-semibold hover:text-accent">
                   {item.name}
                 </button>
+                <ExamBadges name={item.name} />
                 <p className="mt-0.5 truncate text-xs text-muted">
                   {item.isFolder ? t("common.folder") : formatBytes(item.size, locale as Locale)} ·{" "}
                   {formatDate(item.modifiedTime, locale as Locale)}
@@ -689,9 +726,12 @@ export function FileBrowser({
                     <td className="max-w-[340px] px-4 py-2.5">
                       <div className="flex items-center gap-2.5">
                         <FileIcon category={item.category} extension={item.extension} size="sm" />
-                        <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent">
-                          {item.name}
-                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent block max-w-full">
+                            {item.name}
+                          </button>
+                          <ExamBadges name={item.name} />
+                        </div>
                         {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
                       </div>
                     </td>

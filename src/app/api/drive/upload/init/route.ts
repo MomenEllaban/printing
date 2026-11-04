@@ -4,17 +4,27 @@ import { getAccessToken, getDriveContextWithRoot } from "@/lib/auth";
 import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/api-utils";
 import { signPendingUpload } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
-import { resolveAvailableName, resolveUploadFolder, uploadSessionRequest, validateUploadInput } from "@/lib/upload";
+import { buildExamFileName, resolveAvailableName, resolveUploadFolder, uploadSessionRequest, validateUploadInput } from "@/lib/upload";
 import { isValidFileName } from "@/lib/file-utils";
 import { AppError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
+
+const examMetadataSchema = z.object({
+  registerType: z.enum(["student", "proctor"]).optional(),
+  institution: z.string().max(150).optional(),
+  examType: z.enum(["EST 1", "EST 2"]).optional(),
+  floor: z.string().max(50).optional(),
+  room: z.string().max(50).optional(),
+  autoFolder: z.boolean().optional(),
+});
 
 const schema = z.object({
   name: z.string().min(1).max(200),
   mimeType: z.string().max(200).optional(),
   size: z.number().int().nonnegative(),
   parentId: z.string().max(200).optional(),
+  examMetadata: examMetadataSchema.optional(),
 });
 
 export async function POST(request: Request) {
@@ -29,12 +39,21 @@ export async function POST(request: Request) {
     const settings = await getSettings();
     validateUploadInput({ name: body.name, mimeType, size: body.size }, settings);
 
+    const targetName = buildExamFileName(body.name, body.examMetadata);
+
     const { drive, rootFolderId } = await getDriveContextWithRoot();
-    const parentId = await resolveUploadFolder(drive, rootFolderId, settings, body.parentId, {
-      name: body.name,
-      mimeType,
-    });
-    const name = await resolveAvailableName(drive, parentId, body.name, settings.upload.duplicateBehavior);
+    const parentId = await resolveUploadFolder(
+      drive,
+      rootFolderId,
+      settings,
+      body.parentId,
+      {
+        name: targetName,
+        mimeType,
+      },
+      body.examMetadata,
+    );
+    const name = await resolveAvailableName(drive, parentId, targetName, settings.upload.duplicateBehavior);
     const accessToken = await getAccessToken();
     const origin = request.headers.get("origin") || request.headers.get("referer") || process.env.NEXT_PUBLIC_APP_URL;
 
