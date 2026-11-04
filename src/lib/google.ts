@@ -8,7 +8,7 @@ export const DRIVE_SCOPES = [
 ];
 
 export const DRIVE_FILE_FIELDS =
-  "id,name,mimeType,size,extension,modifiedTime,createdTime,webViewLink,thumbnailLink,iconLink,parents,trashed,shortcutDetails";
+  "id,name,mimeType,size,fileExtension,modifiedTime,createdTime,webViewLink,thumbnailLink,iconLink,parents,trashed,shortcutDetails";
 
 export function getGoogleConfig() {
   return {

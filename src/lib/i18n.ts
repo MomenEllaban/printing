@@ -344,6 +344,10 @@ const ar = {
   "error.missingConfig": "إعدادات مطلوبة غير مضافة.",
   "error.duplicateFile": "يوجد ملف أو مجلد بهذا الاسم بالفعل.",
   "error.invalidFileName": "اسم الملف غير صالح.",
+  "error.drivePermission": "رفض Google Drive الوصول. أعد توصيل الحساب ووافق على صلاحيات Drive المطلوبة.",
+  "error.driveUnavailable": "تعذر الوصول إلى Google Drive حاليًا. تحقق من الاتصال وحاول مرة أخرى.",
+  "error.driveApiDisabled": "Google Drive API غير مفعّل في مشروع Google Cloud. فعّله ثم أعد المحاولة.",
+  "error.driveBadRequest": "رفض Google Drive الطلب. تحقق من مجلد العمل الجذر وإعدادات التطبيق ثم أعد المحاولة.",
 } as const;
 
 type MessageKey = keyof typeof ar;
@@ -689,6 +693,10 @@ const en: Record<MessageKey, string> = {
   "error.missingConfig": "Required configuration is missing.",
   "error.duplicateFile": "A file or folder with this name already exists.",
   "error.invalidFileName": "The file name is invalid.",
+  "error.drivePermission": "Google Drive denied access. Reconnect your account and grant the required Drive permissions.",
+  "error.driveUnavailable": "Could not reach Google Drive right now. Check the connection and try again.",
+  "error.driveApiDisabled": "The Google Drive API is not enabled for this Google Cloud project. Enable it and try again.",
+  "error.driveBadRequest": "Google Drive rejected the request. Check the configured root folder and app settings, then try again.",
 };
 
 export const dictionaries: Record<Locale, Record<MessageKey, string>> = { ar, en };

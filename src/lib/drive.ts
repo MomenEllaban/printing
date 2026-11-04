@@ -26,7 +26,7 @@ export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string
     name,
     mimeType,
     size: file.size ? Number(file.size) : 0,
-    extension: extensionOf(name, mimeType),
+    extension: file.fileExtension ?? extensionOf(name, mimeType),
     modifiedTime: file.modifiedTime ?? null,
     createdTime: file.createdTime ?? null,
     webViewLink: file.webViewLink ?? null,
@@ -360,10 +360,10 @@ export async function computeStats(drive: drive_v3.Drive, rootId: string): Promi
 }
 
 export async function verifyDriveConnection(drive: drive_v3.Drive, rootId: string | null) {
-  const about = await drive.about.get({ fields: "user(displayName,emailAddress),storageQuota(usage,limit)" });
-  if (rootId) {
-    await getFileMeta(drive, rootId);
-  }
+  const [about] = await Promise.all([
+    drive.about.get({ fields: "user(displayName,emailAddress),storageQuota(usage,limit)" }),
+    rootId ? getFileMeta(drive, rootId) : Promise.resolve(null),
+  ]);
   return {
     email: about.data.user?.emailAddress ?? null,
     displayName: about.data.user?.displayName ?? null,

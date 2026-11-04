@@ -1,6 +1,6 @@
 import type { drive_v3 } from "googleapis";
 import { AppError } from "./errors";
-import { categoryFor, escapeDriveQuery, isAllowedUpload } from "./file-utils";
+import { categoryFor, escapeDriveQuery, extensionOf, isAllowedUpload } from "./file-utils";
 import { createFolder, getFileMeta } from "./drive";
 import type { AppSettings, FileCategory } from "./types";
 import type { DriveItem } from "./types";
@@ -120,7 +120,7 @@ export async function uploadSessionRequest(
     uploadType: "resumable",
     supportsAllDrives: "true",
     fields:
-      "id,name,mimeType,size,extension,modifiedTime,createdTime,webViewLink,thumbnailLink,iconLink,parents",
+      "id,name,mimeType,size,fileExtension,modifiedTime,createdTime,webViewLink,thumbnailLink,iconLink,parents",
   });
   const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files?${params.toString()}`, {
     method: "POST",
@@ -153,13 +153,12 @@ export function itemFromDriveFile(file: drive_v3.Schema$File): DriveItem {
   const mimeType = file.mimeType ?? "application/octet-stream";
   const isFolder = mimeType === "application/vnd.google-apps.folder";
   const name = file.name ?? "untitled";
-  const dot = name.lastIndexOf(".");
   return {
     id: file.id ?? "",
     name,
     mimeType,
     size: file.size ? Number(file.size) : 0,
-    extension: dot > 0 ? name.slice(dot + 1).toLowerCase() : null,
+    extension: file.fileExtension ?? extensionOf(name, mimeType),
     modifiedTime: file.modifiedTime ?? null,
     createdTime: file.createdTime ?? null,
     webViewLink: file.webViewLink ?? null,

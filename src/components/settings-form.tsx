@@ -56,6 +56,43 @@ interface SettingsFormProps {
   demo: boolean;
 }
 
+const API_ERROR_KEYS: Record<string, TranslationKey> = {
+  generic: "error.generic",
+  unauthorized: "error.unauthorized",
+  rateLimited: "error.rateLimited",
+  invalidRequest: "error.invalidRequest",
+  driveNotConnected: "error.driveNotConnected",
+  googleNotConfigured: "error.googleNotConfigured",
+  oauthFailed: "error.oauthFailed",
+  oauthState: "error.oauthState",
+  tokenRefresh: "error.tokenRefresh",
+  fileNotFound: "error.fileNotFound",
+  fileTooLarge: "error.fileTooLarge",
+  unsupportedType: "error.unsupportedType",
+  uploadInit: "error.uploadInit",
+  download: "error.download",
+  quota: "error.quota",
+  network: "error.network",
+  db: "error.db",
+  missingConfig: "error.missingConfig",
+  duplicateFile: "error.duplicateFile",
+  invalidFileName: "error.invalidFileName",
+  drivePermission: "error.drivePermission",
+  driveUnavailable: "error.driveUnavailable",
+  driveApiDisabled: "error.driveApiDisabled",
+  driveBadRequest: "error.driveBadRequest",
+};
+
+function apiErrorMessage(
+  data: { error?: unknown; message?: unknown },
+  t: (key: TranslationKey) => string,
+): string {
+  const code = typeof data.error === "string" ? data.error : "";
+  const key = API_ERROR_KEYS[code];
+  if (key) return t(key);
+  return typeof data.message === "string" && data.message.trim() ? data.message : t("error.generic");
+}
+
 const TABS: { key: SettingsTab; labelKey: TranslationKey }[] = [
   { key: "general", labelKey: "settings.tab.general" },
   { key: "drive", labelKey: "settings.tab.drive" },
@@ -210,9 +247,12 @@ export function SettingsForm({ initialValues, connection, environment, initialTa
     setTestResult(null);
     try {
       const response = await fetch("/api/drive/test", { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || t("settings.verificationFailed"));
-      setTestResult({ ok: true, message: data.email ? `${t("settings.verified")} — ${data.email}` : t("settings.verified") });
+      const data = (await response.json().catch(() => ({}))) as { error?: unknown; message?: unknown; email?: string };
+      if (!response.ok) throw new Error(apiErrorMessage(data, t));
+      setTestResult({
+        ok: true,
+        message: data.email ? `${t("settings.verified")} - ${data.email}` : t("settings.verified"),
+      });
       toast.success(t("settings.verified"));
       router.refresh();
     } catch (cause) {

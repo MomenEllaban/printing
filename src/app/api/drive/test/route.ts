@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDriveContextWithRoot, markConnectionError, OWNER_ID } from "@/lib/auth";
 import { verifyDriveConnection } from "@/lib/drive";
-import { enforceRateLimit, jsonError, requireSession } from "@/lib/api-utils";
+import { enforceRateLimit, requireSession } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
-
 import { toErrorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
+
+const SKIP_CONNECTION_ERROR = new Set(["unauthorized", "rateLimited", "invalidRequest"]);
 
 export async function POST(request: Request) {
   try {
@@ -20,8 +21,10 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    const response = toErrorResponse(error);
-    await markConnectionError(response.body.message);
-    return jsonError(error);
+    const { status, body } = toErrorResponse(error);
+    if (!SKIP_CONNECTION_ERROR.has(body.error)) {
+      await markConnectionError(body.message);
+    }
+    return NextResponse.json(body, { status });
   }
 }
