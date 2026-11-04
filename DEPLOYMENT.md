@@ -92,9 +92,39 @@ Update all three values:
 3. `GOOGLE_REDIRECT_URI` → `https://your-domain.com/api/auth/google/callback`
 4. Add the same redirect URI in Google Cloud Console.
 
+## Troubleshooting
+
+### Google returns `403: access_denied`
+
+This means the OAuth consent screen is still in **Testing** mode and the Google
+account you are signing in with is not listed as a test user.
+
+Fix it from the Google Cloud project `printing-513609`:
+
+1. Open https://console.cloud.google.com/apis/credentials/consent?project=printing-513609
+2. Make sure **User type** is **External** (not Internal).
+3. Scroll to **Test users**.
+4. Click **Add users**.
+5. Add the exact Google account you will sign in with, for example:
+   `mobileinfo602@gmail.com`
+6. Save the changes.
+7. Wait 1–5 minutes, then retry in an incognito window while signed in with
+   that same account.
+
+The app must be published (and verified by Google) before arbitrary Google
+accounts can use it. For personal testing, adding the account as a test user is
+enough.
+
+If you do not want to manage test users, publish the app from the same OAuth
+consent screen. Google may require verification because the Drive scope is
+sensitive.
+
 ## Security notes
 
 - The Vercel token shared during setup should be revoked and regenerated from
   https://vercel.com/account/tokens after finishing the deployment.
+- The Google OAuth client secret was shared in chat. After confirming the
+  connection works, rotate it in Google Cloud Console and update
+  `GOOGLE_CLIENT_SECRET` in Vercel, then redeploy.
 - Keep `.env` local only. It is ignored by Git.
 - Database credentials and encryption keys are stored only in Vercel environment variables.
