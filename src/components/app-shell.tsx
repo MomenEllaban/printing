@@ -9,10 +9,11 @@ import {
   FileSpreadsheet,
   FileText,
   Files,
-  FolderOpen,
   HardDrive,
   LayoutDashboard,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
   Star,
@@ -57,6 +58,8 @@ function isActive(pathname: string, item: NavItem): boolean {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
+const SIDEBAR_COLLAPSED_KEY = "fm_sidebar_collapsed";
+
 export function AppShell({
   children,
   appName,
@@ -72,7 +75,34 @@ export function AppShell({
   const router = useRouter();
   const { t, setLocale } = useI18n();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (stored === "true") setCollapsed(true);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setDesktopCollapsed = (val: boolean) => {
+    setCollapsed(val);
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(val));
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleSidebar = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setOpen((prev) => !prev);
+    } else {
+      setDesktopCollapsed(!collapsed);
+    }
+  };
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -91,19 +121,31 @@ export function AppShell({
     router.push(value ? `/files?search=${encodeURIComponent(value)}` : "/files");
   };
 
-  const sidebar = (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto scrollbar-thin px-4 py-5">
-      <Link href="/" className="flex items-center gap-3 px-2" onClick={() => setOpen(false)}>
-        <span className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20">
-          <HardDrive className="size-5" />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-bold leading-tight">{appName}</span>
-          <span className="block truncate text-[11px] text-muted">{t("app.tagline")}</span>
-        </span>
-      </Link>
+  // Full expanded sidebar (for desktop expanded & mobile drawer)
+  const fullSidebar = (
+    <div className="flex h-full flex-col gap-5 overflow-y-auto scrollbar-thin px-4 py-5">
+      <div className="flex items-center justify-between px-1">
+        <Link href="/" className="flex items-center gap-3 min-w-0" onClick={() => setOpen(false)}>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20">
+            <HardDrive className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold leading-tight">{appName}</span>
+            <span className="block truncate text-[11px] text-muted">{t("app.tagline")}</span>
+          </span>
+        </Link>
+        <button
+          type="button"
+          onClick={() => setDesktopCollapsed(true)}
+          className="icon-btn size-8 shrink-0 text-muted hover:text-foreground hidden lg:flex"
+          title={t("sidebar.collapse")}
+          aria-label={t("sidebar.collapse")}
+        >
+          <PanelLeftClose className="size-4.5" />
+        </button>
+      </div>
 
-      <nav className="space-y-6">
+      <nav className="space-y-5">
         <div>
           <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-muted/70">
             {t("nav.sectionManage")}
@@ -148,7 +190,11 @@ export function AppShell({
             <Link
               href="/settings"
               onClick={() => setOpen(false)}
-              className={cn("nav-link", isActive(pathname, { href: "/settings", labelKey: "nav.settings", icon: Settings }) && "nav-link-active")}
+              className={cn(
+                "nav-link",
+                isActive(pathname, { href: "/settings", labelKey: "nav.settings", icon: Settings }) &&
+                  "nav-link-active",
+              )}
             >
               <Settings className="size-[18px]" />
               <span className="truncate">{t("nav.settings")}</span>
@@ -157,38 +203,12 @@ export function AppShell({
         </div>
       </nav>
 
-      <div className="mt-auto space-y-3">
-        <div className="rounded-2xl border border-border bg-surface-soft p-3.5">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={cn(
-                "flex size-9 items-center justify-center rounded-xl",
-                connection.connected || connection.demo
-                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-              )}
-            >
-              <FolderOpen className="size-[18px]" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-xs font-semibold">
-                {connection.demo
-                  ? t("common.demo")
-                  : connection.connected
-                    ? t("status.connected")
-                    : t("status.disconnected")}
-              </p>
-              <p className="truncate text-[11px] text-muted" dir="ltr">
-                {connection.email || (connection.demo ? "demo@drive.local" : t("common.notConnected"))}
-              </p>
-            </div>
-          </div>
-          {!connection.connected && !connection.demo && (
-            <Link href="/settings?tab=drive" className="btn-primary mt-3 w-full py-2 text-xs">
-              {t("common.connectGoogle")}
-            </Link>
-          )}
-        </div>
+      <div className="mt-auto space-y-2 pt-3 border-t border-border/40">
+        {!connection.connected && !connection.demo && (
+          <Link href="/settings?tab=drive" className="btn-primary mb-2 w-full py-2 text-xs">
+            {t("common.connectGoogle")}
+          </Link>
+        )}
         <p className="px-2 text-center text-[10px] text-muted/70">
           DriveDesk · Next.js + Neon
         </p>
@@ -205,24 +225,116 @@ export function AppShell({
     </div>
   );
 
+  // Compact collapsed sidebar (for desktop collapsed icon-rail)
+  const collapsedSidebar = (
+    <div className="flex h-full flex-col items-center gap-4 overflow-y-auto scrollbar-thin px-2 py-5">
+      <Link href="/" className="flex items-center justify-center" title={appName}>
+        <span className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20">
+          <HardDrive className="size-5" />
+        </span>
+      </Link>
+
+      <button
+        type="button"
+        onClick={() => setDesktopCollapsed(false)}
+        className="icon-btn size-8 rounded-lg text-muted hover:text-foreground"
+        title={t("sidebar.expand")}
+        aria-label={t("sidebar.expand")}
+      >
+        <PanelLeftOpen className="size-4.5" />
+      </button>
+
+      <div className="w-full my-1 border-t border-border/60" />
+
+      <nav className="flex w-full flex-col gap-1">
+        {primaryNav.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={t(item.labelKey)}
+              className={cn(
+                "nav-link justify-center px-0 py-2.5 rounded-xl",
+                isActive(pathname, item) && "nav-link-active",
+              )}
+            >
+              <Icon className="size-[20px]" />
+              <span className="sr-only">{t(item.labelKey)}</span>
+            </Link>
+          );
+        })}
+
+        <div className="w-full my-2 border-t border-border/60" />
+
+        {secondaryNav.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={t(item.labelKey)}
+              className={cn(
+                "nav-link justify-center px-0 py-2.5 rounded-xl",
+                isActive(pathname, item) && "nav-link-active",
+              )}
+            >
+              <Icon className="size-[20px]" />
+              <span className="sr-only">{t(item.labelKey)}</span>
+            </Link>
+          );
+        })}
+
+        <Link
+          href="/settings"
+          title={t("nav.settings")}
+          className={cn(
+            "nav-link justify-center px-0 py-2.5 rounded-xl",
+            isActive(pathname, { href: "/settings", labelKey: "nav.settings", icon: Settings }) &&
+              "nav-link-active",
+          )}
+        >
+          <Settings className="size-[20px]" />
+          <span className="sr-only">{t("nav.settings")}</span>
+        </Link>
+      </nav>
+
+      <div className="mt-auto pt-3">
+        <Link
+          href="/settings"
+          title={t("nav.settings")}
+          className="icon-btn size-9 hover:bg-surface-soft"
+        >
+          <Settings className="size-4 text-muted" />
+        </Link>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-dvh">
-      <aside className="app-sidebar fixed inset-y-0 start-0 z-40 hidden w-[272px] border-e border-border bg-surface lg:block">
-        {sidebar}
+      {/* Desktop Sidebar */}
+      <aside
+        className={cn(
+          "app-sidebar fixed inset-y-0 start-0 z-40 hidden border-e border-border bg-surface lg:block transition-all duration-300 ease-in-out",
+          collapsed ? "w-[72px]" : "w-[272px]",
+        )}
+      >
+        {collapsed ? collapsedSidebar : fullSidebar}
       </aside>
 
+      {/* Mobile Drawer */}
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
             aria-label="Close menu"
-            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm transition-opacity"
             onClick={() => setOpen(false)}
           />
           <aside
             className={cn(
-              "absolute inset-y-0 start-0 w-[288px] border-e border-border bg-surface shadow-2xl",
-              locale === "ar" ? "animate-in" : "animate-in",
+              "absolute inset-y-0 start-0 w-[288px] max-w-[85vw] border-e border-border bg-surface shadow-2xl transition-transform duration-300",
             )}
           >
             <button
@@ -233,31 +345,43 @@ export function AppShell({
             >
               <X className="size-5" />
             </button>
-            {sidebar}
+            {fullSidebar}
           </aside>
         </div>
       )}
 
-      <div className="lg:ps-[272px]">
+      {/* Main Content Area */}
+      <div
+        className={cn(
+          "transition-all duration-300 ease-in-out",
+          collapsed ? "lg:ps-[72px]" : "lg:ps-[272px]",
+        )}
+      >
         <header className="app-topbar sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:px-6 lg:px-8">
             <button
               type="button"
-              className="icon-btn lg:hidden"
-              onClick={() => setOpen(true)}
-              aria-label="Open menu"
+              className="icon-btn"
+              onClick={toggleSidebar}
+              title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+              aria-label="Toggle sidebar"
             >
-              <Menu className="size-5" />
+              <Menu className="size-5 lg:hidden" />
+              {collapsed ? (
+                <PanelLeftOpen className="size-5 hidden lg:block text-accent" />
+              ) : (
+                <PanelLeftClose className="size-5 hidden lg:block" />
+              )}
             </button>
 
-            <form onSubmit={submitSearch} className="relative min-w-0 flex-1 sm:max-w-md">
+            <form onSubmit={submitSearch} className="relative min-w-0 flex-1 max-w-xs sm:max-w-md">
               <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
               <input
                 id="global-search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("common.searchPlaceholder")}
-                className="input h-10 w-full ps-9 pe-14"
+                className="input h-10 w-full ps-9 pe-14 text-xs sm:text-sm"
                 aria-label={t("common.search")}
               />
               <span className="pointer-events-none absolute end-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-surface-soft px-1.5 py-0.5 text-[10px] text-muted sm:block">
@@ -265,23 +389,7 @@ export function AppShell({
               </span>
             </form>
 
-            <div className="ms-auto flex items-center gap-1">
-              <Link
-                href={connection.demo ? "/settings?tab=drive" : connection.connected ? "/settings?tab=drive" : "/settings?tab=drive"}
-                className={cn(
-                  "hidden items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium sm:flex",
-                  connection.connected || connection.demo
-                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                )}
-              >
-                <span className="size-1.5 rounded-full bg-current" />
-                {connection.demo
-                  ? t("common.demo")
-                  : connection.connected
-                    ? t("status.connected")
-                    : t("status.disconnected")}
-              </Link>
+            <div className="ms-auto flex items-center gap-1 sm:gap-1.5">
               <button
                 type="button"
                 className="icon-btn text-[11px] font-bold"
@@ -291,14 +399,21 @@ export function AppShell({
                 {locale === "ar" ? "EN" : "ع"}
               </button>
               <ThemeToggle />
-              <Link href="/settings" className="ms-1 flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-sky-600 text-xs font-bold text-white" aria-label={t("nav.settings")}>
-                {(connection.email?.[0] ?? "D").toUpperCase()}
+              <Link
+                href="/settings"
+                className="icon-btn size-9 hover:bg-surface-soft"
+                title={t("nav.settings")}
+                aria-label={t("nav.settings")}
+              >
+                <Settings className="size-4.5 text-muted hover:text-foreground" />
               </Link>
             </div>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1440px] px-4 pb-20 pt-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1440px] px-3 sm:px-6 lg:px-8 pb-20 pt-6">
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -80,26 +80,20 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">{t("nav.dashboard")}</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">{t("dashboard.title")}</h1>
           <p className="mt-1 text-sm text-muted">{t("dashboard.welcome")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {connected && (
-            <span className="badge border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-              <span className="size-1.5 rounded-full bg-current" />
-              {connection?.accountEmail ?? t("status.connected")}
-            </span>
-          )}
-          <Link href="/files" className="btn-secondary">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/files" className="btn-secondary text-xs sm:text-sm">
             <Files className="size-4" />
-            {t("dashboard.manageFiles")}
+            <span>{t("dashboard.manageFiles")}</span>
           </Link>
-          <Link href="/files?upload=1" className="btn-primary">
+          <Link href="/files?upload=1" className="btn-primary text-xs sm:text-sm">
             <CloudUpload className="size-4" />
-            {t("dashboard.uploadFile")}
+            <span>{t("dashboard.uploadFile")}</span>
           </Link>
         </div>
       </div>
@@ -340,13 +334,13 @@ function StatCard({
     emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
   };
   return (
-    <div className="stat-card">
-      <div className="min-w-0">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
-        <p className="mt-2 text-2xl font-black">{value}</p>
+    <div className="stat-card p-4 sm:p-5">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+        <p className="mt-1.5 text-xl sm:text-2xl font-black">{value}</p>
         <p className="mt-1 line-clamp-1 text-[11px] text-muted/80">{hint}</p>
       </div>
-      <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>{icon}</span>
+      <span className={`flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>{icon}</span>
     </div>
   );
 }

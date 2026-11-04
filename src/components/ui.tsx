@@ -199,7 +199,7 @@ export function Modal({
             <X className="size-4" />
           </button>
         </div>
-        <div className="max-h-[65vh] overflow-y-auto scrollbar-thin px-5 py-4">{children}</div>
+        <div className="max-h-[75dvh] overflow-y-auto scrollbar-thin px-5 py-4">{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-4">{footer}</div>}
       </div>
     </div>,

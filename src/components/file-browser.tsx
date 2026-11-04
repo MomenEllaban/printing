@@ -693,7 +693,7 @@ export function FileBrowser({
             <Select
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value as "" | FileCategory)}
-              className="h-10 w-auto min-w-[130px]"
+              className="h-10 w-full sm:w-auto min-w-[120px] text-xs sm:text-sm"
               aria-label={t("common.filters")}
             >
               {CATEGORIES.map((entry) => (
@@ -707,7 +707,7 @@ export function FileBrowser({
           <Select
             value={sort}
             onChange={(event) => setSort(event.target.value)}
-            className="h-10 w-auto min-w-[150px]"
+            className="h-10 w-full sm:w-auto min-w-[140px] text-xs sm:text-sm"
             aria-label={t("common.sortBy")}
           >
             {SORTS.map((entry) => (
@@ -720,7 +720,7 @@ export function FileBrowser({
           <Select
             value={printFilter}
             onChange={(event) => setPrintFilter(event.target.value as "all" | "printed" | "pending")}
-            className="h-10 w-auto min-w-[150px]"
+            className="h-10 w-full sm:w-auto min-w-[140px] text-xs sm:text-sm"
             aria-label={t("print.filterAll")}
           >
             <option value="all">{t("print.filterAll")}</option>
@@ -1225,58 +1225,58 @@ export function FileBrowser({
 
       {/* Floating Batch Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 start-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 rounded-2xl border border-border bg-surface-strong/95 px-4 sm:px-6 py-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 duration-200">
-          <div className="flex items-center gap-2 border-e border-border/60 pe-3 text-xs font-bold text-foreground">
-            <span className="flex size-6 items-center justify-center rounded-full bg-accent text-white text-[11px] font-mono">
+        <div className="fixed bottom-4 sm:bottom-6 start-1/2 -translate-x-1/2 z-40 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 rounded-2xl border border-border bg-surface-strong/95 px-3 sm:px-5 py-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 duration-200 max-w-[95vw] sm:max-w-fit">
+          <div className="flex items-center gap-1.5 border-e border-border/60 pe-2 sm:pe-3 text-xs font-bold text-foreground">
+            <span className="flex size-5 sm:size-6 items-center justify-center rounded-full bg-accent text-white text-[10px] sm:text-[11px] font-mono">
               {selectedIds.size}
             </span>
             <span className="hidden sm:inline">{t("batch.selected", { count: selectedIds.size })}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
             <Button
               variant="primary"
               onClick={handleBatchPrint}
-              className="text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm"
+              className="text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1 shadow-sm"
             >
-              <Printer className="size-4" />
+              <Printer className="size-3.5 sm:size-4" />
               <span>{t("batch.printSelected")}</span>
             </Button>
 
             <Button
               variant="secondary"
               onClick={() => void handleBatchMarkPrinted()}
-              className="text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1"
             >
-              <CheckCircle2 className="size-4 text-emerald-500" />
+              <CheckCircle2 className="size-3.5 sm:size-4 text-emerald-500" />
               <span>{t("batch.markPrinted")}</span>
             </Button>
 
             <Button
               variant="secondary"
               onClick={handleBatchDownload}
-              className="text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="text-xs py-1.5 px-2 sm:px-3 flex items-center gap-1"
             >
-              <Download className="size-4" />
-              <span>{t("batch.downloadSelected")}</span>
+              <Download className="size-3.5 sm:size-4" />
+              <span className="hidden sm:inline">{t("batch.downloadSelected")}</span>
             </Button>
 
             <Button
               variant="danger"
               onClick={() => setBatchDeleteOpen(true)}
-              className="text-xs py-1.5 px-3 flex items-center gap-1.5"
+              className="text-xs py-1.5 px-2 sm:px-3 flex items-center gap-1"
             >
-              <Trash2 className="size-4" />
-              <span>{t("batch.deleteSelected")}</span>
+              <Trash2 className="size-3.5 sm:size-4" />
+              <span className="hidden sm:inline">{t("batch.deleteSelected")}</span>
             </Button>
 
             <button
               type="button"
               onClick={clearSelection}
-              className="icon-btn size-7 text-muted hover:text-foreground ms-1"
+              className="icon-btn size-7 text-muted hover:text-foreground"
               title={t("batch.deselectAll")}
             >
-              <X className="size-4" />
+              <X className="size-3.5 sm:size-4" />
             </button>
           </div>
         </div>
