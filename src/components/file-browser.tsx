@@ -371,10 +371,10 @@ export function FileBrowser({
   };
 
   const selectAll = () => {
-    if (displayItems.length > 0 && selectedIds.size === displayItems.length) {
+    if (allKnownItems.length > 0 && selectedIds.size >= allKnownItems.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(displayItems.map((i) => i.id)));
+      setSelectedIds(new Set(allKnownItems.map((i) => i.id)));
     }
   };
 
@@ -552,6 +552,13 @@ export function FileBrowser({
     setItems((current) =>
       current.map((entry) => (entry.id === item.id ? { ...entry, isFavorite: !entry.isFavorite } : entry)),
     );
+    setFolderChildren((current) => {
+      const next: Record<string, DriveItem[]> = {};
+      for (const [fId, children] of Object.entries(current)) {
+        next[fId] = children.map((c) => (c.id === item.id ? { ...c, isFavorite: !c.isFavorite } : c));
+      }
+      return next;
+    });
     try {
       const response = await fetch("/api/favorites", {
         method: "POST",
@@ -568,6 +575,13 @@ export function FileBrowser({
       setItems((current) =>
         current.map((entry) => (entry.id === item.id ? { ...entry, isFavorite: item.isFavorite } : entry)),
       );
+      setFolderChildren((current) => {
+        const next: Record<string, DriveItem[]> = {};
+        for (const [fId, children] of Object.entries(current)) {
+          next[fId] = children.map((c) => (c.id === item.id ? { ...c, isFavorite: item.isFavorite } : c));
+        }
+        return next;
+      });
       toast.error(cause instanceof Error ? cause.message : t("common.error"));
     } finally {
       setFavoriteBusy(null);
@@ -615,6 +629,17 @@ export function FileBrowser({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || t("common.error"));
+      const newName = renameValue.trim();
+      setItems((current) =>
+        current.map((item) => (item.id === renameTarget.id ? { ...item, name: newName } : item)),
+      );
+      setFolderChildren((current) => {
+        const next: Record<string, DriveItem[]> = {};
+        for (const [fId, children] of Object.entries(current)) {
+          next[fId] = children.map((c) => (c.id === renameTarget.id ? { ...c, name: newName } : c));
+        }
+        return next;
+      });
       toast.success(t("common.renamed"));
       setRenameTarget(null);
       refresh();
@@ -655,6 +680,13 @@ export function FileBrowser({
       if (!response.ok) throw new Error(data.message || t("common.error"));
       toast.success(t("common.deleted"));
       setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+      setFolderChildren((current) => {
+        const next: Record<string, DriveItem[]> = {};
+        for (const [fId, children] of Object.entries(current)) {
+          next[fId] = children.filter((c) => c.id !== deleteTarget.id);
+        }
+        return next;
+      });
       setDeleteTarget(null);
       refresh();
     } catch (cause) {
@@ -1037,7 +1069,7 @@ export function FileBrowser({
                   <th className="w-10 px-3 py-3 text-center">
                     <input
                       type="checkbox"
-                      checked={displayItems.length > 0 && selectedIds.size === displayItems.length}
+                      checked={allKnownItems.length > 0 && selectedIds.size >= allKnownItems.length}
                       onChange={selectAll}
                       className="size-4 rounded border-border accent-accent cursor-pointer"
                       title={t("batch.selectAll")}
@@ -1052,315 +1084,44 @@ export function FileBrowser({
                 </tr>
               </thead>
               <tbody>
-                {displayItems.map((item) => {
-                  const isPrinted = !item.isFolder && printedIds.has(item.id);
-                  const isPending = !item.isFolder && !printedIds.has(item.id);
-                  const isExpanded = item.isFolder && expandedFolderIds.has(item.id);
-                  const isLoadingChildren = item.isFolder && loadingFolderIds.has(item.id);
-                  const children = folderChildren[item.id] || [];
-
-                  return (
-                    <Fragment key={item.id}>
-                      <tr
-                        className={cn(
-                          "border-b border-border last:border-0 hover:bg-surface-soft/60 transition-colors",
-                          selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
-                          !selectedIds.has(item.id) &&
-                          isPrinted &&
-                          "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
-                          !selectedIds.has(item.id) &&
-                          isPending &&
-                          "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
-                        )}
-                      >
-                        <td className="w-10 px-3 py-2.5 text-center">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(item.id)}
-                            onChange={(e) => toggleSelect(item.id, e)}
-                            className="size-4 rounded border-border accent-accent cursor-pointer"
-                            aria-label={`Select ${item.name}`}
-                          />
-                        </td>
-                        <td className="max-w-[340px] px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            {item.isFolder ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void toggleFolderExpand(item.id);
-                                }}
-                                className="icon-btn size-6 text-muted hover:text-accent hover:bg-surface-strong shrink-0 rounded-md transition-all"
-                                title={
-                                  isExpanded
-                                    ? locale === "ar"
-                                      ? "طي المجلد"
-                                      : "Collapse folder"
-                                    : locale === "ar"
-                                      ? "توسيع وعرض محتويات المجلد"
-                                      : "Expand folder"
-                                }
-                                aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
-                              >
-                                {isLoadingChildren ? (
-                                  <Loader2 className="size-3.5 animate-spin text-accent" />
-                                ) : isExpanded ? (
-                                  <ChevronDown className="size-3.5 text-accent" />
-                                ) : locale === "ar" ? (
-                                  <ChevronLeft className="size-3.5" />
-                                ) : (
-                                  <ChevronRight className="size-3.5" />
-                                )}
-                              </button>
-                            ) : (
-                              <span className="w-6 shrink-0" />
-                            )}
-                            <FileIcon category={item.category} extension={item.extension} size="sm" />
-                            <div className="min-w-0 flex-1">
-                              <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent block max-w-full">
-                                {item.name}
-                              </button>
-                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                <ExamBadges name={item.name} />
-                                {!item.isFolder && (
-                                  isPrinted ? (
-                                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                                      <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
-                                      {t("print.statusPrinted")}
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                                      <Clock className="size-3 text-amber-600 dark:text-amber-400" />
-                                      {t("print.statusPending")}
-                                    </span>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                            {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2.5 text-muted">
-                          {item.isFolder ? t("common.folder") : (item.extension || "—").toUpperCase()}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-muted">
-                          {item.isFolder ? "—" : formatBytes(item.size, locale as Locale)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatDate(item.modifiedTime, locale as Locale)}</td>
-                        <td className="px-2 py-1.5">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => void toggleFavorite(item)}
-                              className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
-                              title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
-                            >
-                              <Star className={cn("size-4", item.isFavorite && "fill-current")} />
-                            </button>
-                            {!item.isFolder && (
-                              <a
-                                href={`/print/${item.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="icon-btn size-8"
-                                title={t("common.print")}
-                              >
-                                <Printer className="size-4" />
-                              </a>
-                            )}
-                            {!item.isFolder && (
-                              <a
-                                href={`/api/drive/files/${item.id}/content?download=1`}
-                                className="icon-btn size-8"
-                                title={t("common.download")}
-                              >
-                                <Download className="size-4" />
-                              </a>
-                            )}
-                            <ItemMenu
-                              item={item}
-                              isPrinted={isPrinted}
-                              onTogglePrint={() => void togglePrintStatus(item)}
-                              open={menuId === item.id}
-                              onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
-                              onClose={() => setMenuId(null)}
-                              onPreview={() => openItem(item)}
-                              onRename={() => {
-                                if (!requireWritable()) return;
-                                setRenameTarget(item);
-                                setRenameValue(item.name);
-                                setMenuId(null);
-                              }}
-                              onMove={() => {
-                                if (!requireWritable()) return;
-                                setMoveTarget(item);
-                                setMenuId(null);
-                              }}
-                              onDelete={() => {
-                                if (!requireWritable()) return;
-                                setDeleteTarget(item);
-                                setMenuId(null);
-                              }}
-                              demo={demoActive}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Expanded Sub-Tree for this Folder */}
-                      {isExpanded && (
-                        <>
-                          {isLoadingChildren ? (
-                            <tr key={`${item.id}-loading`} className="border-b border-border/40 bg-surface-soft/30 animate-pulse">
-                              <td colSpan={6} className="py-2.5 ps-14 pe-4 text-xs text-muted">
-                                <div className="flex items-center gap-2">
-                                  <Loader2 className="size-3.5 animate-spin text-accent" />
-                                  <span>{t("common.loading")}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : children.length === 0 ? (
-                            <tr key={`${item.id}-empty`} className="border-b border-border/40 bg-surface-soft/20 text-muted">
-                              <td colSpan={6} className="py-2.5 ps-14 pe-4 text-xs italic">
-                                {locale === "ar" ? "المجلد فارغ لا يحتوي على ملفات أو مجلدات" : "Folder is empty"}
-                              </td>
-                            </tr>
-                          ) : (
-                            children.map((child) => {
-                              const isChildPrinted = !child.isFolder && printedIds.has(child.id);
-                              const isChildPending = !child.isFolder && !printedIds.has(child.id);
-
-                              return (
-                                <tr
-                                  key={child.id}
-                                  className={cn(
-                                    "border-b border-border/50 last:border-0 hover:bg-surface-soft/60 transition-colors bg-surface-soft/20",
-                                    selectedIds.has(child.id) && "bg-accent/10 hover:bg-accent/15",
-                                    !selectedIds.has(child.id) &&
-                                    isChildPrinted &&
-                                    "bg-emerald-500/[0.03] hover:bg-emerald-500/[0.06] border-s-4 border-s-emerald-500/70",
-                                    !selectedIds.has(child.id) &&
-                                    isChildPending &&
-                                    "bg-amber-500/[0.02] hover:bg-amber-500/[0.05] border-s-4 border-s-amber-500/60",
-                                  )}
-                                >
-                                  <td className="w-10 px-3 py-2 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedIds.has(child.id)}
-                                      onChange={(e) => toggleSelect(child.id, e)}
-                                      className="size-4 rounded border-border accent-accent cursor-pointer"
-                                      aria-label={`Select ${child.name}`}
-                                    />
-                                  </td>
-                                  <td className="max-w-[340px] px-4 py-2">
-                                    <div className="flex items-center gap-2 ps-5 border-s-2 border-accent/40 ms-5">
-                                      <FileIcon category={child.category} extension={child.extension} size="sm" />
-                                      <div className="min-w-0 flex-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => openItem(child)}
-                                          className="truncate text-start font-medium hover:text-accent block max-w-full text-xs sm:text-sm"
-                                        >
-                                          {child.name}
-                                        </button>
-                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                          <ExamBadges name={child.name} />
-                                          {!child.isFolder && (
-                                            isChildPrinted ? (
-                                              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                                                <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
-                                                {t("print.statusPrinted")}
-                                              </span>
-                                            ) : (
-                                              <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                                                <Clock className="size-3 text-amber-600 dark:text-amber-400" />
-                                                {t("print.statusPending")}
-                                              </span>
-                                            )
-                                          )}
-                                        </div>
-                                      </div>
-                                      {child.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-2 text-xs text-muted">
-                                    {child.isFolder ? t("common.folder") : (child.extension || "—").toUpperCase()}
-                                  </td>
-                                  <td className="whitespace-nowrap px-4 py-2 text-xs text-muted">
-                                    {child.isFolder ? "—" : formatBytes(child.size, locale as Locale)}
-                                  </td>
-                                  <td className="whitespace-nowrap px-4 py-2 text-xs text-muted">
-                                    {formatDate(child.modifiedTime, locale as Locale)}
-                                  </td>
-                                  <td className="px-2 py-1.5">
-                                    <div className="flex items-center justify-end gap-0.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => void toggleFavorite(child)}
-                                        className={cn("icon-btn size-7", child.isFavorite && "text-amber-500")}
-                                        title={child.isFavorite ? t("common.unfavorite") : t("common.favorite")}
-                                      >
-                                        <Star className={cn("size-3.5", child.isFavorite && "fill-current")} />
-                                      </button>
-                                      {!child.isFolder && (
-                                        <a
-                                          href={`/print/${child.id}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="icon-btn size-7"
-                                          title={t("common.print")}
-                                        >
-                                          <Printer className="size-3.5" />
-                                        </a>
-                                      )}
-                                      {!child.isFolder && (
-                                        <a
-                                          href={`/api/drive/files/${child.id}/content?download=1`}
-                                          className="icon-btn size-7"
-                                          title={t("common.download")}
-                                        >
-                                          <Download className="size-3.5" />
-                                        </a>
-                                      )}
-                                      <ItemMenu
-                                        item={child}
-                                        isPrinted={isChildPrinted}
-                                        onTogglePrint={() => void togglePrintStatus(child)}
-                                        open={menuId === child.id}
-                                        onToggle={() => setMenuId(menuId === child.id ? null : child.id)}
-                                        onClose={() => setMenuId(null)}
-                                        onPreview={() => openItem(child)}
-                                        onRename={() => {
-                                          if (!requireWritable()) return;
-                                          setRenameTarget(child);
-                                          setRenameValue(child.name);
-                                          setMenuId(null);
-                                        }}
-                                        onMove={() => {
-                                          if (!requireWritable()) return;
-                                          setMoveTarget(child);
-                                          setMenuId(null);
-                                        }}
-                                        onDelete={() => {
-                                          if (!requireWritable()) return;
-                                          setDeleteTarget(child);
-                                          setMenuId(null);
-                                        }}
-                                        demo={demoActive}
-                                      />
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </>
-                      )}
-                    </Fragment>
-                  );
-                })}
+                {displayItems.map((item) => (
+                  <TreeRow
+                    key={item.id}
+                    item={item}
+                    depth={0}
+                    expandedFolderIds={expandedFolderIds}
+                    loadingFolderIds={loadingFolderIds}
+                    folderChildren={folderChildren}
+                    printedIds={printedIds}
+                    selectedIds={selectedIds}
+                    printFilter={printFilter}
+                    menuId={menuId}
+                    demoActive={demoActive}
+                    onToggleExpand={toggleFolderExpand}
+                    onToggleSelect={toggleSelect}
+                    onOpenItem={openItem}
+                    onToggleFavorite={toggleFavorite}
+                    onTogglePrintStatus={togglePrintStatus}
+                    onMenuToggle={(id) => setMenuId(menuId === id ? null : id)}
+                    onMenuClose={() => setMenuId(null)}
+                    onRename={(target) => {
+                      if (!requireWritable()) return;
+                      setRenameTarget(target);
+                      setRenameValue(target.name);
+                      setMenuId(null);
+                    }}
+                    onMove={(target) => {
+                      if (!requireWritable()) return;
+                      setMoveTarget(target);
+                      setMenuId(null);
+                    }}
+                    onDelete={(target) => {
+                      if (!requireWritable()) return;
+                      setDeleteTarget(target);
+                      setMenuId(null);
+                    }}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -1831,5 +1592,277 @@ function ItemMenu({
         document.body,
       )}
     </div>
+  );
+}
+
+interface TreeRowProps {
+  item: DriveItem;
+  depth: number;
+  expandedFolderIds: Set<string>;
+  loadingFolderIds: Set<string>;
+  folderChildren: Record<string, DriveItem[]>;
+  printedIds: Set<string>;
+  selectedIds: Set<string>;
+  printFilter: "all" | "printed" | "pending";
+  menuId: string | null;
+  demoActive: boolean;
+  onToggleExpand: (folderId: string) => void;
+  onToggleSelect: (id: string, e?: React.ChangeEvent<HTMLInputElement>) => void;
+  onOpenItem: (item: DriveItem) => void;
+  onToggleFavorite: (item: DriveItem) => void;
+  onTogglePrintStatus: (item: DriveItem) => void;
+  onMenuToggle: (id: string) => void;
+  onMenuClose: () => void;
+  onRename: (item: DriveItem) => void;
+  onMove: (item: DriveItem) => void;
+  onDelete: (item: DriveItem) => void;
+}
+
+function TreeRow({
+  item,
+  depth,
+  expandedFolderIds,
+  loadingFolderIds,
+  folderChildren,
+  printedIds,
+  selectedIds,
+  printFilter,
+  menuId,
+  demoActive,
+  onToggleExpand,
+  onToggleSelect,
+  onOpenItem,
+  onToggleFavorite,
+  onTogglePrintStatus,
+  onMenuToggle,
+  onMenuClose,
+  onRename,
+  onMove,
+  onDelete,
+}: TreeRowProps) {
+  const { t, locale } = useI18n();
+  const isPrinted = !item.isFolder && printedIds.has(item.id);
+  const isPending = !item.isFolder && !printedIds.has(item.id);
+  const isExpanded = item.isFolder && expandedFolderIds.has(item.id);
+  const isLoadingChildren = item.isFolder && loadingFolderIds.has(item.id);
+  const rawChildren = folderChildren[item.id] || [];
+
+  const children = useMemo(() => {
+    if (printFilter === "all") return rawChildren;
+    return rawChildren.filter((child) => {
+      if (child.isFolder) return true;
+      const printed = printedIds.has(child.id);
+      return printFilter === "printed" ? printed : !printed;
+    });
+  }, [rawChildren, printFilter, printedIds]);
+
+  return (
+    <Fragment key={item.id}>
+      <tr
+        className={cn(
+          "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-colors",
+          depth > 0 && "bg-surface-soft/20",
+          selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
+          !selectedIds.has(item.id) &&
+            isPrinted &&
+            "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
+          !selectedIds.has(item.id) &&
+            isPending &&
+            "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
+        )}
+      >
+        <td className="w-10 px-3 py-2.5 text-center">
+          <input
+            type="checkbox"
+            checked={selectedIds.has(item.id)}
+            onChange={(e) => onToggleSelect(item.id, e)}
+            className="size-4 rounded border-border accent-accent cursor-pointer"
+            aria-label={`Select ${item.name}`}
+          />
+        </td>
+        <td className="max-w-[340px] px-4 py-2.5">
+          <div
+            className="flex items-center gap-2"
+            style={depth > 0 ? { paddingInlineStart: `${depth * 20}px` } : undefined}
+          >
+            {depth > 0 && (
+              <span className="text-muted/40 font-mono text-xs select-none shrink-0" aria-hidden="true">
+                └
+              </span>
+            )}
+            {item.isFolder ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleExpand(item.id);
+                }}
+                className={cn(
+                  "icon-btn size-7 text-muted hover:text-accent hover:bg-surface-strong shrink-0 rounded-md transition-all flex items-center justify-center",
+                  isExpanded && "text-accent bg-accent/10",
+                )}
+                title={
+                  isExpanded
+                    ? locale === "ar"
+                      ? "طي المجلد"
+                      : "Collapse folder"
+                    : locale === "ar"
+                      ? "توسيع وعرض محتويات المجلد"
+                      : "Expand folder"
+                }
+                aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+              >
+                {isLoadingChildren ? (
+                  <Loader2 className="size-3.5 animate-spin text-accent" />
+                ) : isExpanded ? (
+                  <ChevronDown className="size-3.5 text-accent" />
+                ) : locale === "ar" ? (
+                  <ChevronLeft className="size-3.5" />
+                ) : (
+                  <ChevronRight className="size-3.5" />
+                )}
+              </button>
+            ) : (
+              <span className="w-7 shrink-0" />
+            )}
+            <FileIcon category={item.category} extension={item.extension} size="sm" />
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => onOpenItem(item)}
+                className="truncate text-start font-medium hover:text-accent block max-w-full text-xs sm:text-sm"
+              >
+                {item.name}
+              </button>
+              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                <ExamBadges name={item.name} />
+                {!item.isFolder && (
+                  isPrinted ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                      {t("print.statusPrinted")}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                      <Clock className="size-3 text-amber-600 dark:text-amber-400" />
+                      {t("print.statusPending")}
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+            {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
+          </div>
+        </td>
+        <td className="px-4 py-2.5 text-xs text-muted">
+          {item.isFolder ? t("common.folder") : (item.extension || "—").toUpperCase()}
+        </td>
+        <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted">
+          {item.isFolder ? "—" : formatBytes(item.size, locale)}
+        </td>
+        <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted">
+          {formatDate(item.modifiedTime, locale)}
+        </td>
+        <td className="px-2 py-1.5">
+          <div className="flex items-center justify-end gap-0.5">
+            <button
+              type="button"
+              onClick={() => onToggleFavorite(item)}
+              className={cn("icon-btn size-7", item.isFavorite && "text-amber-500")}
+              title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
+            >
+              <Star className={cn("size-3.5", item.isFavorite && "fill-current")} />
+            </button>
+            {!item.isFolder && (
+              <a
+                href={`/print/${item.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="icon-btn size-7"
+                title={t("common.print")}
+              >
+                <Printer className="size-3.5" />
+              </a>
+            )}
+            {!item.isFolder && (
+              <a
+                href={`/api/drive/files/${item.id}/content?download=1`}
+                className="icon-btn size-7"
+                title={t("common.download")}
+              >
+                <Download className="size-3.5" />
+              </a>
+            )}
+            <ItemMenu
+              item={item}
+              isPrinted={isPrinted}
+              onTogglePrint={() => onTogglePrintStatus(item)}
+              open={menuId === item.id}
+              onToggle={() => onMenuToggle(item.id)}
+              onClose={onMenuClose}
+              onPreview={() => onOpenItem(item)}
+              onRename={() => onRename(item)}
+              onMove={() => onMove(item)}
+              onDelete={() => onDelete(item)}
+              demo={demoActive}
+            />
+          </div>
+        </td>
+      </tr>
+
+      {/* Expanded sub-tree */}
+      {isExpanded && (
+        isLoadingChildren ? (
+          <tr className="border-b border-border/40 bg-surface-soft/20 text-muted">
+            <td
+              colSpan={6}
+              className="py-2.5 px-4 text-xs text-muted"
+              style={{ paddingInlineStart: `${(depth + 1) * 20 + 48}px` }}
+            >
+              <div className="flex items-center gap-2">
+                <Loader2 className="size-3.5 animate-spin text-accent" />
+                <span>{t("common.loading")}</span>
+              </div>
+            </td>
+          </tr>
+        ) : children.length === 0 ? (
+          <tr className="border-b border-border/40 bg-surface-soft/20 text-muted">
+            <td
+              colSpan={6}
+              className="py-2.5 px-4 text-xs italic"
+              style={{ paddingInlineStart: `${(depth + 1) * 20 + 48}px` }}
+            >
+              {locale === "ar" ? "المجلد فارغ لا يحتوي على ملفات أو مجلدات" : "Folder is empty"}
+            </td>
+          </tr>
+        ) : (
+          children.map((child) => (
+            <TreeRow
+              key={child.id}
+              item={child}
+              depth={depth + 1}
+              expandedFolderIds={expandedFolderIds}
+              loadingFolderIds={loadingFolderIds}
+              folderChildren={folderChildren}
+              printedIds={printedIds}
+              selectedIds={selectedIds}
+              printFilter={printFilter}
+              menuId={menuId}
+              demoActive={demoActive}
+              onToggleExpand={onToggleExpand}
+              onToggleSelect={onToggleSelect}
+              onOpenItem={onOpenItem}
+              onToggleFavorite={onToggleFavorite}
+              onTogglePrintStatus={onTogglePrintStatus}
+              onMenuToggle={onMenuToggle}
+              onMenuClose={onMenuClose}
+              onRename={onRename}
+              onMove={onMove}
+              onDelete={onDelete}
+            />
+          ))
+        )
+      )}
+    </Fragment>
   );
 }
