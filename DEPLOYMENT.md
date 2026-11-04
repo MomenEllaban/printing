@@ -24,15 +24,19 @@ These are configured for Production, Preview, and Development:
 - `NEXT_PUBLIC_APP_URL` = `https://printing-momenellaban.vercel.app`
 - `GOOGLE_REDIRECT_URI` = `https://printing-momenellaban.vercel.app/api/auth/google/callback`
 - `DEMO_MODE` = `1`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 
-## Environment variables still needed for Google OAuth
+The Google OAuth client ID and secret are configured in Vercel as encrypted
+environment variables. They are intentionally not stored in this repository.
 
-Add these in Vercel → Project → Settings → Environment Variables:
+## Google OAuth status
 
-| Key | Value |
-| --- | --- |
-| `GOOGLE_CLIENT_ID` | Your Google OAuth Client ID |
-| `GOOGLE_CLIENT_SECRET` | Your Google OAuth Client Secret |
+- OAuth client: configured
+- Client ID and Client Secret: added to Vercel
+- Redirect URI: configured
+- Next step: add the Google account you will sign in with as a **test user**
+  on the OAuth consent screen, then open the production URL and connect Drive.
 
 Optional:
 
