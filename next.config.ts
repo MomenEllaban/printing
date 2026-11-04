@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  cacheComponents: false,
+  serverExternalPackages: ["googleapis", "mammoth", "xlsx"],
   turbopack: {
     rules: {
       "*.css": {
