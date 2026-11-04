@@ -115,3 +115,4 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
     </Modal>
   );
 }
+

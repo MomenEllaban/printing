@@ -75,3 +75,4 @@ export default async function BatchPrintPage({ searchParams }: Props) {
     />
   );
 }
+

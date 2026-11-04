@@ -25,6 +25,14 @@ export const metadata: Metadata = {
   },
   description:
     "مدير ملفات احترافي متصل بـ Google Drive: رفع، معاينة، طباعة، تنزيل وتنظيم الملفات مع حفظ الإعدادات في PostgreSQL.",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
   robots: { index: false, follow: false },
 };
 

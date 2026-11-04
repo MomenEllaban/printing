@@ -9,8 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "postinstall": "node scripts/copy-pdf-worker.mjs",
-    "prebuild": "node scripts/copy-pdf-worker.mjs",
+    "postinstall": "node scripts/copy-pdf-worker.mjs && node scripts/generate-ico.mjs",
+    "prebuild": "node scripts/copy-pdf-worker.mjs && node scripts/generate-ico.mjs",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate"
   },

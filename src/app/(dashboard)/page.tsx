@@ -2,6 +2,8 @@ import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
+  Clock,
   CloudUpload,
   FileSpreadsheet,
   FileText,
@@ -9,6 +11,7 @@ import {
   FolderPlus,
   HardDrive,
   Image as ImageIcon,
+  Printer,
   Settings,
   ShieldAlert,
   Sparkles,
@@ -24,6 +27,7 @@ import { formatDate, formatNumber, percent } from "@/lib/format";
 import { formatBytes } from "@/lib/file-utils";
 import { cached } from "@/lib/ttl-cache";
 import { toErrorResponse } from "@/lib/errors";
+import { getPrintedRecordsMap } from "@/lib/print-tracker";
 import { FileIcon } from "@/components/file-icon";
 import type { DriveItem, DriveStats } from "@/lib/types";
 
@@ -67,6 +71,12 @@ export default async function DashboardPage() {
 
   const storagePercent = stats ? percent(stats.storageUsed, stats.storageLimit) : null;
   const dirArrow = locale === "ar" ? <ArrowLeft className="size-4" /> : <ArrowRight className="size-4" />;
+
+  const printedMap = await getPrintedRecordsMap();
+  const printedCount = printedMap.size;
+  const totalFiles = stats?.totalFiles ?? 0;
+  const remainingPrints = Math.max(0, totalFiles - printedCount);
+  const printProgress = totalFiles > 0 ? Math.min(100, Math.round((printedCount / totalFiles) * 100)) : 0;
 
   return (
     <div className="space-y-6">
@@ -134,7 +144,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           icon={<Files className="size-5" />}
           label={t("dashboard.totalFiles")}
@@ -163,7 +173,62 @@ export default async function DashboardPage() {
           hint={t("dashboard.statsScope")}
           tone="emerald"
         />
+        <StatCard
+          icon={<CheckCircle2 className="size-5" />}
+          label={t("dashboard.printedCount")}
+          value={stats ? formatNumber(printedCount, locale) : "—"}
+          hint={`${printProgress}% ${t("dashboard.storageOf")} ${t("dashboard.totalFiles")}`}
+          tone="emerald"
+        />
+        <StatCard
+          icon={<Clock className="size-5" />}
+          label={t("dashboard.remainingPrints")}
+          value={stats ? formatNumber(remainingPrints, locale) : "—"}
+          hint={t("print.statusPending")}
+          tone="amber"
+        />
       </div>
+
+      <section className="card p-5 border-teal-500/20 bg-gradient-to-r from-teal-500/[0.04] via-surface to-sky-500/[0.04]">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400">
+                <Printer className="size-4" />
+              </span>
+              <h2 className="text-base font-bold">{t("dashboard.printProgress")}</h2>
+            </div>
+            <p className="text-xs text-muted">
+              {translate(locale, "dashboard.printCompletion")
+                .replace("{printed}", formatNumber(printedCount, locale))
+                .replace("{total}", formatNumber(totalFiles, locale))
+                .replace("{percent}", formatNumber(printProgress, locale))}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="badge border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold">
+              <CheckCircle2 className="size-3.5" />
+              {t("print.statusPrinted")}: {formatNumber(printedCount, locale)}
+            </span>
+            <span className="badge border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold">
+              <Clock className="size-3.5" />
+              {t("dashboard.remainingPrints")}: {formatNumber(remainingPrints, locale)}
+            </span>
+            <Link href="/files?printStatus=pending" className="btn-secondary text-xs py-1.5 px-3">
+              {t("dashboard.viewRemaining")}
+              {dirArrow}
+            </Link>
+          </div>
+        </div>
+        <div className="mt-4">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-strong">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-teal-500 via-emerald-500 to-sky-500 transition-all duration-500"
+              style={{ width: `${printProgress}%` }}
+            />
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <section className="card p-5">

@@ -90,10 +90,19 @@ export function PrintDocument({
         ? true
         : !loading && !error;
 
+  const recordPrint = () => {
+    fetch("/api/drive/print-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileId: item.id, items: [{ id: item.id, name: item.name }] }),
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     if (!ready || printed.current || kind === "unsupported") return;
     const handle = window.setTimeout(() => {
       printed.current = true;
+      recordPrint();
       if (kind === "pdf") {
         const frame = document.getElementById("print-pdf-frame") as HTMLIFrameElement | null;
         try {
@@ -121,7 +130,10 @@ export function PrintDocument({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => {
+              recordPrint();
+              window.print();
+            }}
             disabled={!ready}
             className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
           >

@@ -5,6 +5,7 @@ import { deleteFile, getFileMeta, toDriveItem, updateFile } from "@/lib/drive";
 import { getDemoItem, isDemoEnabled } from "@/lib/demo";
 import { getConnection } from "@/lib/auth";
 import { getFavoriteIds, removeMetadata, syncDriveItems } from "@/lib/metadata";
+import { unmarkFilesAsPrinted } from "@/lib/print-tracker";
 import { AppError } from "@/lib/errors";
 import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/api-utils";
 import { isValidFileName } from "@/lib/file-utils";
@@ -126,6 +127,7 @@ export async function DELETE(request: Request, context: Context) {
     }
     await deleteFile(drive, fileId);
     await removeMetadata(fileId);
+    await unmarkFilesAsPrinted([fileId]);
     invalidateCache("stats:");
     return NextResponse.json({ ok: true });
   } catch (error) {

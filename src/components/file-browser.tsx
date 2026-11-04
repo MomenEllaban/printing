@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
+  Clock,
   CloudUpload,
   Download,
   ExternalLink,
@@ -194,6 +196,38 @@ export function FileBrowser({
   const [deleting, setDeleting] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
+  // Print status tracking & filtering
+  const [printedIds, setPrintedIds] = useState<Set<string>>(new Set());
+  const [printFilter, setPrintFilter] = useState<"all" | "printed" | "pending">("all");
+
+  const fetchPrintStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/drive/print-status", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.printedIds)) {
+          setPrintedIds(new Set(data.printedIds));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchPrintStatus();
+  }, [fetchPrintStatus, refreshKey]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const printParam = urlParams.get("printStatus");
+      if (printParam === "pending" || printParam === "printed") {
+        setPrintFilter(printParam);
+      }
+    }
+  }, []);
+
   // Multi-selection & batch actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
@@ -201,6 +235,61 @@ export function FileBrowser({
   const [batchPrintOpen, setBatchPrintOpen] = useState(false);
 
   const selectedItems = useMemo(() => items.filter((i) => selectedIds.has(i.id)), [items, selectedIds]);
+
+  const displayItems = useMemo(() => {
+    if (printFilter === "all") return items;
+    return items.filter((item) => {
+      if (item.isFolder) return false;
+      const isPrinted = printedIds.has(item.id);
+      return printFilter === "printed" ? isPrinted : !isPrinted;
+    });
+  }, [items, printFilter, printedIds]);
+
+  const togglePrintStatus = async (item: DriveItem) => {
+    const isCurrentlyPrinted = printedIds.has(item.id);
+    const action = isCurrentlyPrinted ? "unmark" : "mark";
+    try {
+      const res = await fetch("/api/drive/print-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: item.id,
+          items: [{ id: item.id, name: item.name }],
+          action,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrintedIds(new Set(data.printedIds));
+        toast.success(t("batch.markPrintedSuccess"));
+      }
+    } catch {
+      toast.error(t("common.error"));
+    }
+  };
+
+  const handleBatchMarkPrinted = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const res = await fetch("/api/drive/print-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileIds: Array.from(selectedIds),
+          items: selectedItems.map((i) => ({ id: i.id, name: i.name })),
+          action: "mark",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrintedIds(new Set(data.printedIds));
+        toast.success(t("batch.markPrintedSuccess"));
+        clearSelection();
+      }
+    } catch {
+      toast.error(t("common.error"));
+    }
+  };
 
   const toggleSelect = (id: string, e?: React.MouseEvent | React.ChangeEvent) => {
     e?.stopPropagation();
@@ -213,10 +302,10 @@ export function FileBrowser({
   };
 
   const selectAll = () => {
-    if (items.length > 0 && selectedIds.size === items.length) {
+    if (displayItems.length > 0 && selectedIds.size === displayItems.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(items.map((i) => i.id)));
+      setSelectedIds(new Set(displayItems.map((i) => i.id)));
     }
   };
 
@@ -628,6 +717,17 @@ export function FileBrowser({
             ))}
           </Select>
 
+          <Select
+            value={printFilter}
+            onChange={(event) => setPrintFilter(event.target.value as "all" | "printed" | "pending")}
+            className="h-10 w-auto min-w-[150px]"
+            aria-label={t("print.filterAll")}
+          >
+            <option value="all">{t("print.filterAll")}</option>
+            <option value="printed">✓ {t("print.filterPrinted")}</option>
+            <option value="pending">⏳ {t("print.filterPending")}</option>
+          </Select>
+
           <div className="flex items-center gap-1 rounded-xl border border-border p-1">
             <button
               type="button"
@@ -650,17 +750,18 @@ export function FileBrowser({
           </div>
         </div>
 
-        {(search || categoryFilter || (mode === "all" && folderId)) && (
+        {(search || categoryFilter || printFilter !== "all" || (mode === "all" && folderId)) && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
             <span>
-              {t("common.showing")} {formatNumber(items.length, locale as Locale)} {t("common.items")}
+              {t("common.showing")} {formatNumber(displayItems.length, locale as Locale)} {t("common.items")}
             </span>
-            {(search || categoryFilter) && (
+            {(search || categoryFilter || printFilter !== "all") && (
               <button
                 type="button"
                 onClick={() => {
                   setSearch("");
                   setCategoryFilter("");
+                  setPrintFilter("all");
                 }}
                 className="inline-flex items-center gap-1 rounded-full bg-surface-strong px-2 py-0.5 font-medium hover:bg-border"
               >
@@ -687,29 +788,39 @@ export function FileBrowser({
             <div key={index} className="card h-36 animate-pulse bg-surface-soft" />
           ))}
         </div>
-      ) : items.length === 0 && !loading ? (
+      ) : displayItems.length === 0 && !loading ? (
         <EmptyState
           icon={<Search className="size-6" />}
           title={
-            debouncedSearch
-              ? t("files.searchEmptyTitle")
-              : mode === "favorites"
-                ? t("favorites.emptyTitle")
-                : mode === "recent"
-                  ? t("recent.emptyTitle")
-                  : t("files.emptyTitle")
+            printFilter !== "all"
+              ? printFilter === "pending"
+                ? t("print.filterPending")
+                : t("print.filterPrinted")
+              : debouncedSearch
+                ? t("files.searchEmptyTitle")
+                : mode === "favorites"
+                  ? t("favorites.emptyTitle")
+                  : mode === "recent"
+                    ? t("recent.emptyTitle")
+                    : t("files.emptyTitle")
           }
           description={
-            debouncedSearch
+            printFilter !== "all"
               ? t("files.searchEmptyHint")
-              : mode === "favorites"
-                ? t("favorites.emptyHint")
-                : mode === "recent"
-                  ? t("recent.emptyHint")
-                  : t("files.emptyHint")
+              : debouncedSearch
+                ? t("files.searchEmptyHint")
+                : mode === "favorites"
+                  ? t("favorites.emptyHint")
+                  : mode === "recent"
+                    ? t("recent.emptyHint")
+                    : t("files.emptyHint")
           }
           action={
-            !demoActive && mode !== "favorites" && mode !== "recent" ? (
+            printFilter !== "all" ? (
+              <Button variant="secondary" onClick={() => setPrintFilter("all")}>
+                {t("print.filterAll")}
+              </Button>
+            ) : !demoActive && mode !== "favorites" && mode !== "recent" ? (
               <Button onClick={() => setUploadOpen(true)}>
                 <UploadCloud className="size-4" />
                 {t("common.upload")}
@@ -719,94 +830,134 @@ export function FileBrowser({
         />
       ) : effectiveView === "grid" ? (
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className={cn(
-                "file-card relative transition-all",
-                selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(item.id)}
-                    onChange={(e) => toggleSelect(item.id, e)}
-                    className="size-4 rounded border-border accent-accent cursor-pointer"
-                    aria-label={`Select ${item.name}`}
-                  />
-                  <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start">
-                    <FileIcon category={item.category} extension={item.extension} size="lg" />
-                  </button>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => void toggleFavorite(item)}
-                    disabled={favoriteBusy === item.id}
-                    className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
-                    title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
-                    aria-label={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
-                  >
-                    <Star className={cn("size-4", item.isFavorite && "fill-current")} />
-                  </button>
-                  <ItemMenu
-                    item={item}
-                    open={menuId === item.id}
-                    onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
-                    onClose={() => setMenuId(null)}
-                    onPreview={() => openItem(item)}
-                    onRename={() => {
-                      if (!requireWritable()) return;
-                      setRenameTarget(item);
-                      setRenameValue(item.name);
-                      setMenuId(null);
-                    }}
-                    onMove={() => {
-                      if (!requireWritable()) return;
-                      setMoveTarget(item);
-                      setMenuId(null);
-                    }}
-                    onDelete={() => {
-                      if (!requireWritable()) return;
-                      setDeleteTarget(item);
-                      setMenuId(null);
-                    }}
-                    demo={demoActive}
-                  />
-                </div>
-              </div>
+          {displayItems.map((item) => {
+            const isPrinted = !item.isFolder && printedIds.has(item.id);
+            const isPending = !item.isFolder && !printedIds.has(item.id);
 
-              <div className="min-w-0">
-                <button type="button" onClick={() => openItem(item)} className="block w-full truncate text-start text-sm font-semibold hover:text-accent">
-                  {item.name}
-                </button>
-                <ExamBadges name={item.name} />
-                <p className="mt-0.5 truncate text-xs text-muted">
-                  {item.isFolder ? t("common.folder") : formatBytes(item.size, locale as Locale)} ·{" "}
-                  {formatDate(item.modifiedTime, locale as Locale)}
-                </p>
-              </div>
-
-              <div className="mt-auto flex items-center gap-1.5">
-                <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border">
-                  {item.isFolder ? t("common.open") : t("common.preview")}
-                </button>
-                {!item.isFolder && (
-                  <a
-                    href={`/api/drive/files/${item.id}/content?download=1`}
-                    className="icon-btn ms-auto size-8"
-                    title={t("common.download")}
-                    aria-label={t("common.download")}
-                  >
-                    <Download className="size-4" />
-                  </a>
+            return (
+              <div
+                key={item.id}
+                className={cn(
+                  "file-card relative transition-all",
+                  selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
+                  !selectedIds.has(item.id) &&
+                    isPrinted &&
+                    "border-emerald-500/40 bg-emerald-500/[0.04] shadow-sm shadow-emerald-500/5 hover:border-emerald-500/60",
+                  !selectedIds.has(item.id) &&
+                    isPending &&
+                    "border-amber-500/40 bg-amber-500/[0.03] hover:border-amber-500/60",
                 )}
-                {item.isDemo && <span className="chip">{t("common.demo")}</span>}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(item.id)}
+                      onChange={(e) => toggleSelect(item.id, e)}
+                      className="size-4 rounded border-border accent-accent cursor-pointer"
+                      aria-label={`Select ${item.name}`}
+                    />
+                    <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start">
+                      <FileIcon category={item.category} extension={item.extension} size="lg" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void toggleFavorite(item)}
+                      disabled={favoriteBusy === item.id}
+                      className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
+                      title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
+                      aria-label={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
+                    >
+                      <Star className={cn("size-4", item.isFavorite && "fill-current")} />
+                    </button>
+                    <ItemMenu
+                      item={item}
+                      isPrinted={isPrinted}
+                      onTogglePrint={() => void togglePrintStatus(item)}
+                      open={menuId === item.id}
+                      onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
+                      onClose={() => setMenuId(null)}
+                      onPreview={() => openItem(item)}
+                      onRename={() => {
+                        if (!requireWritable()) return;
+                        setRenameTarget(item);
+                        setRenameValue(item.name);
+                        setMenuId(null);
+                      }}
+                      onMove={() => {
+                        if (!requireWritable()) return;
+                        setMoveTarget(item);
+                        setMenuId(null);
+                      }}
+                      onDelete={() => {
+                        if (!requireWritable()) return;
+                        setDeleteTarget(item);
+                        setMenuId(null);
+                      }}
+                      demo={demoActive}
+                    />
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <button type="button" onClick={() => openItem(item)} className="block w-full truncate text-start text-sm font-semibold hover:text-accent">
+                    {item.name}
+                  </button>
+                  <ExamBadges name={item.name} />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {!item.isFolder && (
+                      isPrinted ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                          <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          {t("print.statusPrinted")}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                          <Clock className="size-3 text-amber-600 dark:text-amber-400" />
+                          {t("print.statusPending")}
+                        </span>
+                      )
+                    )}
+                    <span className="text-xs text-muted">
+                      {item.isFolder ? t("common.folder") : formatBytes(item.size, locale as Locale)} ·{" "}
+                      {formatDate(item.modifiedTime, locale as Locale)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-auto flex items-center gap-1.5 pt-2">
+                  <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border">
+                    {item.isFolder ? t("common.open") : t("common.preview")}
+                  </button>
+                  {!item.isFolder && (
+                    <a
+                      href={`/print/${item.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="chip hover:bg-border flex items-center gap-1 text-accent"
+                      title={t("common.print")}
+                    >
+                      <Printer className="size-3" />
+                      {t("common.print")}
+                    </a>
+                  )}
+                  {!item.isFolder && (
+                    <a
+                      href={`/api/drive/files/${item.id}/content?download=1`}
+                      className="icon-btn ms-auto size-8"
+                      title={t("common.download")}
+                      aria-label={t("common.download")}
+                    >
+                      <Download className="size-4" />
+                    </a>
+                  )}
+                  {item.isDemo && <span className="chip">{t("common.demo")}</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -817,7 +968,7 @@ export function FileBrowser({
                   <th className="w-10 px-3 py-3 text-center">
                     <input
                       type="checkbox"
-                      checked={items.length > 0 && selectedIds.size === items.length}
+                      checked={displayItems.length > 0 && selectedIds.size === displayItems.length}
                       onChange={selectAll}
                       className="size-4 rounded border-border accent-accent cursor-pointer"
                       title={t("batch.selectAll")}
@@ -832,100 +983,128 @@ export function FileBrowser({
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className={cn(
-                      "border-b border-border last:border-0 hover:bg-surface-soft/60 transition-colors",
-                      selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
-                    )}
-                  >
-                    <td className="w-10 px-3 py-2.5 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(item.id)}
-                        onChange={(e) => toggleSelect(item.id, e)}
-                        className="size-4 rounded border-border accent-accent cursor-pointer"
-                        aria-label={`Select ${item.name}`}
-                      />
-                    </td>
-                    <td className="max-w-[340px] px-4 py-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <FileIcon category={item.category} extension={item.extension} size="sm" />
-                        <div className="min-w-0 flex-1">
-                          <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent block max-w-full">
-                            {item.name}
-                          </button>
-                          <ExamBadges name={item.name} />
-                        </div>
-                        {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-muted">
-                      {item.isFolder ? t("common.folder") : (item.extension || "—").toUpperCase()}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-muted">
-                      {item.isFolder ? "—" : formatBytes(item.size, locale as Locale)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatDate(item.modifiedTime, locale as Locale)}</td>
-                    <td className="px-2 py-1.5">
-                      <div className="flex items-center justify-end gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => void toggleFavorite(item)}
-                          className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
-                          title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
-                        >
-                          <Star className={cn("size-4", item.isFavorite && "fill-current")} />
-                        </button>
-                        {!item.isFolder && (
-                          <a
-                            href={`/print/${item.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="icon-btn size-8"
-                            title={t("common.print")}
-                          >
-                            <Printer className="size-4" />
-                          </a>
-                        )}
-                        {!item.isFolder && (
-                          <a
-                            href={`/api/drive/files/${item.id}/content?download=1`}
-                            className="icon-btn size-8"
-                            title={t("common.download")}
-                          >
-                            <Download className="size-4" />
-                          </a>
-                        )}
-                        <ItemMenu
-                          item={item}
-                          open={menuId === item.id}
-                          onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
-                          onClose={() => setMenuId(null)}
-                          onPreview={() => openItem(item)}
-                          onRename={() => {
-                            if (!requireWritable()) return;
-                            setRenameTarget(item);
-                            setRenameValue(item.name);
-                            setMenuId(null);
-                          }}
-                          onMove={() => {
-                            if (!requireWritable()) return;
-                            setMoveTarget(item);
-                            setMenuId(null);
-                          }}
-                          onDelete={() => {
-                            if (!requireWritable()) return;
-                            setDeleteTarget(item);
-                            setMenuId(null);
-                          }}
-                          demo={demoActive}
+                {displayItems.map((item) => {
+                  const isPrinted = !item.isFolder && printedIds.has(item.id);
+                  const isPending = !item.isFolder && !printedIds.has(item.id);
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className={cn(
+                        "border-b border-border last:border-0 hover:bg-surface-soft/60 transition-colors",
+                        selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
+                        !selectedIds.has(item.id) &&
+                          isPrinted &&
+                          "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
+                        !selectedIds.has(item.id) &&
+                          isPending &&
+                          "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
+                      )}
+                    >
+                      <td className="w-10 px-3 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(e) => toggleSelect(item.id, e)}
+                          className="size-4 rounded border-border accent-accent cursor-pointer"
+                          aria-label={`Select ${item.name}`}
                         />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="max-w-[340px] px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <FileIcon category={item.category} extension={item.extension} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <button type="button" onClick={() => openItem(item)} className="truncate text-start font-medium hover:text-accent block max-w-full">
+                              {item.name}
+                            </button>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <ExamBadges name={item.name} />
+                              {!item.isFolder && (
+                                isPrinted ? (
+                                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                    <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                    {t("print.statusPrinted")}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                    <Clock className="size-3 text-amber-600 dark:text-amber-400" />
+                                    {t("print.statusPending")}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                          {item.isFavorite && <Star className="size-3.5 shrink-0 fill-current text-amber-500" />}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted">
+                        {item.isFolder ? t("common.folder") : (item.extension || "—").toUpperCase()}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">
+                        {item.isFolder ? "—" : formatBytes(item.size, locale as Locale)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatDate(item.modifiedTime, locale as Locale)}</td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => void toggleFavorite(item)}
+                            className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
+                            title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
+                          >
+                            <Star className={cn("size-4", item.isFavorite && "fill-current")} />
+                          </button>
+                          {!item.isFolder && (
+                            <a
+                              href={`/print/${item.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="icon-btn size-8"
+                              title={t("common.print")}
+                            >
+                              <Printer className="size-4" />
+                            </a>
+                          )}
+                          {!item.isFolder && (
+                            <a
+                              href={`/api/drive/files/${item.id}/content?download=1`}
+                              className="icon-btn size-8"
+                              title={t("common.download")}
+                            >
+                              <Download className="size-4" />
+                            </a>
+                          )}
+                          <ItemMenu
+                            item={item}
+                            isPrinted={isPrinted}
+                            onTogglePrint={() => void togglePrintStatus(item)}
+                            open={menuId === item.id}
+                            onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
+                            onClose={() => setMenuId(null)}
+                            onPreview={() => openItem(item)}
+                            onRename={() => {
+                              if (!requireWritable()) return;
+                              setRenameTarget(item);
+                              setRenameValue(item.name);
+                              setMenuId(null);
+                            }}
+                            onMove={() => {
+                              if (!requireWritable()) return;
+                              setMoveTarget(item);
+                              setMenuId(null);
+                            }}
+                            onDelete={() => {
+                              if (!requireWritable()) return;
+                              setDeleteTarget(item);
+                              setMenuId(null);
+                            }}
+                            demo={demoActive}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1066,6 +1245,15 @@ export function FileBrowser({
 
             <Button
               variant="secondary"
+              onClick={() => void handleBatchMarkPrinted()}
+              className="text-xs py-1.5 px-3 flex items-center gap-1.5"
+            >
+              <CheckCircle2 className="size-4 text-emerald-500" />
+              <span>{t("batch.markPrinted")}</span>
+            </Button>
+
+            <Button
+              variant="secondary"
               onClick={handleBatchDownload}
               className="text-xs py-1.5 px-3 flex items-center gap-1.5"
             >
@@ -1124,6 +1312,8 @@ function ItemMenu({
   onRename,
   onMove,
   onDelete,
+  isPrinted,
+  onTogglePrint,
   demo,
 }: {
   item: DriveItem;
@@ -1134,6 +1324,8 @@ function ItemMenu({
   onRename: () => void;
   onMove: () => void;
   onDelete: () => void;
+  isPrinted?: boolean;
+  onTogglePrint?: () => void;
   demo: boolean;
 }) {
   const { t } = useI18n();
@@ -1168,6 +1360,29 @@ function ItemMenu({
               <Move className="size-4" />
               {t("common.move")}
             </button>
+            {!item.isFolder && onTogglePrint && (
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                onClick={() => {
+                  onTogglePrint();
+                  onClose();
+                }}
+              >
+                {isPrinted ? (
+                  <>
+                    <Clock className="size-4 text-amber-500" />
+                    <span>{t("print.markAsPending")}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-4 text-emerald-500" />
+                    <span>{t("print.markAsPrinted")}</span>
+                  </>
+                )}
+              </button>
+            )}
             {!item.isFolder && (
               <a
                 role="menuitem"

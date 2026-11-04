@@ -30,9 +30,23 @@ export function BatchPrintDocument({
   const pageSize = `${settings.paperSize} ${settings.orientation}`;
   const margin = `${MARGIN_MM[settings.margins]}mm`;
 
+  const recordBatchPrint = (fileIds: string[]) => {
+    fetch("/api/drive/print-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileIds,
+        items: items
+          .filter((item) => fileIds.includes(item.id))
+          .map((item) => ({ id: item.id, name: item.name })),
+      }),
+    }).catch(() => {});
+  };
+
   const printSingle = (index: number) => {
     const item = items[index];
     if (!item) return;
+    recordBatchPrint([item.id]);
     const frame = document.getElementById(`batch-frame-${item.id}`) as HTMLIFrameElement | null;
     if (frame && frame.contentWindow) {
       try {
@@ -45,6 +59,7 @@ export function BatchPrintDocument({
   };
 
   const printAllSequential = async () => {
+    recordBatchPrint(items.map((i) => i.id));
     for (let i = 0; i < items.length; i++) {
       setActivePrintIndex(i);
       printSingle(i);
@@ -83,7 +98,10 @@ export function BatchPrintDocument({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => {
+              recordBatchPrint(items.map((i) => i.id));
+              window.print();
+            }}
             className="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5 shadow-sm"
           >
             <Printer className="size-4" />
@@ -167,3 +185,4 @@ export function BatchPrintDocument({
     </div>
   );
 }
+

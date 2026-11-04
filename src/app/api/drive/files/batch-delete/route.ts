@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDriveContextWithRoot, getConnection } from "@/lib/auth";
 import { deleteFile } from "@/lib/drive";
 import { removeMetadata } from "@/lib/metadata";
+import { unmarkFilesAsPrinted } from "@/lib/print-tracker";
 import { isDemoEnabled } from "@/lib/demo";
 import { AppError } from "@/lib/errors";
 import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/api-utils";
@@ -49,9 +50,14 @@ export async function POST(request: Request) {
       }
     }
 
+    if (deletedCount > 0) {
+      await unmarkFilesAsPrinted(body.fileIds);
+    }
+
     invalidateCache("stats:");
     return NextResponse.json({ ok: true, deletedCount, failedCount: errors.length, errors });
   } catch (error) {
     return jsonError(error);
   }
 }
+
