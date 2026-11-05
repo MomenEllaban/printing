@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -29,11 +30,13 @@ export function PreviewShell({
   item,
   kind,
   initialFavorite,
+  initialFrom,
   previewSettings,
 }: {
   item: DriveItem;
   kind: PreviewKind;
   initialFavorite: boolean;
+  initialFrom?: string | null;
   previewSettings: {
     pdfDefaultZoom: number;
     pdfFitMode: "width" | "page" | "auto";
@@ -41,6 +44,39 @@ export function PreviewShell({
   };
 }) {
   const { t, locale, dir } = useI18n();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromQuery = searchParams?.get("from");
+  const fromParam = initialFrom || fromQuery;
+
+  const returnTarget = useMemo(() => {
+    if (fromParam && fromParam.startsWith("/") && !fromParam.startsWith("//")) {
+      return fromParam;
+    }
+    if (item.parentId) {
+      return `/files?folder=${encodeURIComponent(item.parentId)}`;
+    }
+    return "/files";
+  }, [fromParam, item.parentId]);
+
+  const handleBack = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (fromParam && fromParam.startsWith("/") && !fromParam.startsWith("//")) {
+      router.push(fromParam);
+      return;
+    }
+    if (
+      typeof window !== "undefined" &&
+      window.history.length > 1 &&
+      document.referrer &&
+      document.referrer.includes(window.location.host)
+    ) {
+      router.back();
+      return;
+    }
+    router.push(returnTarget);
+  };
+
   const [favorite, setFavorite] = useState(initialFavorite);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const back = dir === "rtl" ? <ArrowRight className="size-4" /> : <ArrowLeft className="size-4" />;
@@ -69,7 +105,13 @@ export function PreviewShell({
     <div className="space-y-4">
       <div className="no-print flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <Link href="/files" className="icon-btn mt-0.5" aria-label={t("common.back")}>
+          <Link
+            href={returnTarget}
+            onClick={handleBack}
+            className="icon-btn mt-0.5 cursor-pointer hover:bg-surface-soft hover:text-accent transition-colors"
+            aria-label={t("common.back")}
+            title={locale === "ar" ? "رجوع إلى المجلد / الصفحة السابقة" : "Back to previous folder / page"}
+          >
             {back}
           </Link>
           <FileIcon category={item.category} extension={item.extension} />

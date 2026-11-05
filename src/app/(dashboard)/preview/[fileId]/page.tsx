@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FileQuestion } from "lucide-react";
@@ -15,7 +16,10 @@ import type { DriveItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ fileId: string }> };
+type Props = {
+  params: Promise<{ fileId: string }>;
+  searchParams: Promise<{ from?: string }>;
+};
 
 async function loadItem(fileId: string): Promise<{ item: DriveItem | null; favorite: boolean; error: string | null }> {
   const connection = await getConnection();
@@ -45,8 +49,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: item?.name ?? "Preview" };
 }
 
-export default async function PreviewPage({ params }: Props) {
-  const { fileId } = await params;
+export default async function PreviewPage({ params, searchParams }: Props) {
+  const [{ fileId }, query] = await Promise.all([params, searchParams]);
+  const from = query?.from;
+  const safeFrom = from && from.startsWith("/") && !from.startsWith("//") ? from : null;
+
   const [settings, locale, { item, favorite, error }] = await Promise.all([
     getSettings(),
     getLocale(),
@@ -61,7 +68,7 @@ export default async function PreviewPage({ params }: Props) {
         </div>
         <h1 className="mt-4 text-lg font-bold">{translate(locale, "preview.notFound")}</h1>
         {error && <p className="mt-1 text-xs text-muted">{translate(locale, `error.${error}` as Parameters<typeof translate>[1])}</p>}
-        <Link href="/files" className="btn-secondary mt-5">
+        <Link href={safeFrom || "/files"} className="btn-secondary mt-5">
           {translate(locale, "common.back")}
         </Link>
       </div>
@@ -71,15 +78,18 @@ export default async function PreviewPage({ params }: Props) {
   const kind = previewKind(item.mimeType, item.name) as PreviewKind;
 
   return (
-    <PreviewShell
-      item={item}
-      kind={kind}
-      initialFavorite={favorite}
-      previewSettings={{
-        pdfDefaultZoom: settings.preview.pdfDefaultZoom,
-        pdfFitMode: settings.preview.pdfFitMode,
-        excelDisplayMode: settings.preview.excelDisplayMode,
-      }}
-    />
+    <Suspense fallback={null}>
+      <PreviewShell
+        item={item}
+        kind={kind}
+        initialFavorite={favorite}
+        initialFrom={safeFrom}
+        previewSettings={{
+          pdfDefaultZoom: settings.preview.pdfDefaultZoom,
+          pdfFitMode: settings.preview.pdfFitMode,
+          excelDisplayMode: settings.preview.excelDisplayMode,
+        }}
+      />
+    </Suspense>
   );
 }

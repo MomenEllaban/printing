@@ -274,6 +274,37 @@ export function FileBrowser({
     }
   }, []);
 
+  // Sync state when initialFolderId prop changes (e.g. Back navigation to /files?folder=...)
+  useEffect(() => {
+    setFolderId(initialFolderId ?? null);
+  }, [initialFolderId]);
+
+  // Sync state when initialSearch prop changes
+  useEffect(() => {
+    if (initialSearch !== undefined) {
+      setSearch(initialSearch);
+      setDebouncedSearch(initialSearch.trim());
+    }
+  }, [initialSearch]);
+
+  // Handle browser back/forward buttons (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== "undefined" && mode === "all") {
+        const urlParams = new URLSearchParams(window.location.search);
+        const folder = urlParams.get("folder");
+        setFolderId(folder || null);
+        const q = urlParams.get("search");
+        if (q !== null) {
+          setSearch(q);
+          setDebouncedSearch(q.trim());
+        }
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [mode]);
+
   // Multi-selection & batch actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
@@ -865,13 +896,20 @@ export function FileBrowser({
     setMenuId(null);
     if (mode === "all") {
       const url = id ? `/files?folder=${encodeURIComponent(id)}` : "/files";
-      window.history.replaceState(null, "", url);
+      window.history.pushState(null, "", url);
     }
   };
 
   const openItem = (item: DriveItem) => {
-    if (item.isFolder) navigateFolder(item.id);
-    else router.push(`/preview/${item.id}`);
+    if (item.isFolder) {
+      navigateFolder(item.id);
+    } else {
+      const currentUrl =
+        typeof window !== "undefined"
+          ? window.location.pathname + window.location.search
+          : "/files";
+      router.push(`/preview/${item.id}?from=${encodeURIComponent(currentUrl)}`);
+    }
   };
 
   const requireWritable = (): boolean => {
