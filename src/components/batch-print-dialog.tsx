@@ -61,7 +61,7 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
           <button
             type="button"
             onClick={handleOpenUnified}
-            className="flex flex-col items-start gap-1.5 rounded-2xl border-2 border-accent/40 bg-accent/5 p-4 text-start hover:border-accent hover:bg-accent/10 transition-all"
+            className="flex flex-col items-start gap-1.5 rounded-2xl border-2 border-accent/40 bg-accent/5 p-4 text-start hover:border-accent hover:bg-accent/10 transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2 font-bold text-accent text-sm">
               <Layers className="size-4" />
@@ -75,7 +75,7 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
           <button
             type="button"
             onClick={handleOpenAllTabs}
-            className="flex flex-col items-start gap-1.5 rounded-2xl border border-border bg-surface p-4 text-start hover:border-foreground/30 hover:bg-surface-soft transition-all"
+            className="flex flex-col items-start gap-1.5 rounded-2xl border border-border bg-surface p-4 text-start hover:border-foreground/30 hover:bg-surface-soft transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2 font-bold text-foreground text-sm">
               <ExternalLink className="size-4 text-muted" />

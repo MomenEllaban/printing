@@ -127,7 +127,7 @@ export function ExcelViewer({
                 setVisibleRows(ROW_LIMIT);
               }}
               className={cn(
-                "whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                "whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
                 sheet === name ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft",
               )}
             >

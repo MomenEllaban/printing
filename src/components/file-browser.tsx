@@ -757,7 +757,7 @@ export function FileBrowser({
                 type="button"
                 onClick={() => navigateFolder(crumb.id)}
                 className={cn(
-                  "rounded-lg px-1.5 py-0.5 hover:bg-surface-strong hover:text-foreground",
+                  "rounded-lg px-1.5 py-0.5 hover:bg-surface-strong hover:text-foreground cursor-pointer",
                   currentFolder?.id === crumb.id && "font-semibold text-foreground",
                 )}
               >
@@ -782,7 +782,7 @@ export function FileBrowser({
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted hover:bg-surface-strong"
+                className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted hover:bg-surface-strong cursor-pointer"
                 aria-label={t("common.clearFilters")}
               >
                 <X className="size-4" />
@@ -794,7 +794,7 @@ export function FileBrowser({
             <Select
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value as "" | FileCategory)}
-              className="h-10 w-full sm:w-auto min-w-[120px] text-xs sm:text-sm"
+              className="h-10 w-full sm:w-auto min-w-[120px] text-xs sm:text-sm cursor-pointer"
               aria-label={t("common.filters")}
             >
               {CATEGORIES.map((entry) => (
@@ -808,7 +808,7 @@ export function FileBrowser({
           <Select
             value={sort}
             onChange={(event) => setSort(event.target.value)}
-            className="h-10 w-full sm:w-auto min-w-[140px] text-xs sm:text-sm"
+            className="h-10 w-full sm:w-auto min-w-[140px] text-xs sm:text-sm cursor-pointer"
             aria-label={t("common.sortBy")}
           >
             {SORTS.map((entry) => (
@@ -821,7 +821,7 @@ export function FileBrowser({
           <Select
             value={printFilter}
             onChange={(event) => setPrintFilter(event.target.value as "all" | "printed" | "pending")}
-            className="h-10 w-full sm:w-auto min-w-[140px] text-xs sm:text-sm"
+            className="h-10 w-full sm:w-auto min-w-[140px] text-xs sm:text-sm cursor-pointer"
             aria-label={t("print.filterAll")}
           >
             <option value="all">{t("print.filterAll")}</option>
@@ -833,7 +833,7 @@ export function FileBrowser({
             <button
               type="button"
               onClick={() => setViewMode("grid")}
-              className={cn("rounded-lg p-1.5", effectiveView === "grid" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
+              className={cn("rounded-lg p-1.5 cursor-pointer", effectiveView === "grid" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
               title={t("common.viewGrid")}
               aria-label={t("common.viewGrid")}
             >
@@ -842,7 +842,7 @@ export function FileBrowser({
             <button
               type="button"
               onClick={() => setViewMode("list")}
-              className={cn("rounded-lg p-1.5", effectiveView === "list" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
+              className={cn("rounded-lg p-1.5 cursor-pointer", effectiveView === "list" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
               title={t("common.viewList")}
               aria-label={t("common.viewList")}
             >
@@ -864,7 +864,7 @@ export function FileBrowser({
                   setCategoryFilter("");
                   setPrintFilter("all");
                 }}
-                className="inline-flex items-center gap-1 rounded-full bg-surface-strong px-2 py-0.5 font-medium hover:bg-border"
+                className="inline-flex items-center gap-1 rounded-full bg-surface-strong px-2 py-0.5 font-medium hover:bg-border cursor-pointer"
               >
                 <X className="size-3" />
                 {t("common.clearFilters")}
@@ -958,7 +958,7 @@ export function FileBrowser({
                       className="size-4 rounded border-border accent-accent cursor-pointer"
                       aria-label={`Select ${item.name}`}
                     />
-                    <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start">
+                    <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start cursor-pointer">
                       <FileIcon category={item.category} extension={item.extension} size="lg" />
                     </button>
                   </div>
@@ -967,7 +967,7 @@ export function FileBrowser({
                       type="button"
                       onClick={() => void toggleFavorite(item)}
                       disabled={favoriteBusy === item.id}
-                      className={cn("icon-btn size-8", item.isFavorite && "text-amber-500")}
+                      className={cn("icon-btn size-8 cursor-pointer", item.isFavorite && "text-amber-500")}
                       title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
                       aria-label={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
                     >
@@ -1003,7 +1003,7 @@ export function FileBrowser({
                 </div>
 
                 <div className="min-w-0">
-                  <button type="button" onClick={() => openItem(item)} className="block w-full truncate text-start text-sm font-semibold hover:text-accent">
+                  <button type="button" onClick={() => openItem(item)} className="block w-full truncate text-start text-sm font-semibold hover:text-accent cursor-pointer">
                     {item.name}
                   </button>
                   <ExamBadges name={item.name} />
@@ -1029,7 +1029,7 @@ export function FileBrowser({
                 </div>
 
                 <div className="mt-auto flex items-center gap-1.5 pt-2">
-                  <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border">
+                  <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border cursor-pointer">
                     {item.isFolder ? t("common.open") : t("common.preview")}
                   </button>
                   {!item.isFolder && (
@@ -1037,7 +1037,7 @@ export function FileBrowser({
                       href={`/print/${item.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="chip hover:bg-border flex items-center gap-1 text-accent"
+                      className="chip hover:bg-border flex items-center gap-1 text-accent cursor-pointer"
                       title={t("common.print")}
                     >
                       <Printer className="size-3" />
@@ -1047,7 +1047,7 @@ export function FileBrowser({
                   {!item.isFolder && (
                     <a
                       href={`/api/drive/files/${item.id}/content?download=1`}
-                      className="icon-btn ms-auto size-8"
+                      className="icon-btn ms-auto size-8 cursor-pointer"
                       title={t("common.download")}
                       aria-label={t("common.download")}
                     >
@@ -1698,7 +1698,7 @@ function TreeRow({
                   onToggleExpand(item.id);
                 }}
                 className={cn(
-                  "icon-btn size-7 text-muted hover:text-accent hover:bg-surface-strong shrink-0 rounded-md transition-all flex items-center justify-center",
+                  "icon-btn size-7 text-muted hover:text-accent hover:bg-surface-strong shrink-0 rounded-md transition-all flex items-center justify-center cursor-pointer",
                   isExpanded && "text-accent bg-accent/10",
                 )}
                 title={
@@ -1730,7 +1730,7 @@ function TreeRow({
               <button
                 type="button"
                 onClick={() => onOpenItem(item)}
-                className="truncate text-start font-medium hover:text-accent block max-w-full text-xs sm:text-sm"
+                className="truncate text-start font-medium hover:text-accent block max-w-full text-xs sm:text-sm cursor-pointer"
               >
                 {item.name}
               </button>
@@ -1768,7 +1768,7 @@ function TreeRow({
             <button
               type="button"
               onClick={() => onToggleFavorite(item)}
-              className={cn("icon-btn size-7", item.isFavorite && "text-amber-500")}
+              className={cn("icon-btn size-7 cursor-pointer", item.isFavorite && "text-amber-500")}
               title={item.isFavorite ? t("common.unfavorite") : t("common.favorite")}
             >
               <Star className={cn("size-3.5", item.isFavorite && "fill-current")} />
@@ -1778,7 +1778,7 @@ function TreeRow({
                 href={`/print/${item.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="icon-btn size-7"
+                className="icon-btn size-7 cursor-pointer"
                 title={t("common.print")}
               >
                 <Printer className="size-3.5" />
@@ -1787,7 +1787,7 @@ function TreeRow({
             {!item.isFolder && (
               <a
                 href={`/api/drive/files/${item.id}/content?download=1`}
-                className="icon-btn size-7"
+                className="icon-btn size-7 cursor-pointer"
                 title={t("common.download")}
               >
                 <Download className="size-3.5" />

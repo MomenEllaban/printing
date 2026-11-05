@@ -35,7 +35,7 @@ export const Button = forwardRef<
   return (
     <button
       ref={ref}
-      className={cn(variantClasses[variant], className)}
+      className={cn(variantClasses[variant], "cursor-pointer", className)}
       disabled={disabled || loading}
       {...props}
     >
@@ -54,7 +54,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   function Select({ className, children, ...props }, ref) {
     return (
-      <select ref={ref} className={cn("input appearance-none pe-8", className)} {...props}>
+      <select ref={ref} className={cn("input appearance-none pe-8 cursor-pointer", className)} {...props}>
         {children}
       </select>
     );
@@ -100,7 +100,7 @@ export function Switch({
   const id = useId();
   return (
     <div className="flex items-center justify-between gap-4">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
+      <label htmlFor={id} className="text-sm font-medium text-foreground cursor-pointer select-none">
         {label}
       </label>
       <button
@@ -111,9 +111,9 @@ export function Switch({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer",
           checked ? "bg-accent" : "bg-surface-strong border border-border",
-          disabled && "opacity-50",
+          disabled && "opacity-50 cursor-not-allowed",
         )}
       >
         <span

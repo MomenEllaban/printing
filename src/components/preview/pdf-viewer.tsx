@@ -190,14 +190,14 @@ export function PdfViewer({
 
         <button
           type="button"
-          className={cn("rounded-lg px-2.5 py-1.5 text-xs font-semibold", fit === "width" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
+          className={cn("rounded-lg px-2.5 py-1.5 text-xs font-semibold cursor-pointer", fit === "width" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
           onClick={() => setFit("width")}
         >
           {t("preview.fitWidth")}
         </button>
         <button
           type="button"
-          className={cn("rounded-lg px-2.5 py-1.5 text-xs font-semibold", fit === "page" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
+          className={cn("rounded-lg px-2.5 py-1.5 text-xs font-semibold cursor-pointer", fit === "page" ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft")}
           onClick={() => setFit("page")}
         >
           {t("preview.fitPage")}

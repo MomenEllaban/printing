@@ -129,7 +129,7 @@ export function FolderPicker({
               type="button"
               onClick={() => setSelected(folder.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm transition-colors",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm transition-colors cursor-pointer",
                 selected === folder.id ? "bg-accent-soft text-accent-strong" : "hover:bg-surface-soft",
               )}
             >

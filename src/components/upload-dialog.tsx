@@ -365,7 +365,7 @@ export function UploadDialog({
                 type="button"
                 onClick={() => setRegisterType("student")}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+                  "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
                   registerType === "student"
                     ? "border-accent bg-accent text-white shadow-sm"
                     : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
@@ -381,7 +381,7 @@ export function UploadDialog({
                   setRoom("");
                 }}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+                  "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
                   registerType === "proctor"
                     ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
                     : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
@@ -422,7 +422,7 @@ export function UploadDialog({
                   type="button"
                   onClick={() => setExamType("EST 1")}
                   className={cn(
-                    "rounded-xl border py-1.5 text-xs font-bold transition-all",
+                    "rounded-xl border py-1.5 text-xs font-bold transition-all cursor-pointer",
                     examType === "EST 1"
                       ? "border-accent bg-accent text-white shadow-sm"
                       : "border-border bg-surface text-muted hover:text-foreground",
@@ -434,7 +434,7 @@ export function UploadDialog({
                   type="button"
                   onClick={() => setExamType("EST 2")}
                   className={cn(
-                    "rounded-xl border py-1.5 text-xs font-bold transition-all",
+                    "rounded-xl border py-1.5 text-xs font-bold transition-all cursor-pointer",
                     examType === "EST 2"
                       ? "border-accent bg-accent text-white shadow-sm"
                       : "border-border bg-surface text-muted hover:text-foreground",
@@ -531,10 +531,13 @@ export function UploadDialog({
             setDragging(false);
             if (!demo && event.dataTransfer.files?.length) addFiles(event.dataTransfer.files);
           }}
+          onClick={() => {
+            if (!demo) inputRef.current?.click();
+          }}
           className={cn(
-            "rounded-2xl border-2 border-dashed px-5 py-8 text-center transition-colors",
+            "rounded-2xl border-2 border-dashed px-5 py-8 text-center transition-colors cursor-pointer",
             dragging ? "border-accent bg-accent-soft" : "border-border bg-surface-soft",
-            demo && "opacity-60",
+            demo && "opacity-60 cursor-not-allowed",
           )}
         >
           <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-strong">
@@ -544,8 +547,11 @@ export function UploadDialog({
           <button
             type="button"
             disabled={demo}
-            onClick={() => inputRef.current?.click()}
-            className="mt-1 text-sm font-semibold text-accent hover:underline disabled:opacity-50"
+            onClick={(e) => {
+              e.stopPropagation();
+              inputRef.current?.click();
+            }}
+            className="mt-1 text-sm font-semibold text-accent hover:underline disabled:opacity-50 cursor-pointer"
           >
             {t("common.browse")}
           </button>

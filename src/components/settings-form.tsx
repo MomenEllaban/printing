@@ -313,7 +313,7 @@ export function SettingsForm({ initialValues, connection, environment, initialTa
             type="button"
             onClick={() => setTab(entry.key)}
             className={cn(
-              "whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors",
+              "whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors cursor-pointer",
               tab === entry.key ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-soft hover:text-foreground",
             )}
           >
