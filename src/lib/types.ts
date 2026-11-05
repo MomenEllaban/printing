@@ -16,6 +16,8 @@ export interface DriveItem {
   iconLink: string | null;
   isFolder: boolean;
   category: FileCategory | "folder";
+  parentId?: string | null;
+  parentName?: string | null;
   isFavorite?: boolean;
   isDemo?: boolean;
 }

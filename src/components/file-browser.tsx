@@ -150,6 +150,45 @@ function ExamBadges({ name }: { name: string }) {
   );
 }
 
+function CheckboxInput({
+  checked,
+  indeterminate,
+  onChange,
+  onClick,
+  className,
+  ariaLabel,
+  title,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClick?: (e: React.MouseEvent<HTMLInputElement>) => void;
+  className?: string;
+  ariaLabel?: string;
+  title?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.indeterminate = Boolean(indeterminate && !checked);
+    }
+  }, [indeterminate, checked]);
+
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      onClick={onClick}
+      className={className}
+      aria-label={ariaLabel}
+      title={title}
+    />
+  );
+}
+
 export function FileBrowser({
   mode,
   category,
@@ -243,6 +282,10 @@ export function FileBrowser({
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
   const [folderChildren, setFolderChildren] = useState<Record<string, DriveItem[]>>({});
   const [loadingFolderIds, setLoadingFolderIds] = useState<Set<string>>(new Set());
+  const [descendantsCache, setDescendantsCache] = useState<
+    Record<string, { files: DriveItem[]; folders: DriveItem[]; descendantIds: string[] }>
+  >({});
+  const [loadingDescendantIds, setLoadingDescendantIds] = useState<Set<string>>(new Set());
 
   const fetchFolderChildren = useCallback(async (fId: string) => {
     setLoadingFolderIds((prev) => new Set(prev).add(fId));
@@ -284,6 +327,7 @@ export function FileBrowser({
   useEffect(() => {
     setExpandedFolderIds(new Set());
     setFolderChildren({});
+    setDescendantsCache({});
   }, [folderId]);
 
   useEffect(() => {
@@ -298,12 +342,26 @@ export function FileBrowser({
     Object.values(folderChildren).forEach((children) => {
       children.forEach((c) => map.set(c.id, c));
     });
+    Object.values(descendantsCache).forEach(({ files, folders }) => {
+      files.forEach((f) => map.set(f.id, f));
+      folders.forEach((f) => map.set(f.id, f));
+    });
     return Array.from(map.values());
-  }, [items, folderChildren]);
+  }, [items, folderChildren, descendantsCache]);
 
   const selectedItems = useMemo(
     () => allKnownItems.filter((i) => selectedIds.has(i.id)),
     [allKnownItems, selectedIds],
+  );
+
+  const selectedFolderCount = useMemo(
+    () => selectedItems.filter((i) => i.isFolder).length,
+    [selectedItems],
+  );
+
+  const selectedFilesCount = useMemo(
+    () => selectedItems.filter((i) => !i.isFolder).length,
+    [selectedItems],
   );
 
   const displayItems = useMemo(() => {
@@ -314,6 +372,104 @@ export function FileBrowser({
       return printFilter === "printed" ? isPrinted : !isPrinted;
     });
   }, [items, printFilter, printedIds]);
+
+  const getDescendantIdsRecursively = useCallback(
+    (fId: string): string[] => {
+      const cached = descendantsCache[fId];
+      if (cached) return cached.descendantIds;
+
+      const ids: string[] = [];
+      const queue = [fId];
+      const visited = new Set<string>([fId]);
+
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        const children = folderChildren[curr] || [];
+        for (const child of children) {
+          ids.push(child.id);
+          if (child.isFolder && !visited.has(child.id)) {
+            visited.add(child.id);
+            queue.push(child.id);
+          }
+        }
+      }
+      return ids;
+    },
+    [descendantsCache, folderChildren],
+  );
+
+  const fetchFolderDescendants = useCallback(async (targetFolderId: string) => {
+    setLoadingDescendantIds((prev) => new Set(prev).add(targetFolderId));
+    try {
+      const res = await fetch("/api/drive/folders/descendants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderIds: [targetFolderId] }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.descendantIds)) {
+          setDescendantsCache((prev) => ({
+            ...prev,
+            [targetFolderId]: {
+              files: data.files || [],
+              folders: data.folders || [],
+              descendantIds: data.descendantIds || [],
+            },
+          }));
+          if (data.folderTree && typeof data.folderTree === "object") {
+            setFolderChildren((prev) => ({ ...prev, ...data.folderTree }));
+          }
+          setSelectedIds((prev) => {
+            if (!prev.has(targetFolderId)) return prev;
+            const next = new Set(prev);
+            (data.descendantIds as string[]).forEach((id) => next.add(id));
+            return next;
+          });
+          return data;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch folder descendants:", err);
+    } finally {
+      setLoadingDescendantIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetFolderId);
+        return next;
+      });
+    }
+    return null;
+  }, []);
+
+  const getFolderCheckState = useCallback(
+    (folderId: string): { checked: boolean; indeterminate: boolean } => {
+      const isSelected = selectedIds.has(folderId);
+      const children = folderChildren[folderId];
+
+      if (!children || children.length === 0) {
+        return { checked: isSelected, indeterminate: false };
+      }
+
+      const allChildrenDescendants = children.flatMap((c) =>
+        c.isFolder ? [c.id, ...getDescendantIdsRecursively(c.id)] : [c.id],
+      );
+
+      const totalCount = allChildrenDescendants.length;
+      const selectedCount = allChildrenDescendants.filter((cid) => selectedIds.has(cid)).length;
+
+      if (totalCount > 0 && selectedCount === totalCount) {
+        return { checked: true, indeterminate: false };
+      }
+      if (selectedCount > 0 && selectedCount < totalCount) {
+        return { checked: false, indeterminate: true };
+      }
+      if (isSelected && selectedCount === 0) {
+        return { checked: true, indeterminate: false };
+      }
+      return { checked: false, indeterminate: false };
+    },
+    [selectedIds, folderChildren, getDescendantIdsRecursively],
+  );
 
   const togglePrintStatus = async (item: DriveItem) => {
     const isCurrentlyPrinted = printedIds.has(item.id);
@@ -340,13 +496,35 @@ export function FileBrowser({
 
   const handleBatchMarkPrinted = async () => {
     if (selectedIds.size === 0) return;
+    let printableFiles = selectedItems.filter((i) => !i.isFolder);
+    const selectedFolders = selectedItems.filter((i) => i.isFolder);
+
+    if (printableFiles.length === 0 && selectedFolders.length > 0) {
+      try {
+        const res = await fetch("/api/drive/folders/descendants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folderIds: selectedFolders.map((f) => f.id) }),
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.files) && data.files.length > 0) {
+          printableFiles = data.files;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const fileIdsToMark =
+      printableFiles.length > 0 ? printableFiles.map((f) => f.id) : Array.from(selectedIds);
+
     try {
       const res = await fetch("/api/drive/print-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileIds: Array.from(selectedIds),
-          items: selectedItems.map((i) => ({ id: i.id, name: i.name })),
+          fileIds: fileIdsToMark,
+          items: printableFiles.map((i) => ({ id: i.id, name: i.name })),
           action: "mark",
         }),
       });
@@ -361,21 +539,80 @@ export function FileBrowser({
     }
   };
 
-  const toggleSelect = (id: string, e?: React.MouseEvent | React.ChangeEvent) => {
-    e?.stopPropagation();
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const toggleSelect = useCallback(
+    (id: string, e?: React.MouseEvent | React.ChangeEvent) => {
+      e?.stopPropagation();
+      const item = allKnownItems.find((i) => i.id === id);
+      const isCurrentlySelected = selectedIds.has(id);
 
-  const selectAll = () => {
+      if (!item?.isFolder) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (isCurrentlySelected) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+        return;
+      }
+
+      // It's a folder!
+      const checkState = getFolderCheckState(id);
+      if (checkState.checked || checkState.indeterminate) {
+        // Deselect folder and all descendants
+        const descIds = getDescendantIdsRecursively(id);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          descIds.forEach((childId) => next.delete(childId));
+          return next;
+        });
+      } else {
+        // Select folder and all descendants
+        const localDescIds = getDescendantIdsRecursively(id);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.add(id);
+          localDescIds.forEach((childId) => next.add(childId));
+          return next;
+        });
+        void fetchFolderDescendants(id);
+      }
+    },
+    [allKnownItems, selectedIds, getFolderCheckState, getDescendantIdsRecursively, fetchFolderDescendants],
+  );
+
+  const selectAll = async () => {
     if (allKnownItems.length > 0 && selectedIds.size >= allKnownItems.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(allKnownItems.map((i) => i.id)));
+      const newSelected = new Set(allKnownItems.map((i) => i.id));
+      setSelectedIds(newSelected);
+
+      const visibleFolders = items.filter((i) => i.isFolder);
+      if (visibleFolders.length > 0) {
+        try {
+          const res = await fetch("/api/drive/folders/descendants", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderIds: visibleFolders.map((f) => f.id) }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.descendantIds)) {
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                (data.descendantIds as string[]).forEach((id) => next.add(id));
+                return next;
+              });
+              if (data.folderTree) {
+                setFolderChildren((prev) => ({ ...prev, ...data.folderTree }));
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
   };
 
@@ -407,23 +644,111 @@ export function FileBrowser({
     }
   };
 
-  const handleBatchPrint = () => {
+  const handleBatchPrint = async () => {
     if (selectedItems.length === 0) return;
-    const printable = selectedItems.filter((i) => !i.isFolder);
+    let printable = selectedItems.filter((i) => !i.isFolder);
+    const selectedFolders = selectedItems.filter((i) => i.isFolder);
+
+    if (printable.length === 0 && selectedFolders.length > 0) {
+      const toastId = toast.loading(
+        locale === "ar"
+          ? "جارٍ تجميع ملفات المجلدات المحددة للطباعة…"
+          : "Gathering printable files from selected folders…",
+      );
+      try {
+        const res = await fetch("/api/drive/folders/descendants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folderIds: selectedFolders.map((f) => f.id) }),
+        });
+        const data = await res.json();
+        toast.dismiss(toastId);
+        if (res.ok && Array.isArray(data.files) && data.files.length > 0) {
+          setDescendantsCache((prev) => {
+            const next = { ...prev };
+            selectedFolders.forEach((f) => {
+              next[f.id] = {
+                files: data.files,
+                folders: data.folders,
+                descendantIds: data.descendantIds,
+              };
+            });
+            return next;
+          });
+          if (data.folderTree) {
+            setFolderChildren((prev) => ({ ...prev, ...data.folderTree }));
+          }
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            (data.descendantIds as string[]).forEach((id) => next.add(id));
+            return next;
+          });
+          printable = data.files;
+        } else {
+          toast.error(
+            locale === "ar"
+              ? "لا توجد ملفات قابلة للطباعة داخل المجلدات المحددة."
+              : "No printable files found inside the selected folders.",
+          );
+          return;
+        }
+      } catch {
+        toast.dismiss(toastId);
+        toast.error(t("print.notAvailable"));
+        return;
+      }
+    }
+
     if (printable.length === 0) {
-      toast.error(t("print.notAvailable"));
+      toast.error(
+        locale === "ar"
+          ? "لا توجد ملفات قابلة للطباعة محددة."
+          : t("print.notAvailable"),
+      );
       return;
     }
+
     if (printable.length === 1) {
       window.open(`/print/${printable[0].id}`, "_blank");
       return;
     }
+
     setBatchPrintOpen(true);
   };
 
-  const handleBatchDownload = () => {
-    const downloadable = selectedItems.filter((i) => !i.isFolder);
-    if (downloadable.length === 0) return;
+  const handleBatchDownload = async () => {
+    let downloadable = selectedItems.filter((i) => !i.isFolder);
+    const selectedFolders = selectedItems.filter((i) => i.isFolder);
+
+    if (downloadable.length === 0 && selectedFolders.length > 0) {
+      const toastId = toast.loading(
+        locale === "ar" ? "جارٍ تجميع الملفات للتنزيل…" : "Gathering files to download…",
+      );
+      try {
+        const res = await fetch("/api/drive/folders/descendants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folderIds: selectedFolders.map((f) => f.id) }),
+        });
+        const data = await res.json();
+        toast.dismiss(toastId);
+        if (res.ok && Array.isArray(data.files) && data.files.length > 0) {
+          downloadable = data.files;
+        }
+      } catch {
+        toast.dismiss(toastId);
+      }
+    }
+
+    if (downloadable.length === 0) {
+      toast.error(
+        locale === "ar"
+          ? "لا توجد ملفات قابلة للتنزيل في التحديد."
+          : "No downloadable files found in selection.",
+      );
+      return;
+    }
+
     toast.info(t("batch.downloadStarted", { count: downloadable.length }));
     downloadable.forEach((item, index) => {
       setTimeout(() => {
@@ -953,13 +1278,13 @@ export function FileBrowser({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(item.id)}
+                    <CheckboxInput
+                      checked={item.isFolder ? getFolderCheckState(item.id).checked : selectedIds.has(item.id)}
+                      indeterminate={item.isFolder ? getFolderCheckState(item.id).indeterminate : false}
                       onChange={(e) => toggleSelect(item.id, e)}
                       onClick={(e) => e.stopPropagation()}
                       className="size-4 rounded border-border accent-accent cursor-pointer"
-                      aria-label={`Select ${item.name}`}
+                      ariaLabel={`Select ${item.name}`}
                     />
                     <div className="min-w-0 text-start">
                       <FileIcon category={item.category} extension={item.extension} size="lg" />
@@ -1070,13 +1395,13 @@ export function FileBrowser({
               <thead>
                 <tr className="border-b border-border bg-surface-soft text-start text-xs text-muted">
                   <th className="w-10 px-3 py-3 text-center">
-                    <input
-                      type="checkbox"
+                    <CheckboxInput
                       checked={allKnownItems.length > 0 && selectedIds.size >= allKnownItems.length}
-                      onChange={selectAll}
+                      indeterminate={selectedIds.size > 0 && selectedIds.size < allKnownItems.length}
+                      onChange={() => void selectAll()}
                       className="size-4 rounded border-border accent-accent cursor-pointer"
                       title={t("batch.selectAll")}
-                      aria-label={t("batch.selectAll")}
+                      ariaLabel={t("batch.selectAll")}
                     />
                   </th>
                   <th className="px-4 py-3 text-start font-semibold">{t("common.fileName")}</th>
@@ -1100,6 +1425,7 @@ export function FileBrowser({
                     printFilter={printFilter}
                     menuId={menuId}
                     demoActive={demoActive}
+                    getFolderCheckState={getFolderCheckState}
                     onToggleExpand={toggleFolderExpand}
                     onToggleSelect={toggleSelect}
                     onOpenItem={openItem}
@@ -1250,7 +1576,21 @@ export function FileBrowser({
             <span className="flex size-5 sm:size-6 items-center justify-center rounded-full bg-accent text-white text-[10px] sm:text-[11px] font-mono">
               {selectedIds.size}
             </span>
-            <span className="hidden sm:inline">{t("batch.selected", { count: selectedIds.size })}</span>
+            <span className="hidden sm:inline">
+              {selectedFolderCount > 0
+                ? locale === "ar"
+                  ? `${selectedIds.size} محدد (${selectedFilesCount} ملف، ${selectedFolderCount} مجلد)`
+                  : `${selectedIds.size} selected (${selectedFilesCount} files, ${selectedFolderCount} folders)`
+                : t("batch.selected", { count: selectedIds.size })}
+            </span>
+            {loadingDescendantIds.size > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-accent animate-pulse font-normal">
+                <Loader2 className="size-3 animate-spin" />
+                <span className="hidden md:inline">
+                  {locale === "ar" ? "فحص المجلدات…" : "Scanning folders…"}
+                </span>
+              </span>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
@@ -1318,6 +1658,7 @@ export function FileBrowser({
         open={batchPrintOpen}
         onClose={() => setBatchPrintOpen(false)}
         selectedItems={selectedItems}
+        isLoading={loadingDescendantIds.size > 0}
       />
     </div>
   );
@@ -1609,8 +1950,9 @@ interface TreeRowProps {
   printFilter: "all" | "printed" | "pending";
   menuId: string | null;
   demoActive: boolean;
+  getFolderCheckState: (folderId: string) => { checked: boolean; indeterminate: boolean };
   onToggleExpand: (folderId: string) => void;
-  onToggleSelect: (id: string, e?: React.ChangeEvent<HTMLInputElement>) => void;
+  onToggleSelect: (id: string, e?: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => void;
   onOpenItem: (item: DriveItem) => void;
   onToggleFavorite: (item: DriveItem) => void;
   onTogglePrintStatus: (item: DriveItem) => void;
@@ -1632,6 +1974,7 @@ function TreeRow({
   printFilter,
   menuId,
   demoActive,
+  getFolderCheckState,
   onToggleExpand,
   onToggleSelect,
   onOpenItem,
@@ -1649,6 +1992,9 @@ function TreeRow({
   const isExpanded = item.isFolder && expandedFolderIds.has(item.id);
   const isLoadingChildren = item.isFolder && loadingFolderIds.has(item.id);
   const rawChildren = folderChildren[item.id] || [];
+  const checkState = item.isFolder
+    ? getFolderCheckState(item.id)
+    : { checked: selectedIds.has(item.id), indeterminate: false };
 
   const children = useMemo(() => {
     if (printFilter === "all") return rawChildren;
@@ -1676,12 +2022,12 @@ function TreeRow({
         )}
       >
         <td className="w-10 px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            checked={selectedIds.has(item.id)}
+          <CheckboxInput
+            checked={checkState.checked}
+            indeterminate={checkState.indeterminate}
             onChange={(e) => onToggleSelect(item.id, e)}
             className="size-4 rounded border-border accent-accent cursor-pointer"
-            aria-label={`Select ${item.name}`}
+            ariaLabel={`Select ${item.name}`}
           />
         </td>
         <td className="max-w-[340px] px-4 py-2.5">
@@ -1849,6 +2195,7 @@ function TreeRow({
               printFilter={printFilter}
               menuId={menuId}
               demoActive={demoActive}
+              getFolderCheckState={getFolderCheckState}
               onToggleExpand={onToggleExpand}
               onToggleSelect={onToggleSelect}
               onOpenItem={onOpenItem}

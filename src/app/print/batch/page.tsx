@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BatchPrintDocument } from "@/components/batch-print-document";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
-import { getFileMeta, toDriveItem } from "@/lib/drive";
-import { getDemoItem, isDemoEnabled } from "@/lib/demo";
+import { getFileMeta, getFolderDescendants, toDriveItem } from "@/lib/drive";
+import { getDemoDescendants, getDemoItem, isDemoEnabled } from "@/lib/demo";
 import { AppError } from "@/lib/errors";
 import { translate } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale-server";
@@ -14,26 +14,50 @@ export const dynamic = "force-dynamic";
 
 type Props = { searchParams: Promise<{ files?: string }> };
 
-async function loadItems(fileIds: string[]): Promise<DriveItem[]> {
+async function loadItems(rawIds: string[]): Promise<DriveItem[]> {
   const connection = await getConnection();
   const connected = connection?.connectionStatus === "connected";
 
   if (isDemoEnabled() && !connected) {
-    return fileIds.map((id) => getDemoItem(id)).filter((item): item is DriveItem => !!item && !item.isFolder);
+    const directItems = rawIds.map((id) => getDemoItem(id)).filter((item): item is DriveItem => !!item);
+    const directFiles = directItems.filter((item) => !item.isFolder);
+    const folderIds = directItems.filter((item) => item.isFolder).map((item) => item.id);
+
+    let descendantFiles: DriveItem[] = [];
+    if (folderIds.length > 0) {
+      const descendants = getDemoDescendants(folderIds);
+      descendantFiles = descendants.files;
+    }
+
+    const map = new Map<string, DriveItem>();
+    [...directFiles, ...descendantFiles].forEach((item) => map.set(item.id, item));
+    return Array.from(map.values());
   }
 
   try {
     const { drive } = await getDriveContextWithRoot();
     const results = await Promise.allSettled(
-      fileIds.map(async (id) => {
+      rawIds.map(async (id) => {
         const meta = await getFileMeta(drive, id);
         return toDriveItem(meta);
       }),
     );
-    return results
+    const directItems = results
       .filter((r): r is PromiseFulfilledResult<DriveItem> => r.status === "fulfilled")
-      .map((r) => r.value)
-      .filter((item) => !item.isFolder);
+      .map((r) => r.value);
+
+    const directFiles = directItems.filter((item) => !item.isFolder);
+    const folderIds = directItems.filter((item) => item.isFolder).map((item) => item.id);
+
+    let descendantFiles: DriveItem[] = [];
+    if (folderIds.length > 0) {
+      const descendants = await getFolderDescendants(drive, folderIds);
+      descendantFiles = descendants.files;
+    }
+
+    const map = new Map<string, DriveItem>();
+    [...directFiles, ...descendantFiles].forEach((item) => map.set(item.id, item));
+    return Array.from(map.values());
   } catch (error) {
     console.error("[batch-print] failed to load items", error);
     return [];

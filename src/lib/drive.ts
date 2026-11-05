@@ -35,6 +35,7 @@ export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string
     iconLink: file.iconLink ?? null,
     isFolder,
     category: isFolder ? "folder" : categoryFor(mimeType, name),
+    parentId: file.parents?.[0] ?? null,
     isFavorite: file.id ? favoriteIds?.has(file.id) : false,
   };
 }
@@ -122,6 +123,69 @@ export async function listFolder(drive: drive_v3.Drive, folderId: string, option
     files: response.data.files ?? [],
     nextPageToken: response.data.nextPageToken ?? null,
   };
+}
+
+export async function getFolderDescendants(
+  drive: drive_v3.Drive,
+  folderIds: string[],
+): Promise<{
+  files: DriveItem[];
+  folders: DriveItem[];
+  descendantIds: string[];
+  folderTree: Record<string, DriveItem[]>;
+}> {
+  const visitedFolderIds = new Set<string>(folderIds);
+  const queue = [...folderIds];
+  const filesMap = new Map<string, DriveItem>();
+  const foldersMap = new Map<string, DriveItem>();
+  const folderTree: Record<string, DriveItem[]> = {};
+
+  while (queue.length > 0) {
+    const currentFolderId = queue.shift()!;
+    let pageToken: string | undefined = undefined;
+    const currentFolderChildren: DriveItem[] = [];
+
+    try {
+      do {
+        const response = (await drive.files.list({
+          q: `'${escapeDriveQuery(currentFolderId)}' in parents and trashed = false`,
+          pageSize: 100,
+          pageToken,
+          orderBy: "folder,name",
+          fields: `nextPageToken, files(${DRIVE_FILE_FIELDS})`,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        })) as { data: drive_v3.Schema$FileList };
+
+        const driveFiles = response.data.files ?? [];
+        for (const rawFile of driveFiles) {
+          const item = toDriveItem(rawFile);
+          currentFolderChildren.push(item);
+          if (item.isFolder) {
+            foldersMap.set(item.id, item);
+            if (!visitedFolderIds.has(item.id)) {
+              visitedFolderIds.add(item.id);
+              queue.push(item.id);
+            }
+          } else {
+            filesMap.set(item.id, item);
+          }
+        }
+
+        pageToken = response.data.nextPageToken || undefined;
+      } while (pageToken);
+    } catch (err) {
+      console.error(`Failed to list children for folder ${currentFolderId}:`, err);
+    }
+
+    folderTree[currentFolderId] = currentFolderChildren;
+  }
+
+  const files = Array.from(filesMap.values());
+  const folders = Array.from(foldersMap.values());
+  const descendantIds = [...folders.map((f) => f.id), ...files.map((f) => f.id)];
+
+  return { files, folders, descendantIds, folderTree };
 }
 
 export async function searchFiles(drive: drive_v3.Drive, options: ListOptions = {}) {

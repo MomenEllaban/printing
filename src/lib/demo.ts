@@ -103,6 +103,7 @@ function toItem(record: DemoRecord): DriveItem {
     iconLink: null,
     isFolder,
     category: isFolder ? "folder" : categoryFor(record.mimeType, record.name),
+    parentId: record.parentId,
     isDemo: true,
   };
 }
@@ -118,6 +119,40 @@ export function getDemoRecord(id: string): DemoRecord | undefined {
 export function getDemoItem(id: string): DriveItem | null {
   const record = getDemoRecord(id);
   return record ? toItem(record) : null;
+}
+
+export function getDemoDescendants(folderIds: string[]): {
+  files: DriveItem[];
+  folders: DriveItem[];
+  descendantIds: string[];
+  folderTree: Record<string, DriveItem[]>;
+} {
+  const visitedFolderIds = new Set<string>(folderIds);
+  const queue = [...folderIds];
+  const files: DriveItem[] = [];
+  const folders: DriveItem[] = [];
+  const folderTree: Record<string, DriveItem[]> = {};
+
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const children = RECORDS.filter((r) => r.parentId === parentId).map(toItem);
+    folderTree[parentId] = children;
+
+    for (const child of children) {
+      if (child.isFolder) {
+        folders.push(child);
+        if (!visitedFolderIds.has(child.id)) {
+          visitedFolderIds.add(child.id);
+          queue.push(child.id);
+        }
+      } else {
+        files.push(child);
+      }
+    }
+  }
+
+  const descendantIds = [...folders.map((f) => f.id), ...files.map((f) => f.id)];
+  return { files, folders, descendantIds, folderTree };
 }
 
 export function getDemoBreadcrumbs(folderId: string | null): { currentFolder: Breadcrumb | null; breadcrumbs: Breadcrumb[] } {

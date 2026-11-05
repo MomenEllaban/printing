@@ -11,9 +11,10 @@ interface BatchPrintDialogProps {
   open: boolean;
   onClose: () => void;
   selectedItems: DriveItem[];
+  isLoading?: boolean;
 }
 
-export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDialogProps) {
+export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = false }: BatchPrintDialogProps) {
   const { t, locale } = useI18n();
   const [opening, setOpening] = useState(false);
 
@@ -93,29 +94,43 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
 
         {/* Selected Files List Preview */}
         <div className="space-y-2">
-          <span className="text-xs font-semibold text-muted block">
-            {locale === "ar"
-              ? `المستندات المختارة (${printFiles.length}):`
-              : `Selected documents (${printFiles.length}):`}
-          </span>
-          <ul className="scrollbar-thin max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-border bg-surface-soft p-2">
-            {printFiles.map((item, index) => (
-              <li
-                key={item.id}
-                className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-xs"
-              >
-                <div className="min-w-0 flex items-center gap-2">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-strong font-mono text-[10px] text-muted">
-                    {index + 1}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted block">
+              {locale === "ar"
+                ? `المستندات المختارة (${printFiles.length}):`
+                : `Selected documents (${printFiles.length}):`}
+            </span>
+            {isLoading && (
+              <span className="text-[11px] text-accent animate-pulse">
+                {locale === "ar" ? "جارٍ جمع محتويات المجلدات…" : "Scanning folders…"}
+              </span>
+            )}
+          </div>
+          {printFiles.length === 0 && isLoading ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-surface-soft py-6 text-xs text-muted">
+              <span className="size-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              <span>{locale === "ar" ? "جارٍ تجميع المستندات من المجلدات المحددة…" : "Gathering documents from selected folders…"}</span>
+            </div>
+          ) : (
+            <ul className="scrollbar-thin max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-border bg-surface-soft p-2">
+              {printFiles.map((item, index) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-strong font-mono text-[10px] text-muted">
+                      {index + 1}
+                    </span>
+                    <span className="truncate font-medium text-foreground">{item.name}</span>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-muted">
+                    {formatBytes(item.size, locale as Locale)}
                   </span>
-                  <span className="truncate font-medium text-foreground">{item.name}</span>
-                </div>
-                <span className="shrink-0 text-[11px] text-muted">
-                  {formatBytes(item.size, locale as Locale)}
-                </span>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </Modal>
