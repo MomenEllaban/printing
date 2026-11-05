@@ -91,8 +91,9 @@ export async function GET(request: Request) {
         items = result.items;
         nextPageToken = null;
       } else {
+        const isGlobalCategory = Boolean(category && !folderParam);
         const result = demoList({
-          folderId: folderParam || "demo-root",
+          folderId: isGlobalCategory ? undefined : folderParam || "demo-root",
           category,
           search,
           sort,
@@ -106,7 +107,8 @@ export async function GET(request: Request) {
       }
 
       items = items.map((item) => ({ ...item, isFavorite: favoriteIds.has(item.id) }));
-      const breadcrumbData = search || recent || favorites ? { currentFolder: null, breadcrumbs: [] } : getDemoBreadcrumbs(folderParam || "demo-root");
+      const isGlobalCategory = Boolean(category && !folderParam);
+      const breadcrumbData = search || recent || favorites || isGlobalCategory ? { currentFolder: null, breadcrumbs: [] } : getDemoBreadcrumbs(folderParam || "demo-root");
 
       const result: DriveListResult = {
         items: sortItems(items, sort),
@@ -158,7 +160,31 @@ export async function GET(request: Request) {
 
     if (search) {
       const result = await searchFiles(drive, { search, category, pageSize, pageToken, sort, foldersOnly });
-      const items = result.files.map((file) => toDriveItem(file, favoriteIds));
+      let items = result.files.map((file) => toDriveItem(file, favoriteIds));
+      if (category) {
+        items = items.filter((item) => (foldersOnly ? item.isFolder : !item.isFolder && item.category === category));
+      }
+      await syncDriveItems(items);
+      return NextResponse.json({
+        items,
+        nextPageToken: result.nextPageToken,
+        currentFolder: null,
+        breadcrumbs: [],
+      } satisfies DriveListResult);
+    }
+
+    // Global category view across all subfolders
+    if (category && !folderParam) {
+      const result = await searchFiles(drive, {
+        category,
+        pageSize,
+        pageToken,
+        sort,
+        foldersOnly: false,
+        includeFolders: false,
+      });
+      let items = result.files.map((file) => toDriveItem(file, favoriteIds));
+      items = items.filter((item) => !item.isFolder && item.category === category);
       await syncDriveItems(items);
       return NextResponse.json({
         items,

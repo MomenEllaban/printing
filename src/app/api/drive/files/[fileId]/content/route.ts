@@ -3,7 +3,7 @@ import { getFileMeta, exportDownloadUrl, mediaDownloadUrl, resolveExportFormat }
 import { demoContent, getDemoItem, isDemoEnabled } from "@/lib/demo";
 import { AppError } from "@/lib/errors";
 import { enforceRateLimit, jsonError, requireSession } from "@/lib/api-utils";
-import { contentDisposition, isGoogleWorkspaceFile } from "@/lib/file-utils";
+import { contentDisposition, isGoogleWorkspaceFile, mimeForFileName } from "@/lib/file-utils";
 import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -75,7 +75,10 @@ export async function GET(request: Request, context: Context) {
         cache: "no-store",
       });
     } else {
-      contentType = meta.mimeType ?? "application/octet-stream";
+      const resolvedMime = meta.mimeType && meta.mimeType !== "application/octet-stream"
+        ? meta.mimeType
+        : mimeForFileName(meta.name ?? "", "application/octet-stream");
+      contentType = resolvedMime;
       outName = meta.name ?? `file-${fileId}`;
       const range = request.headers.get("range");
       upstream = await fetch(mediaDownloadUrl(fileId), {

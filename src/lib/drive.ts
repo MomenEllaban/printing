@@ -39,13 +39,34 @@ export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string
   };
 }
 
-function mimeCondition(category: FileCategory): string {
+const CATEGORY_NAME_EXTENSIONS: Record<Exclude<FileCategory, "other">, string[]> = {
+  pdf: [".pdf"],
+  excel: [".xlsx", ".xls", ".csv", ".xlsm", ".xlsb", ".xltx", ".ods"],
+  word: [".docx", ".doc", ".rtf", ".odt"],
+  image: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".bmp", ".ico", ".tiff"],
+};
+
+export function mimeCondition(category: FileCategory): string {
   if (category === "other") {
-    const known = [MIME.pdf, ...EXCEL_MIMES, ...WORD_MIMES, ...IMAGE_MIMES];
-    return `mimeType != '${FOLDER_MIME}' and ${known.map((mime) => `mimeType != '${mime}'`).join(" and ")}`;
+    const knownMimes = [MIME.pdf, ...EXCEL_MIMES, ...WORD_MIMES, ...IMAGE_MIMES];
+    const mimeChecks = knownMimes.map((mime) => `mimeType != '${mime}'`).join(" and ");
+    const notExtensions = [
+      "not name contains '.pdf'",
+      "not name contains '.xlsx'",
+      "not name contains '.xls'",
+      "not name contains '.csv'",
+      "not name contains '.docx'",
+      "not name contains '.doc'",
+      "not name contains '.png'",
+      "not name contains '.jpg'",
+      "not name contains '.jpeg'",
+    ].join(" and ");
+    return `mimeType != '${FOLDER_MIME}' and ${mimeChecks} and ${notExtensions}`;
   }
-  const mimes = CATEGORY_MIME_FILTERS[category].split(",");
-  return `(${mimes.map((mime) => `mimeType = '${mime}'`).join(" or ")})`;
+  const mimes = (CATEGORY_MIME_FILTERS[category] || "").split(",").map((m) => m.trim()).filter(Boolean);
+  const mimeClauses = mimes.map((mime) => `mimeType = '${mime}'`);
+  const extClauses = (CATEGORY_NAME_EXTENSIONS[category] || []).map((ext) => `name contains '${ext}'`);
+  return `(${[...mimeClauses, ...extClauses].join(" or ")})`;
 }
 
 export interface ListOptions {

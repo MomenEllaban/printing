@@ -18,9 +18,41 @@ export const MIME = {
   googleSlides: "application/vnd.google-apps.presentation",
 } as const;
 
-export const EXCEL_MIMES: string[] = [MIME.xlsx, MIME.xls, MIME.csv, MIME.googleSheet];
-export const WORD_MIMES: string[] = [MIME.docx, MIME.doc, MIME.googleDoc];
-export const IMAGE_MIMES: string[] = [MIME.jpeg, MIME.png, MIME.webp, MIME.gif, MIME.svg];
+export const EXCEL_MIMES: string[] = [
+  MIME.xlsx,
+  MIME.xls,
+  MIME.csv,
+  MIME.googleSheet,
+  "application/x-excel",
+  "application/x-msexcel",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+  "text/comma-separated-values",
+  "text/tab-separated-values",
+  "application/csv",
+];
+export const WORD_MIMES: string[] = [
+  MIME.docx,
+  MIME.doc,
+  MIME.googleDoc,
+  "application/rtf",
+  "text/rtf",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+];
+export const IMAGE_MIMES: string[] = [
+  MIME.jpeg,
+  MIME.png,
+  MIME.webp,
+  MIME.gif,
+  MIME.svg,
+  "image/bmp",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+  "image/tiff",
+];
 
 export const CATEGORY_MIME_FILTERS: Record<Exclude<FileCategory, "other">, string> = {
   pdf: MIME.pdf,
@@ -34,8 +66,11 @@ export const DEFAULT_ALLOWED_EXTENSIONS = [
   "xlsx",
   "xls",
   "csv",
+  "xlsm",
+  "xlsb",
   "docx",
   "doc",
+  "rtf",
   "pptx",
   "ppt",
   "txt",
@@ -43,6 +78,9 @@ export const DEFAULT_ALLOWED_EXTENSIONS = [
   "jpeg",
   "png",
   "webp",
+  "gif",
+  "svg",
+  "bmp",
 ];
 
 export function extensionOf(name: string, mimeType?: string | null): string | null {
@@ -64,16 +102,59 @@ export function extensionOf(name: string, mimeType?: string | null): string | nu
     [MIME.png]: "png",
     [MIME.webp]: "webp",
     [MIME.gif]: "gif",
+    [MIME.svg]: "svg",
+    "image/bmp": "bmp",
+    "image/x-icon": "ico",
+    "image/vnd.microsoft.icon": "ico",
+    "image/tiff": "tiff",
+    "application/rtf": "rtf",
+    "text/rtf": "rtf",
+    "application/vnd.ms-excel.sheet.macroEnabled.12": "xlsm",
+    "application/vnd.ms-excel.sheet.binary.macroEnabled.12": "xlsb",
+    "application/vnd.oasis.opendocument.spreadsheet": "ods",
+    "application/vnd.oasis.opendocument.text": "odt",
   };
   return mimeType ? byMime[mimeType] ?? null : null;
+}
+
+export function mimeForFileName(name: string, fallbackMime = "application/octet-stream"): string {
+  const ext = extensionOf(name);
+  if (!ext) return fallbackMime;
+  const map: Record<string, string> = {
+    pdf: MIME.pdf,
+    xlsx: MIME.xlsx,
+    xls: MIME.xls,
+    csv: MIME.csv,
+    xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12",
+    xlsb: "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+    xltx: "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    tsv: "text/tab-separated-values",
+    docx: MIME.docx,
+    doc: MIME.doc,
+    dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    rtf: "application/rtf",
+    odt: "application/vnd.oasis.opendocument.text",
+    jpg: MIME.jpeg,
+    jpeg: MIME.jpeg,
+    png: MIME.png,
+    webp: MIME.webp,
+    gif: MIME.gif,
+    svg: MIME.svg,
+    bmp: "image/bmp",
+    ico: "image/x-icon",
+    tiff: "image/tiff",
+    tif: "image/tiff",
+  };
+  return map[ext] || fallbackMime;
 }
 
 export function categoryFor(mimeType: string, name = ""): FileCategory | "folder" {
   const ext = extensionOf(name, mimeType);
   if (ext === "pdf") return "pdf";
-  if (ext && ["xlsx", "xls", "csv"].includes(ext)) return "excel";
-  if (ext && ["docx", "doc"].includes(ext)) return "word";
-  if (ext && ["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return "image";
+  if (ext && ["xlsx", "xls", "csv", "xlsm", "xlsb", "xltx", "ods", "tsv"].includes(ext)) return "excel";
+  if (ext && ["docx", "doc", "dotx", "rtf", "odt"].includes(ext)) return "word";
+  if (ext && ["jpg", "jpeg", "png", "webp", "gif", "svg", "bmp", "ico", "tiff", "tif"].includes(ext)) return "image";
   if (mimeType === MIME.folder && !ext) return "folder";
   if (mimeType === MIME.pdf) return "pdf";
   if (EXCEL_MIMES.includes(mimeType)) return "excel";

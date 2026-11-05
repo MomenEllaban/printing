@@ -5,7 +5,7 @@ import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/ap
 import { signPendingUpload } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
 import { buildExamFileName, resolveAvailableName, resolveUploadFolder, uploadSessionRequest, validateUploadInput } from "@/lib/upload";
-import { isValidFileName } from "@/lib/file-utils";
+import { isValidFileName, mimeForFileName } from "@/lib/file-utils";
 import { AppError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,10 @@ export async function POST(request: Request) {
     if (!isValidFileName(body.name)) {
       throw new AppError("Invalid file name", { code: "invalidFileName" });
     }
-    const mimeType = body.mimeType?.trim() || "application/octet-stream";
+    const rawMime = body.mimeType?.trim();
+    const mimeType = (!rawMime || rawMime === "application/octet-stream" || rawMime === "binary/octet-stream")
+      ? mimeForFileName(body.name, "application/octet-stream")
+      : rawMime;
     const settings = await getSettings();
     validateUploadInput({ name: body.name, mimeType, size: body.size }, settings);
 

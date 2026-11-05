@@ -1664,11 +1664,11 @@ function TreeRow({
           depth > 0 && "bg-surface-soft/20",
           selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
           !selectedIds.has(item.id) &&
-            isPrinted &&
-            "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
+          isPrinted &&
+          "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
           !selectedIds.has(item.id) &&
-            isPending &&
-            "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
+          isPending &&
+          "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
         )}
       >
         <td className="w-10 px-3 py-2.5 text-center">

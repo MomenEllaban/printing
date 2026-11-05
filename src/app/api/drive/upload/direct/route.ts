@@ -4,7 +4,7 @@ import { getDriveContextWithRoot } from "@/lib/auth";
 import { enforceRateLimit, jsonError, requireSession } from "@/lib/api-utils";
 import { getSettings } from "@/lib/settings";
 import { buildExamFileName, resolveAvailableName, resolveUploadFolder, validateUploadInput, type ExamUploadMeta } from "@/lib/upload";
-import { isValidFileName } from "@/lib/file-utils";
+import { isValidFileName, mimeForFileName } from "@/lib/file-utils";
 import { AppError } from "@/lib/errors";
 import { toDriveItem } from "@/lib/drive";
 import { syncDriveItems } from "@/lib/metadata";
@@ -35,7 +35,10 @@ export async function POST(request: Request) {
     }
 
     const name = file.name;
-    const mimeType = file.type?.trim() || "application/octet-stream";
+    const rawMime = file.type?.trim();
+    const mimeType = (!rawMime || rawMime === "application/octet-stream" || rawMime === "binary/octet-stream")
+      ? mimeForFileName(name, "application/octet-stream")
+      : rawMime;
     const size = file.size;
 
     if (!isValidFileName(name)) {

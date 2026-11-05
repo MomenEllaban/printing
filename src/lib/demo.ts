@@ -162,6 +162,8 @@ export function demoList(options: DemoListOptions): { items: DriveItem[]; nextPa
     records = records.filter((record) => record.name.toLowerCase().includes(term));
   } else if (options.recent) {
     records = records.filter((record) => record.modifiedOffsetDays <= 30 && record.mimeType !== MIME.folder);
+  } else if (options.category && !options.folderId) {
+    records = records.filter((record) => record.mimeType !== MIME.folder);
   } else {
     const folderId = options.folderId || DEMO_ROOT;
     records = records.filter((record) => record.parentId === folderId);
