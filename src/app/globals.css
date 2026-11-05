@@ -162,7 +162,7 @@
     @apply rounded-[var(--radius-card)] border border-border bg-surface shadow-card flex items-start justify-between gap-4 p-5;
   }
   .file-card {
-    @apply rounded-[var(--radius-card)] border border-border bg-surface shadow-card relative flex flex-col gap-3 p-4 transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg;
+    @apply rounded-[var(--radius-card)] border border-border bg-surface shadow-card relative flex flex-col gap-3 p-4 transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg cursor-pointer;
   }
   .chip {
     @apply inline-flex items-center rounded-full bg-surface-strong px-2.5 py-1 text-xs font-medium text-muted cursor-pointer;

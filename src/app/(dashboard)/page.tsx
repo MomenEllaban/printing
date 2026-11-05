@@ -242,21 +242,33 @@ export default async function DashboardPage() {
           ) : (
             <ul className="divide-y divide-border">
               {recent.map((file) => (
-                <li key={file.id} className="flex items-center gap-3 py-3">
-                  <FileIcon category={file.category} extension={file.extension} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <Link href={file.isFolder ? `/files?folder=${file.id}` : `/preview/${file.id}`} className="block truncate text-sm font-semibold hover:text-accent">
+                <li
+                  key={file.id}
+                  className="group relative flex items-center gap-3 py-3 px-2 rounded-xl hover:bg-surface-soft/60 transition-colors"
+                >
+                  <Link
+                    href={file.isFolder ? `/files?folder=${file.id}` : `/preview/${file.id}`}
+                    className="absolute inset-0 z-0 cursor-pointer rounded-xl"
+                    aria-label={file.name}
+                  />
+                  <div className="relative z-10 pointer-events-none">
+                    <FileIcon category={file.category} extension={file.extension} size="sm" />
+                  </div>
+                  <div className="min-w-0 flex-1 relative z-10 pointer-events-none">
+                    <span className="block truncate text-sm font-semibold group-hover:text-accent transition-colors">
                       {file.name}
-                    </Link>
+                    </span>
                     <p className="text-xs text-muted">
                       {formatBytes(file.size, locale)} · {formatDate(file.modifiedTime, locale)}
                     </p>
                   </div>
-                  <span className="chip hidden sm:inline-flex">{file.extension?.toUpperCase() ?? t("common.folder")}</span>
+                  <span className="chip hidden sm:inline-flex relative z-10 pointer-events-none">
+                    {file.extension?.toUpperCase() ?? t("common.folder")}
+                  </span>
                   {!file.isFolder && (
                     <a
                       href={`/api/drive/files/${file.id}/content?download=1`}
-                      className="icon-btn size-9"
+                      className="icon-btn size-9 relative z-10 cursor-pointer"
                       title={t("common.download")}
                     >
                       <HardDrive className="size-4" />

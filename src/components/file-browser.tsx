@@ -938,8 +938,9 @@ export function FileBrowser({
             return (
               <div
                 key={item.id}
+                onClick={() => openItem(item)}
                 className={cn(
-                  "file-card relative transition-all",
+                  "file-card relative transition-all cursor-pointer group",
                   selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
                   !selectedIds.has(item.id) &&
                   isPrinted &&
@@ -955,14 +956,15 @@ export function FileBrowser({
                       type="checkbox"
                       checked={selectedIds.has(item.id)}
                       onChange={(e) => toggleSelect(item.id, e)}
+                      onClick={(e) => e.stopPropagation()}
                       className="size-4 rounded border-border accent-accent cursor-pointer"
                       aria-label={`Select ${item.name}`}
                     />
-                    <button type="button" onClick={() => openItem(item)} className="min-w-0 text-start cursor-pointer">
+                    <div className="min-w-0 text-start">
                       <FileIcon category={item.category} extension={item.extension} size="lg" />
-                    </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
                       onClick={() => void toggleFavorite(item)}
@@ -1003,9 +1005,9 @@ export function FileBrowser({
                 </div>
 
                 <div className="min-w-0">
-                  <button type="button" onClick={() => openItem(item)} className="block w-full truncate text-start text-sm font-semibold hover:text-accent cursor-pointer">
+                  <span className="block w-full truncate text-start text-sm font-semibold group-hover:text-accent transition-colors">
                     {item.name}
-                  </button>
+                  </span>
                   <ExamBadges name={item.name} />
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {!item.isFolder && (
@@ -1028,7 +1030,7 @@ export function FileBrowser({
                   </div>
                 </div>
 
-                <div className="mt-auto flex items-center gap-1.5 pt-2">
+                <div className="mt-auto flex items-center gap-1.5 pt-2" onClick={(e) => e.stopPropagation()}>
                   <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border cursor-pointer">
                     {item.isFolder ? t("common.open") : t("common.preview")}
                   </button>
@@ -1659,8 +1661,9 @@ function TreeRow({
   return (
     <Fragment key={item.id}>
       <tr
+        onClick={() => onOpenItem(item)}
         className={cn(
-          "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-colors",
+          "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-colors cursor-pointer group",
           depth > 0 && "bg-surface-soft/20",
           selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
           !selectedIds.has(item.id) &&
@@ -1671,7 +1674,7 @@ function TreeRow({
           "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
         )}
       >
-        <td className="w-10 px-3 py-2.5 text-center">
+        <td className="w-10 px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             checked={selectedIds.has(item.id)}
@@ -1727,13 +1730,9 @@ function TreeRow({
             )}
             <FileIcon category={item.category} extension={item.extension} size="sm" />
             <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => onOpenItem(item)}
-                className="truncate text-start font-medium hover:text-accent block max-w-full text-xs sm:text-sm cursor-pointer"
-              >
+              <span className="truncate text-start font-medium group-hover:text-accent block max-w-full text-xs sm:text-sm transition-colors">
                 {item.name}
-              </button>
+              </span>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                 <ExamBadges name={item.name} />
                 {!item.isFolder && (
@@ -1763,7 +1762,7 @@ function TreeRow({
         <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted">
           {formatDate(item.modifiedTime, locale)}
         </td>
-        <td className="px-2 py-1.5">
+        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-end gap-0.5">
             <button
               type="button"
