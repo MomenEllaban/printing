@@ -93,10 +93,18 @@ export async function resolveUploadFolder(
   const requestedParentId = rawParentId?.trim() || undefined;
   const baseFolder = requestedParentId ? await validateParentFolder(drive, requestedParentId) : rootId;
 
-  // When uploading inside an active folder (requestedParentId is set)
-  // and autoFolder is not explicitly requested, upload directly into baseFolder!
-  if (requestedParentId && !examMeta?.autoFolder) {
-    return baseFolder;
+  // When exam metadata is not enabled, or uploading directly into a requested parent folder without autoFolder
+  if (!examMeta?.enabled || (requestedParentId && !examMeta?.autoFolder)) {
+    if (requestedParentId) return baseFolder;
+    if (settings.upload.defaultDestinationFolderId) {
+      return validateParentFolder(drive, settings.upload.defaultDestinationFolderId);
+    }
+    if (settings.storage.organizeByType) {
+      const category = categoryFor(item.mimeType, item.name);
+      const folderName = category === "folder" ? TYPE_FOLDERS.other : TYPE_FOLDERS[category];
+      return findOrCreateTypeFolder(drive, rootId, folderName);
+    }
+    return rootId;
   }
 
   if (examMeta?.autoFolder && (examMeta.institution?.trim() || examMeta.floor?.trim())) {

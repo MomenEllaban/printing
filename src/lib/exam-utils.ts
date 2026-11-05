@@ -2,6 +2,7 @@ export type ExamRegisterType = "student" | "proctor";
 export type ExamLevel = "EST 1" | "EST 2";
 
 export interface ExamUploadMeta {
+  enabled?: boolean;
   registerType?: ExamRegisterType;
   institution?: string;
   examType?: ExamLevel;
@@ -11,9 +12,19 @@ export interface ExamUploadMeta {
 }
 
 export function buildExamFileName(originalName: string, meta?: ExamUploadMeta): string {
-  if (!meta) return originalName;
-  const hasMeta = meta.institution?.trim() || meta.floor?.trim() || meta.room?.trim() || meta.registerType;
-  if (!hasMeta) return originalName;
+  if (!meta || meta.enabled === false) return originalName;
+
+  const hasSubstance =
+    meta.enabled &&
+    Boolean(
+      meta.registerType ||
+      meta.examType ||
+      meta.institution?.trim() ||
+      meta.floor?.trim() ||
+      meta.room?.trim(),
+    );
+
+  if (!hasSubstance) return originalName;
 
   const dot = originalName.lastIndexOf(".");
   const ext = dot > 0 ? originalName.slice(dot) : "";
@@ -34,16 +45,19 @@ export function buildExamFileName(originalName: string, meta?: ExamUploadMeta): 
     parts.push(floorLabel);
   }
 
+  const rm = meta.room?.trim();
+  if (rm) {
+    const roomLabel = /^روم|قاعة|room/i.test(rm) ? rm : `روم ${rm}`;
+    parts.push(roomLabel);
+  }
+
   if (meta.registerType === "proctor") {
     parts.push("Proctor Register");
-  } else {
-    const rm = meta.room?.trim();
-    if (rm) {
-      const roomLabel = /^روم|قاعة|room/i.test(rm) ? rm : `روم ${rm}`;
-      parts.push(roomLabel);
-    }
+  } else if (meta.registerType === "student") {
     parts.push("Student Register");
   }
+
+  if (parts.length === 0) return originalName;
 
   return `${parts.join(" - ")}${ext}`;
 }

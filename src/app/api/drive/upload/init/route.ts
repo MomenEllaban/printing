@@ -11,6 +11,7 @@ import { AppError } from "@/lib/errors";
 export const dynamic = "force-dynamic";
 
 const examMetadataSchema = z.object({
+  enabled: z.boolean().optional(),
   registerType: z.enum(["student", "proctor"]).optional(),
   institution: z.string().max(150).optional(),
   examType: z.enum(["EST 1", "EST 2"]).optional(),
@@ -42,7 +43,8 @@ export async function POST(request: Request) {
     const settings = await getSettings();
     validateUploadInput({ name: body.name, mimeType, size: body.size }, settings);
 
-    const targetName = buildExamFileName(body.name, body.examMetadata);
+    const isExam = Boolean(body.examMetadata?.enabled);
+    const targetName = isExam ? buildExamFileName(body.name, body.examMetadata) : body.name;
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const parentId = await resolveUploadFolder(
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
         name: targetName,
         mimeType,
       },
-      body.examMetadata,
+      isExam ? body.examMetadata : undefined,
     );
     const name = await resolveAvailableName(drive, parentId, targetName, settings.upload.duplicateBehavior);
     const accessToken = await getAccessToken();

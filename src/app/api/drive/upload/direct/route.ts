@@ -55,7 +55,8 @@ export async function POST(request: Request) {
       });
     }
 
-    const targetName = buildExamFileName(name, examMetadata);
+    const isExam = Boolean(examMetadata?.enabled);
+    const targetName = isExam ? buildExamFileName(name, examMetadata) : name;
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const parentId = await resolveUploadFolder(
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
         name: targetName,
         mimeType,
       },
-      examMetadata,
+      isExam ? examMetadata : undefined,
     );
     const finalName = await resolveAvailableName(drive, parentId, targetName, settings.upload.duplicateBehavior);
 
