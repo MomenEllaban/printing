@@ -37,21 +37,93 @@ interface NavItem {
   labelKey: TranslationKey;
   icon: LucideIcon;
   exact?: boolean;
+  color: string;
+  bgColor: string;
+  activeBg: string;
 }
 
 const primaryNav: NavItem[] = [
-  { href: "/", labelKey: "nav.dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/files", labelKey: "nav.allFiles", icon: Files, exact: true },
-  { href: "/files/pdf", labelKey: "nav.pdfFiles", icon: FileText },
-  { href: "/files/excel", labelKey: "nav.excelFiles", icon: FileSpreadsheet },
-  { href: "/files/word", labelKey: "nav.wordDocs", icon: FileText },
-  { href: "/files/images", labelKey: "nav.images", icon: FileImage },
+  {
+    href: "/",
+    labelKey: "nav.dashboard",
+    icon: LayoutDashboard,
+    exact: true,
+    color: "text-indigo-600 dark:text-indigo-400",
+    bgColor: "bg-indigo-500/10 dark:bg-indigo-500/20",
+    activeBg: "bg-indigo-600 text-white shadow-md shadow-indigo-500/25",
+  },
+  {
+    href: "/files",
+    labelKey: "nav.allFiles",
+    icon: Files,
+    exact: true,
+    color: "text-sky-600 dark:text-sky-400",
+    bgColor: "bg-sky-500/10 dark:bg-sky-500/20",
+    activeBg: "bg-sky-600 text-white shadow-md shadow-sky-500/25",
+  },
+  {
+    href: "/files/pdf",
+    labelKey: "nav.pdfFiles",
+    icon: FileText,
+    color: "text-rose-600 dark:text-rose-400",
+    bgColor: "bg-rose-500/10 dark:bg-rose-500/20",
+    activeBg: "bg-rose-600 text-white shadow-md shadow-rose-500/25",
+  },
+  {
+    href: "/files/excel",
+    labelKey: "nav.excelFiles",
+    icon: FileSpreadsheet,
+    color: "text-emerald-600 dark:text-emerald-400",
+    bgColor: "bg-emerald-500/10 dark:bg-emerald-500/20",
+    activeBg: "bg-emerald-600 text-white shadow-md shadow-emerald-500/25",
+  },
+  {
+    href: "/files/word",
+    labelKey: "nav.wordDocs",
+    icon: FileText,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-500/10 dark:bg-blue-500/20",
+    activeBg: "bg-blue-600 text-white shadow-md shadow-blue-500/25",
+  },
+  {
+    href: "/files/images",
+    labelKey: "nav.images",
+    icon: FileImage,
+    color: "text-purple-600 dark:text-purple-400",
+    bgColor: "bg-purple-500/10 dark:bg-purple-500/20",
+    activeBg: "bg-purple-600 text-white shadow-md shadow-purple-500/25",
+  },
 ];
 
 const secondaryNav: NavItem[] = [
-  { href: "/recent", labelKey: "nav.recent", icon: Clock, exact: true },
-  { href: "/favorites", labelKey: "nav.favorites", icon: Star, exact: true },
+  {
+    href: "/recent",
+    labelKey: "nav.recent",
+    icon: Clock,
+    exact: true,
+    color: "text-amber-600 dark:text-amber-400",
+    bgColor: "bg-amber-500/10 dark:bg-amber-500/20",
+    activeBg: "bg-amber-600 text-white shadow-md shadow-amber-500/25",
+  },
+  {
+    href: "/favorites",
+    labelKey: "nav.favorites",
+    icon: Star,
+    exact: true,
+    color: "text-amber-500 dark:text-amber-400",
+    bgColor: "bg-amber-500/10 dark:bg-amber-500/20",
+    activeBg: "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25",
+  },
 ];
+
+const settingsItem: NavItem = {
+  href: "/settings",
+  labelKey: "nav.settings",
+  icon: Settings,
+  color: "text-teal-600 dark:text-teal-400",
+  bgColor: "bg-teal-500/10 dark:bg-teal-500/20",
+  activeBg: "bg-teal-600 text-white shadow-md shadow-teal-500/25",
+};
 
 function isActive(pathname: string, item: NavItem): boolean {
   if (item.exact) return pathname === item.href;
@@ -123,21 +195,18 @@ export function AppShell({
 
   // Full expanded sidebar (for desktop expanded & mobile drawer)
   const fullSidebar = (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto scrollbar-thin px-4 py-5">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto scrollbar-thin px-3 py-5">
       <div className="flex items-center justify-between px-1">
-        <Link href="/" className="flex items-center gap-3 min-w-0" onClick={() => setOpen(false)}>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20">
+        <Link href="/" className="flex items-center gap-2.5 min-w-0" onClick={() => setOpen(false)}>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-md shadow-teal-500/20">
             <HardDrive className="size-5" />
           </span>
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-bold leading-tight">{appName}</span>
-            <span className="block truncate text-[11px] text-muted">{t("app.tagline")}</span>
-          </span>
+          <span className="truncate text-base font-black tracking-tight">{appName}</span>
         </Link>
         <button
           type="button"
           onClick={() => setDesktopCollapsed(true)}
-          className="icon-btn size-8 shrink-0 text-muted hover:text-foreground hidden lg:flex"
+          className="icon-btn size-8 shrink-0 text-muted hover:text-foreground hidden lg:flex cursor-pointer"
           title={t("sidebar.collapse")}
           aria-label={t("sidebar.collapse")}
         >
@@ -153,14 +222,29 @@ export function AppShell({
           <div className="space-y-1">
             {primaryNav.map((item) => {
               const Icon = item.icon;
+              const active = isActive(pathname, item);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className={cn("nav-link", isActive(pathname, item) && "nav-link-active")}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold transition-all cursor-pointer",
+                    active
+                      ? cn(item.activeBg)
+                      : "text-muted hover:bg-surface-soft hover:text-foreground",
+                  )}
                 >
-                  <Icon className="size-[18px]" />
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform",
+                      active
+                        ? "bg-white/20 text-white"
+                        : cn(item.bgColor, item.color, "group-hover:scale-110"),
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
                   <span className="truncate">{t(item.labelKey)}</span>
                 </Link>
               );
@@ -175,30 +259,61 @@ export function AppShell({
           <div className="space-y-1">
             {secondaryNav.map((item) => {
               const Icon = item.icon;
+              const active = isActive(pathname, item);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className={cn("nav-link", isActive(pathname, item) && "nav-link-active")}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold transition-all cursor-pointer",
+                    active
+                      ? cn(item.activeBg)
+                      : "text-muted hover:bg-surface-soft hover:text-foreground",
+                  )}
                 >
-                  <Icon className="size-[18px]" />
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform",
+                      active
+                        ? "bg-white/20 text-white"
+                        : cn(item.bgColor, item.color, "group-hover:scale-110"),
+                    )}
+                  >
+                    <Icon className={cn("size-4", item.href === "/favorites" && "fill-current")} />
+                  </span>
                   <span className="truncate">{t(item.labelKey)}</span>
                 </Link>
               );
             })}
-            <Link
-              href="/settings"
-              onClick={() => setOpen(false)}
-              className={cn(
-                "nav-link",
-                isActive(pathname, { href: "/settings", labelKey: "nav.settings", icon: Settings }) &&
-                  "nav-link-active",
-              )}
-            >
-              <Settings className="size-[18px]" />
-              <span className="truncate">{t("nav.settings")}</span>
-            </Link>
+            {(() => {
+              const Icon = settingsItem.icon;
+              const active = isActive(pathname, settingsItem);
+              return (
+                <Link
+                  href={settingsItem.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold transition-all cursor-pointer",
+                    active
+                      ? cn(settingsItem.activeBg)
+                      : "text-muted hover:bg-surface-soft hover:text-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform",
+                      active
+                        ? "bg-white/20 text-white"
+                        : cn(settingsItem.bgColor, settingsItem.color, "group-hover:scale-110"),
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                  <span className="truncate">{t(settingsItem.labelKey)}</span>
+                </Link>
+              );
+            })()}
           </div>
         </div>
       </nav>
@@ -227,9 +342,9 @@ export function AppShell({
 
   // Compact collapsed sidebar (for desktop collapsed icon-rail)
   const collapsedSidebar = (
-    <div className="flex h-full flex-col items-center gap-4 overflow-y-auto scrollbar-thin px-2 py-5">
-      <Link href="/" className="flex items-center justify-center" title={appName}>
-        <span className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20">
+    <div className="flex h-full flex-col items-center gap-3 overflow-y-auto scrollbar-thin px-2 py-4">
+      <Link href="/" className="flex items-center justify-center" title={appName} aria-label={appName}>
+        <span className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20 hover:scale-105 transition-transform cursor-pointer">
           <HardDrive className="size-5" />
         </span>
       </Link>
@@ -237,76 +352,112 @@ export function AppShell({
       <button
         type="button"
         onClick={() => setDesktopCollapsed(false)}
-        className="icon-btn size-8 rounded-lg text-muted hover:text-foreground"
+        className="icon-btn size-8 rounded-xl text-muted hover:text-foreground hover:bg-surface-soft cursor-pointer"
         title={t("sidebar.expand")}
         aria-label={t("sidebar.expand")}
       >
         <PanelLeftOpen className="size-4.5" />
       </button>
 
-      <div className="w-full my-1 border-t border-border/60" />
+      <div className="w-8 my-0.5 border-t border-border/60" />
 
-      <nav className="flex w-full flex-col gap-1">
+      <nav className="flex w-full flex-col items-center gap-2">
         {primaryNav.map((item) => {
           const Icon = item.icon;
+          const active = isActive(pathname, item);
           return (
             <Link
               key={item.href}
               href={item.href}
               title={t(item.labelKey)}
+              aria-label={t(item.labelKey)}
               className={cn(
-                "nav-link justify-center px-0 py-2.5 rounded-xl",
-                isActive(pathname, item) && "nav-link-active",
+                "group relative flex size-10 items-center justify-center rounded-xl transition-all cursor-pointer",
+                active
+                  ? cn(item.activeBg, "scale-105")
+                  : cn(
+                      item.bgColor,
+                      item.color,
+                      "hover:scale-110 hover:shadow-md",
+                    ),
               )}
             >
-              <Icon className="size-[20px]" />
+              <Icon
+                className={cn(
+                  "size-5 transition-transform group-hover:scale-110",
+                  active ? "text-white" : item.color,
+                )}
+              />
               <span className="sr-only">{t(item.labelKey)}</span>
             </Link>
           );
         })}
 
-        <div className="w-full my-2 border-t border-border/60" />
+        <div className="w-8 my-1 border-t border-border/60" />
 
         {secondaryNav.map((item) => {
           const Icon = item.icon;
+          const active = isActive(pathname, item);
           return (
             <Link
               key={item.href}
               href={item.href}
               title={t(item.labelKey)}
+              aria-label={t(item.labelKey)}
               className={cn(
-                "nav-link justify-center px-0 py-2.5 rounded-xl",
-                isActive(pathname, item) && "nav-link-active",
+                "group relative flex size-10 items-center justify-center rounded-xl transition-all cursor-pointer",
+                active
+                  ? cn(item.activeBg, "scale-105")
+                  : cn(
+                      item.bgColor,
+                      item.color,
+                      "hover:scale-110 hover:shadow-md",
+                    ),
               )}
             >
-              <Icon className="size-[20px]" />
+              <Icon
+                className={cn(
+                  "size-5 transition-transform group-hover:scale-110",
+                  active ? "text-white" : item.color,
+                  item.href === "/favorites" && "fill-current",
+                )}
+              />
               <span className="sr-only">{t(item.labelKey)}</span>
             </Link>
           );
         })}
-
-        <Link
-          href="/settings"
-          title={t("nav.settings")}
-          className={cn(
-            "nav-link justify-center px-0 py-2.5 rounded-xl",
-            isActive(pathname, { href: "/settings", labelKey: "nav.settings", icon: Settings }) &&
-              "nav-link-active",
-          )}
-        >
-          <Settings className="size-[20px]" />
-          <span className="sr-only">{t("nav.settings")}</span>
-        </Link>
       </nav>
 
-      <div className="mt-auto pt-3">
-        <Link
-          href="/settings"
-          title={t("nav.settings")}
-          className="icon-btn size-9 hover:bg-surface-soft"
-        >
-          <Settings className="size-4 text-muted" />
-        </Link>
+      <div className="mt-auto pt-2 flex flex-col items-center">
+        {(() => {
+          const Icon = settingsItem.icon;
+          const active = isActive(pathname, settingsItem);
+          return (
+            <Link
+              href={settingsItem.href}
+              title={t(settingsItem.labelKey)}
+              aria-label={t(settingsItem.labelKey)}
+              className={cn(
+                "group relative flex size-10 items-center justify-center rounded-xl transition-all cursor-pointer",
+                active
+                  ? cn(settingsItem.activeBg, "scale-105")
+                  : cn(
+                      settingsItem.bgColor,
+                      settingsItem.color,
+                      "hover:scale-110 hover:shadow-md",
+                    ),
+              )}
+            >
+              <Icon
+                className={cn(
+                  "size-5 transition-transform group-hover:rotate-45",
+                  active ? "text-white" : settingsItem.color,
+                )}
+              />
+              <span className="sr-only">{t(settingsItem.labelKey)}</span>
+            </Link>
+          );
+        })()}
       </div>
     </div>
   );
@@ -317,7 +468,7 @@ export function AppShell({
       <aside
         className={cn(
           "app-sidebar fixed inset-y-0 start-0 z-40 hidden border-e border-border bg-surface lg:block transition-all duration-300 ease-in-out",
-          collapsed ? "w-[72px]" : "w-[272px]",
+          collapsed ? "w-[72px]" : "w-[256px]",
         )}
       >
         {collapsed ? collapsedSidebar : fullSidebar}
@@ -334,12 +485,12 @@ export function AppShell({
           />
           <aside
             className={cn(
-              "absolute inset-y-0 start-0 w-[288px] max-w-[85vw] border-e border-border bg-surface shadow-2xl transition-transform duration-300",
+              "absolute inset-y-0 start-0 w-[272px] max-w-[85vw] border-e border-border bg-surface shadow-2xl transition-transform duration-300",
             )}
           >
             <button
               type="button"
-              className="icon-btn absolute end-3 top-4 z-10"
+              className="icon-btn absolute end-3 top-4 z-10 cursor-pointer"
               onClick={() => setOpen(false)}
               aria-label="Close"
             >
@@ -354,7 +505,7 @@ export function AppShell({
       <div
         className={cn(
           "transition-all duration-300 ease-in-out",
-          collapsed ? "lg:ps-[72px]" : "lg:ps-[272px]",
+          collapsed ? "lg:ps-[72px]" : "lg:ps-[256px]",
         )}
       >
         <header className="app-topbar sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-xl">
