@@ -150,6 +150,8 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
 
+  const brandName = appName && appName !== "مدير الملفات" && appName !== "File Manager" ? appName : t("app.name");
+
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -201,7 +203,7 @@ export function AppShell({
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-md shadow-teal-500/20">
             <HardDrive className="size-5" />
           </span>
-          <span className="truncate text-base font-black tracking-tight">{appName}</span>
+          <span className="truncate text-base font-black tracking-tight">{brandName}</span>
         </Link>
         <button
           type="button"
@@ -343,7 +345,7 @@ export function AppShell({
   // Compact collapsed sidebar (for desktop collapsed icon-rail)
   const collapsedSidebar = (
     <div className="flex h-full flex-col items-center gap-3 overflow-y-auto scrollbar-thin px-2 py-4">
-      <Link href="/" className="flex items-center justify-center" title={appName} aria-label={appName}>
+      <Link href="/" className="flex items-center justify-center" title={brandName} aria-label={brandName}>
         <span className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-lg shadow-teal-500/20 hover:scale-105 transition-transform cursor-pointer">
           <HardDrive className="size-5" />
         </span>

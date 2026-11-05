@@ -20,11 +20,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "DriveDesk — مدير ملفات Google Drive",
+    default: "DriveDesk — File Manager for Google Drive",
     template: "%s · DriveDesk",
   },
   description:
-    "مدير ملفات احترافي متصل بـ Google Drive: رفع، معاينة، طباعة، تنزيل وتنظيم الملفات مع حفظ الإعدادات في PostgreSQL.",
+    "Professional Google Drive file management: upload, preview, print, download, and organize files.",
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },

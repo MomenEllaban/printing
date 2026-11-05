@@ -10,7 +10,7 @@ export async function getLocale(): Promise<Locale> {
   try {
     return normalizeLocale((await getSettings()).general.locale);
   } catch {
-    return "ar";
+    return "en";
   }
 }
 

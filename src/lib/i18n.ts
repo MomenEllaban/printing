@@ -816,5 +816,5 @@ export function isLocale(value: string | undefined | null): value is Locale {
 }
 
 export function normalizeLocale(value: string | undefined | null): Locale {
-  return isLocale(value) ? value : "ar";
+  return isLocale(value) ? value : "en";
 }

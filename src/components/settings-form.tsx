@@ -336,8 +336,8 @@ export function SettingsForm({ initialValues, connection, environment, initialTa
             </Field>
             <Field label={t("settings.language")} htmlFor="default-locale">
               <Select id="default-locale" value={text("general.locale")} onChange={(event) => setValue("general.locale", event.target.value)}>
-                <option value="ar">{t("settings.languageAr")}</option>
                 <option value="en">{t("settings.languageEn")}</option>
+                <option value="ar">{t("settings.languageAr")}</option>
               </Select>
             </Field>
             <Field label={t("settings.theme")} htmlFor="default-theme">

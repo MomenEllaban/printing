@@ -115,6 +115,7 @@ function sortLabelKey(sort: string) {
 }
 
 function ExamBadges({ name }: { name: string }) {
+  const { locale } = useI18n();
   const info = parseExamInfoFromFileName(name);
   if (!info) return null;
 
@@ -127,22 +128,22 @@ function ExamBadges({ name }: { name: string }) {
       )}
       {info.registerType === "proctor" && (
         <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-          📋 Proctor Register
+          📋 {locale === "ar" ? "كشف مراقبين" : "Proctor Register"}
         </span>
       )}
       {info.registerType === "student" && (
         <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-          🎓 Student Register
+          🎓 {locale === "ar" ? "كشف طلاب" : "Student Register"}
         </span>
       )}
       {info.floor && (
         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-          دور {info.floor}
+          {locale === "ar" ? `دور ${info.floor}` : `Floor ${info.floor}`}
         </span>
       )}
       {info.room && (
         <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 dark:text-cyan-300">
-          روم {info.room}
+          {locale === "ar" ? `روم ${info.room}` : `Room ${info.room}`}
         </span>
       )}
     </div>

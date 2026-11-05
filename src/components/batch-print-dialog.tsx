@@ -68,7 +68,9 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
               <span>{t("batch.printUnified")}</span>
             </div>
             <p className="text-xs text-muted">
-              عرض جميع المستندات في صفحة طباعة واحدة مع فواصل صفحات تلقائية.
+              {locale === "ar"
+                ? "عرض جميع المستندات في صفحة طباعة واحدة مع فواصل صفحات تلقائية."
+                : "Display all documents in a unified print view with automatic page breaks."}
             </p>
           </button>
 
@@ -82,7 +84,9 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
               <span>{t("batch.printTabs")}</span>
             </div>
             <p className="text-xs text-muted">
-              فتح كل ملف في تبويب طباعة مستقل للمعاينة الفردية.
+              {locale === "ar"
+                ? "فتح كل ملف في تبويب طباعة مستقل للمعاينة الفردية."
+                : "Open each document in a separate browser tab for individual preview."}
             </p>
           </button>
         </div>
@@ -90,7 +94,9 @@ export function BatchPrintDialog({ open, onClose, selectedItems }: BatchPrintDia
         {/* Selected Files List Preview */}
         <div className="space-y-2">
           <span className="text-xs font-semibold text-muted block">
-            المستندات المختارة ({printFiles.length}):
+            {locale === "ar"
+              ? `المستندات المختارة (${printFiles.length}):`
+              : `Selected documents (${printFiles.length}):`}
           </span>
           <ul className="scrollbar-thin max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-border bg-surface-soft p-2">
             {printFiles.map((item, index) => (

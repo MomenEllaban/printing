@@ -4,8 +4,8 @@ import { DEFAULT_ALLOWED_EXTENSIONS } from "./file-utils";
 import type { AppSettings } from "./types";
 
 export const SETTINGS_DEFINITIONS = [
-  { key: "general.appName", category: "general", schema: z.string().trim().min(1).max(60), defaultValue: "مدير الملفات" },
-  { key: "general.locale", category: "general", schema: z.enum(["ar", "en"]), defaultValue: "ar" },
+  { key: "general.appName", category: "general", schema: z.string().trim().min(1).max(60), defaultValue: "File Manager" },
+  { key: "general.locale", category: "general", schema: z.enum(["ar", "en"]), defaultValue: "en" },
   { key: "general.theme", category: "general", schema: z.enum(["light", "dark", "system"]), defaultValue: "system" },
   { key: "general.defaultView", category: "general", schema: z.enum(["grid", "list"]), defaultValue: "grid" },
   {
