@@ -7,6 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { buildExamFileName, resolveAvailableName, resolveUploadFolder, uploadSessionRequest, validateUploadInput } from "@/lib/upload";
 import { isValidFileName, mimeForFileName } from "@/lib/file-utils";
 import { AppError } from "@/lib/errors";
+import { getActiveProfile } from "@/lib/profile-server";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,23 @@ export async function POST(request: Request) {
       : rawMime;
     const settings = await getSettings();
     validateUploadInput({ name: body.name, mimeType, size: body.size }, settings);
+
+    // Enforce role isolation so Dina and Nabil never mix up
+    const activeProfile = await getActiveProfile();
+    if (activeProfile.id === "dina") {
+      body.examMetadata = {
+        ...(body.examMetadata || {}),
+        enabled: true,
+        registerType: "proctor",
+        room: undefined,
+      };
+    } else if (activeProfile.id === "nabil") {
+      body.examMetadata = {
+        ...(body.examMetadata || {}),
+        enabled: true,
+        registerType: "student",
+      };
+    }
 
     const isExam = Boolean(body.examMetadata?.enabled);
     const targetName = isExam ? buildExamFileName(body.name, body.examMetadata) : body.name;

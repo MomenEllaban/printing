@@ -38,6 +38,7 @@ import { FolderPicker } from "./folder-picker";
 import { FileIcon } from "./file-icon";
 import { BatchPrintDialog } from "./batch-print-dialog";
 import { useI18n } from "./locale-provider";
+import { useActiveProfile } from "./profile-provider";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/file-utils";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -207,6 +208,7 @@ export function FileBrowser({
 }: FileBrowserProps) {
   const { t, locale, dir } = useI18n();
   const router = useRouter();
+  const { activeProfile } = useActiveProfile();
 
   const [items, setItems] = useState<DriveItem[]>([]);
   const [nextToken, setNextToken] = useState<string | null>(null);
@@ -622,6 +624,14 @@ export function FileBrowser({
 
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return;
+    if (!activeProfile.canDelete) {
+      toast.error(
+        locale === "ar"
+          ? "حذف الملفات متاح لحساب المدير المسؤول (البرنتنج) فقط"
+          : "Deleting files is restricted to Admin (Printing)",
+      );
+      return;
+    }
     if (!requireWritable()) return;
     setBatchDeleting(true);
     try {
@@ -998,7 +1008,16 @@ export function FileBrowser({
   };
 
   const submitDelete = async () => {
-    if (!deleteTarget || !requireWritable()) return;
+    if (!deleteTarget) return;
+    if (!activeProfile.canDelete) {
+      toast.error(
+        locale === "ar"
+          ? "حذف الملفات متاح لحساب المدير المسؤول (البرنتنج) فقط"
+          : "Deleting files is restricted to Admin (Printing)",
+      );
+      return;
+    }
+    if (!requireWritable()) return;
     setDeleting(true);
     try {
       const response = await fetch(`/api/drive/files/${deleteTarget.id}`, { method: "DELETE" });
@@ -1621,14 +1640,16 @@ export function FileBrowser({
               <span className="hidden sm:inline">{t("batch.downloadSelected")}</span>
             </Button>
 
-            <Button
-              variant="danger"
-              onClick={() => setBatchDeleteOpen(true)}
-              className="text-xs py-1.5 px-2 sm:px-3 flex items-center gap-1"
-            >
-              <Trash2 className="size-3.5 sm:size-4" />
-              <span className="hidden sm:inline">{t("batch.deleteSelected")}</span>
-            </Button>
+            {activeProfile.canDelete && (
+              <Button
+                variant="danger"
+                onClick={() => setBatchDeleteOpen(true)}
+                className="text-xs py-1.5 px-2 sm:px-3 flex items-center gap-1 cursor-pointer"
+              >
+                <Trash2 className="size-3.5 sm:size-4" />
+                <span className="hidden sm:inline">{t("batch.deleteSelected")}</span>
+              </Button>
+            )}
 
             <button
               type="button"
@@ -1690,6 +1711,7 @@ function ItemMenu({
   demo: boolean;
 }) {
   const { t, locale } = useI18n();
+  const { activeProfile } = useActiveProfile();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -1917,20 +1939,24 @@ function ItemMenu({
                 <span>{t("common.openInDrive")}</span>
               </a>
             )}
-            <div className="my-1 border-t border-border/60" />
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-item menu-item-danger text-rose-600 dark:text-rose-400 hover:bg-rose-500/10"
-              onClick={() => {
-                onDelete();
-                onClose();
-              }}
-              disabled={demo}
-            >
-              <Trash2 className="size-4" />
-              <span>{t("common.delete")}</span>
-            </button>
+            {activeProfile.canDelete && (
+              <>
+                <div className="my-1 border-t border-border/60" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item menu-item-danger text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                  onClick={() => {
+                    onDelete();
+                    onClose();
+                  }}
+                  disabled={demo}
+                >
+                  <Trash2 className="size-4" />
+                  <span>{t("common.delete")}</span>
+                </button>
+              </>
+            )}
           </div>
         </>,
         document.body,

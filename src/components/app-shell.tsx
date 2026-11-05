@@ -25,6 +25,8 @@ import type { TranslationKey } from "@/lib/i18n";
 import type { Locale } from "@/lib/types";
 import { useI18n } from "./locale-provider";
 import { ThemeToggle } from "./theme-toggle";
+import { useActiveProfile } from "./profile-provider";
+import { AccountMenu } from "./account-menu";
 
 export interface ShellConnection {
   connected: boolean;
@@ -146,6 +148,7 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const { t, setLocale } = useI18n();
+  const { activeProfile } = useActiveProfile();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
@@ -288,7 +291,7 @@ export function AppShell({
                 </Link>
               );
             })}
-            {(() => {
+            {activeProfile.isAdmin && (() => {
               const Icon = settingsItem.icon;
               const active = isActive(pathname, settingsItem);
               return (
@@ -321,6 +324,34 @@ export function AppShell({
       </nav>
 
       <div className="mt-auto space-y-2 pt-3 border-t border-border/40">
+        {/* Active Profile Card in Sidebar */}
+        <div className="rounded-xl border border-border/60 bg-surface-soft p-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-lg text-sm shadow-xs",
+                activeProfile.color,
+              )}
+            >
+              {activeProfile.avatar}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-foreground truncate">
+                {locale === "ar" ? activeProfile.nameAr : activeProfile.nameEn}
+              </p>
+              <p className="text-[10px] text-muted truncate">
+                {locale === "ar" ? activeProfile.badgeAr : activeProfile.badgeEn}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/login"
+            className="text-[10px] font-bold text-accent hover:underline shrink-0 cursor-pointer"
+            title={locale === "ar" ? "تبديل الحساب" : "Switch Account"}
+          >
+            {locale === "ar" ? "تبديل" : "Switch"}
+          </Link>
+        </div>
         {!connection.connected && !connection.demo && (
           <Link href="/settings?tab=drive" className="btn-primary mb-2 w-full py-2 text-xs">
             {t("common.connectGoogle")}
@@ -430,8 +461,8 @@ export function AppShell({
         })}
       </nav>
 
-      <div className="mt-auto pt-2 flex flex-col items-center">
-        {(() => {
+      <div className="mt-auto pt-2 flex flex-col items-center gap-2">
+        {activeProfile.isAdmin && (() => {
           const Icon = settingsItem.icon;
           const active = isActive(pathname, settingsItem);
           return (
@@ -460,6 +491,19 @@ export function AppShell({
             </Link>
           );
         })()}
+
+        {/* Collapsed active profile badge */}
+        <Link
+          href="/login"
+          title={`${locale === "ar" ? activeProfile.nameAr : activeProfile.nameEn} (${locale === "ar" ? activeProfile.badgeAr : activeProfile.badgeEn})`}
+          aria-label="Switch Profile"
+          className={cn(
+            "flex size-9 items-center justify-center rounded-xl text-sm shadow-xs transition-transform hover:scale-110 cursor-pointer",
+            activeProfile.color,
+          )}
+        >
+          {activeProfile.avatar}
+        </Link>
       </div>
     </div>
   );
@@ -542,24 +586,27 @@ export function AppShell({
               </span>
             </form>
 
-            <div className="ms-auto flex items-center gap-1 sm:gap-1.5">
+            <div className="ms-auto flex items-center gap-1.5 sm:gap-2">
+              <AccountMenu />
               <button
                 type="button"
-                className="icon-btn text-[11px] font-bold"
+                className="icon-btn text-[11px] font-bold cursor-pointer"
                 onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
                 title={locale === "ar" ? "English" : "العربية"}
               >
                 {locale === "ar" ? "EN" : "ع"}
               </button>
               <ThemeToggle />
-              <Link
-                href="/settings"
-                className="icon-btn size-9 hover:bg-surface-soft"
-                title={t("nav.settings")}
-                aria-label={t("nav.settings")}
-              >
-                <Settings className="size-4.5 text-muted hover:text-foreground" />
-              </Link>
+              {activeProfile.isAdmin && (
+                <Link
+                  href="/settings"
+                  className="icon-btn size-9 hover:bg-surface-soft cursor-pointer"
+                  title={t("nav.settings")}
+                  aria-label={t("nav.settings")}
+                >
+                  <Settings className="size-4.5 text-muted hover:text-foreground" />
+                </Link>
+              )}
             </div>
           </div>
         </header>

@@ -8,6 +8,7 @@ import { isDemoEnabled } from "@/lib/demo";
 import { AppError } from "@/lib/errors";
 import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/api-utils";
 import { invalidateCache } from "@/lib/ttl-cache";
+import { getActiveProfile } from "@/lib/profile-server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,14 @@ export async function POST(request: Request) {
       throw new AppError("Demo data is read-only. Connect Google Drive to manage files.", {
         status: 409,
         code: "invalidRequest",
+      });
+    }
+
+    const activeProfile = await getActiveProfile();
+    if (!activeProfile.canDelete) {
+      throw new AppError("حذف الملفات متاح لحساب المدير المسؤول (البرنتنج) فقط", {
+        status: 403,
+        code: "forbidden",
       });
     }
 

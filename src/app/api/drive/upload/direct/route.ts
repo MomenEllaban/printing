@@ -9,6 +9,7 @@ import { AppError } from "@/lib/errors";
 import { toDriveItem } from "@/lib/drive";
 import { syncDriveItems } from "@/lib/metadata";
 import { invalidateCache } from "@/lib/ttl-cache";
+import { getActiveProfile } from "@/lib/profile-server";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,23 @@ export async function POST(request: Request) {
 
     const settings = await getSettings();
     validateUploadInput({ name, mimeType, size }, settings);
+
+    // Enforce role isolation so Dina and Nabil never mix up
+    const activeProfile = await getActiveProfile();
+    if (activeProfile.id === "dina") {
+      examMetadata = {
+        ...(examMetadata || {}),
+        enabled: true,
+        registerType: "proctor",
+        room: undefined,
+      };
+    } else if (activeProfile.id === "nabil") {
+      examMetadata = {
+        ...(examMetadata || {}),
+        enabled: true,
+        registerType: "student",
+      };
+    }
 
     if (size > MAX_DIRECT_SERVER_BYTES) {
       throw new AppError("File is too large for direct server fallback upload (max 4.2 MB).", {

@@ -10,6 +10,7 @@ import { AppError } from "@/lib/errors";
 import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/api-utils";
 import { isValidFileName } from "@/lib/file-utils";
 import { invalidateCache } from "@/lib/ttl-cache";
+import { getActiveProfile } from "@/lib/profile-server";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +120,15 @@ export async function DELETE(request: Request, context: Context) {
   try {
     await requireSession(request, { mutating: true });
     await demoGuard();
+
+    const activeProfile = await getActiveProfile();
+    if (!activeProfile.canDelete) {
+      throw new AppError("حذف الملفات متاح لحساب المدير المسؤول (البرنتنج) فقط", {
+        status: 403,
+        code: "forbidden",
+      });
+    }
+
     enforceRateLimit(request, "drive:delete", 30, 60_000);
     const { fileId } = await context.params;
     const { drive, rootFolderId } = await getDriveContextWithRoot();

@@ -1,11 +1,23 @@
+import { redirect } from "next/navigation";
 import { AppShell, type ShellConnection } from "@/components/app-shell";
+import { ProfileProvider } from "@/components/profile-provider";
 import { getConnection } from "@/lib/auth";
 import { isDemoEnabled } from "@/lib/demo";
 import { getLocale } from "@/lib/locale-server";
 import { getSettings } from "@/lib/settings";
+import { getActiveProfile, getRawProfileCookie } from "@/lib/profile-server";
 
 export default async function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [locale, settings] = await Promise.all([getLocale(), getSettings()]);
+  const rawProfile = await getRawProfileCookie();
+  if (!rawProfile) {
+    redirect("/login");
+  }
+
+  const [locale, settings, profile] = await Promise.all([
+    getLocale(),
+    getSettings(),
+    getActiveProfile(),
+  ]);
 
   let connection = null;
   try {
@@ -24,8 +36,10 @@ export default async function DashboardLayout({ children }: Readonly<{ children:
   };
 
   return (
-    <AppShell appName={settings.general.appName} locale={locale} connection={shellConnection}>
-      {children}
-    </AppShell>
+    <ProfileProvider initialProfile={profile}>
+      <AppShell appName={settings.general.appName} locale={locale} connection={shellConnection}>
+        {children}
+      </AppShell>
+    </ProfileProvider>
   );
 }
