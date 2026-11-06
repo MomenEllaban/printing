@@ -17,6 +17,8 @@ import {
   ExternalLink,
   Eye,
   FolderPlus,
+  FolderMinus,
+  FolderTree,
   Grid2X2,
   List,
   Loader2,
@@ -71,12 +73,12 @@ function subscribeViewChange(callback: () => void) {
   return () => window.removeEventListener("storage", callback);
 }
 
-function getStoredView(): "grid" | "list" | null {
+function getStoredView(): "grid" | "list" {
   try {
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
-    return stored === "grid" || stored === "list" ? stored : null;
+    return stored === "grid" || stored === "list" ? stored : "list";
   } catch {
-    return null;
+    return "list";
   }
 }
 
@@ -218,9 +220,9 @@ export function FileBrowser({
   const [search, setSearch] = useState(initialSearch ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch?.trim() ?? "");
   const [sort, setSort] = useState(initialSort);
-  const [view, setView] = useState<"grid" | "list">(initialView);
-  const storedView = useSyncExternalStore(subscribeViewChange, getStoredView, () => null);
-  const effectiveView = storedView ?? view;
+  const [view, setView] = useState<"grid" | "list">(initialView || "list");
+  const storedView = useSyncExternalStore(subscribeViewChange, getStoredView, () => "list");
+  const effectiveView = storedView ?? view ?? "list";
   const [categoryFilter, setCategoryFilter] = useState<"" | FileCategory>(category ?? "");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -230,9 +232,15 @@ export function FileBrowser({
   const [menuId, setMenuId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(Boolean(autoOpenUpload));
+  const [uploadTargetFolder, setUploadTargetFolder] = useState<{ id: string; name: string } | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderTargetParent, setNewFolderTargetParent] = useState<{ id: string; name: string } | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Drag & drop state for moving files and folders
+  const [draggedItem, setDraggedItem] = useState<DriveItem | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<DriveItem | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
@@ -363,11 +371,194 @@ export function FileBrowser({
     setDescendantsCache({});
   }, [folderId]);
 
+  // Auto-expand folders by default in list view so everything is visible
+  useEffect(() => {
+    if (items.length > 0 && effectiveView === "list") {
+      const topFolders = items.filter((item) => item.isFolder);
+      if (topFolders.length > 0) {
+        setExpandedFolderIds((prev) => {
+          const next = new Set(prev);
+          let changed = false;
+          topFolders.forEach((f) => {
+            if (!next.has(f.id)) {
+              next.add(f.id);
+              changed = true;
+              if (!folderChildren[f.id]) {
+                void fetchFolderChildren(f.id);
+              }
+            }
+          });
+          return changed ? next : prev;
+        });
+      }
+    }
+  }, [items, effectiveView, fetchFolderChildren, folderChildren]);
+
   useEffect(() => {
     if (expandedFolderIds.size > 0) {
       expandedFolderIds.forEach((id) => void fetchFolderChildren(id));
     }
   }, [refreshKey, fetchFolderChildren]);
+
+  const totalKnownFolders = useMemo(() => {
+    const ids = new Set<string>();
+    items.filter((i) => i.isFolder).forEach((i) => ids.add(i.id));
+    Object.values(folderChildren).forEach((children) => {
+      children.filter((c) => c.isFolder).forEach((c) => ids.add(c.id));
+    });
+    return ids;
+  }, [items, folderChildren]);
+
+  const allExpanded =
+    totalKnownFolders.size > 0 && Array.from(totalKnownFolders).every((id) => expandedFolderIds.has(id));
+
+  const expandAllFolders = useCallback(() => {
+    const allFolderIds = new Set<string>();
+    items.filter((i) => i.isFolder).forEach((i) => allFolderIds.add(i.id));
+    Object.values(folderChildren).forEach((children) => {
+      children.filter((c) => c.isFolder).forEach((c) => allFolderIds.add(c.id));
+    });
+    setExpandedFolderIds(allFolderIds);
+    allFolderIds.forEach((id) => {
+      if (!folderChildren[id]) {
+        void fetchFolderChildren(id);
+      }
+    });
+  }, [items, folderChildren, fetchFolderChildren]);
+
+  const collapseAllFolders = useCallback(() => {
+    setExpandedFolderIds(new Set());
+  }, []);
+
+  const requireWritable = useCallback((): boolean => {
+    if (demoActive) {
+      toast.error(t("common.demoReadOnly"));
+      return false;
+    }
+    return true;
+  }, [demoActive, t]);
+
+  const handleOpenNewSubFolder = useCallback(
+    (folder: DriveItem) => {
+      if (!requireWritable()) return;
+      setNewFolderTargetParent({ id: folder.id, name: folder.name });
+      setNewFolderName("");
+      setNewFolderOpen(true);
+    },
+    [requireWritable],
+  );
+
+  const handleOpenUploadForFolder = useCallback(
+    (folder: DriveItem) => {
+      if (!requireWritable()) return;
+      setUploadTargetFolder({ id: folder.id, name: folder.name });
+      setUploadOpen(true);
+    },
+    [requireWritable],
+  );
+
+  const handleDragStartItem = useCallback(
+    (e: React.DragEvent, item: DriveItem) => {
+      if (demoActive) return;
+      e.stopPropagation();
+      setDraggedItem(item);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", item.id);
+    },
+    [demoActive],
+  );
+
+  const handleDragEndItem = useCallback(() => {
+    setDraggedItem(null);
+    setDragOverFolderId(null);
+  }, []);
+
+  const handleDragOverFolder = useCallback(
+    (e: React.DragEvent, folder: DriveItem | { id: string; name: string }) => {
+      if (!draggedItem || draggedItem.id === folder.id) return;
+      if (draggedItem.parentId === folder.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      if (dragOverFolderId !== folder.id) {
+        setDragOverFolderId(folder.id);
+      }
+    },
+    [draggedItem, dragOverFolderId],
+  );
+
+  const handleDragLeaveFolder = useCallback(
+    (e: React.DragEvent, folder: DriveItem | { id: string; name: string }) => {
+      e.stopPropagation();
+      if (dragOverFolderId === folder.id) {
+        setDragOverFolderId(null);
+      }
+    },
+    [dragOverFolderId],
+  );
+
+  const handleDropOnFolder = useCallback(
+    async (e: React.DragEvent, targetFolder: { id: string; name: string }) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverFolderId(null);
+      if (!draggedItem || draggedItem.id === targetFolder.id) return;
+      if (!requireWritable()) return;
+
+      if (draggedItem.parentId === targetFolder.id) {
+        toast.info(
+          locale === "ar"
+            ? `العنصر "${draggedItem.name}" موجود بالفعل داخل مجلد "${targetFolder.name}"`
+            : `"${draggedItem.name}" is already in "${targetFolder.name}"`,
+        );
+        return;
+      }
+
+      const itemToMove = draggedItem;
+      setDraggedItem(null);
+
+      const toastId = toast.loading(
+        locale === "ar"
+          ? `جاري نقل "${itemToMove.name}" إلى مجلد "${targetFolder.name}"...`
+          : `Moving "${itemToMove.name}" to "${targetFolder.name}"...`,
+      );
+
+      try {
+        const response = await fetch(`/api/drive/files/${itemToMove.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ parentId: targetFolder.id }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || t("common.error"));
+
+        toast.success(
+          locale === "ar"
+            ? `تم نقل "${itemToMove.name}" إلى مجلد "${targetFolder.name}" بنجاح!`
+            : `Moved "${itemToMove.name}" to "${targetFolder.name}" successfully!`,
+          { id: toastId },
+        );
+
+        setItems((current) => current.filter((i) => i.id !== itemToMove.id));
+
+        setFolderChildren((current) => {
+          const next: Record<string, DriveItem[]> = {};
+          for (const [fId, children] of Object.entries(current)) {
+            next[fId] = children.filter((c) => c.id !== itemToMove.id);
+          }
+          return next;
+        });
+
+        setExpandedFolderIds((prev) => new Set(prev).add(targetFolder.id));
+        void fetchFolderChildren(targetFolder.id);
+
+        refresh();
+      } catch (cause) {
+        toast.error(cause instanceof Error ? cause.message : t("common.error"), { id: toastId });
+      }
+    },
+    [draggedItem, fetchFolderChildren, locale, requireWritable, t],
+  );
 
   const allKnownItems = useMemo(() => {
     const map = new Map<string, DriveItem>();
@@ -912,14 +1103,6 @@ export function FileBrowser({
     }
   };
 
-  const requireWritable = (): boolean => {
-    if (demoActive) {
-      toast.error(t("common.demoReadOnly"));
-      return false;
-    }
-    return true;
-  };
-
   const toggleFavorite = async (item: DriveItem) => {
     if (favoriteBusy) return;
     setFavoriteBusy(item.id);
@@ -966,13 +1149,14 @@ export function FileBrowser({
     if (!requireWritable()) return;
     if (!newFolderName.trim()) return;
     setCreating(true);
+    const targetParentId = newFolderTargetParent?.id || (mode === "all" && folderId ? folderId : undefined);
     try {
       const response = await fetch("/api/drive/folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newFolderName.trim(),
-          parentId: mode === "all" && folderId ? folderId : undefined,
+          parentId: targetParentId,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -980,6 +1164,12 @@ export function FileBrowser({
       toast.success(t("common.folderName"));
       setNewFolderName("");
       setNewFolderOpen(false);
+
+      if (newFolderTargetParent?.id) {
+        setExpandedFolderIds((prev) => new Set(prev).add(newFolderTargetParent.id));
+        void fetchFolderChildren(newFolderTargetParent.id);
+      }
+      setNewFolderTargetParent(null);
       refresh();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : t("common.error"));
@@ -1139,10 +1329,22 @@ export function FileBrowser({
               <button
                 type="button"
                 onClick={() => navigateFolder(crumb.id)}
+                onDragOver={(e) => handleDragOverFolder(e, crumb)}
+                onDragLeave={(e) => handleDragLeaveFolder(e, crumb)}
+                onDrop={(e) => handleDropOnFolder(e, crumb)}
                 className={cn(
-                  "rounded-lg px-1.5 py-0.5 hover:bg-surface-strong hover:text-foreground cursor-pointer",
+                  "rounded-lg px-2 py-0.5 hover:bg-surface-strong hover:text-foreground cursor-pointer transition-all",
                   currentFolder?.id === crumb.id && "font-semibold text-foreground",
+                  dragOverFolderId === crumb.id &&
+                    "bg-accent/20 ring-2 ring-accent text-accent font-bold scale-105 shadow-xs",
                 )}
+                title={
+                  draggedItem && currentFolder?.id !== crumb.id
+                    ? locale === "ar"
+                      ? `إفلات لنقل "${draggedItem.name}" إلى مجلد "${crumb.name}"`
+                      : `Drop to move "${draggedItem.name}" into "${crumb.name}"`
+                    : undefined
+                }
               >
                 {crumb.name}
               </button>
@@ -1232,6 +1434,40 @@ export function FileBrowser({
               <List className="size-4" />
             </button>
           </div>
+
+          {effectiveView === "list" && totalKnownFolders.size > 0 && (
+            <button
+              type="button"
+              onClick={allExpanded ? collapseAllFolders : expandAllFolders}
+              className={cn(
+                "flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer shadow-2xs",
+                allExpanded
+                  ? "border-accent/40 bg-accent/10 text-accent hover:bg-accent/15"
+                  : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
+              )}
+              title={
+                allExpanded
+                  ? locale === "ar"
+                    ? "طي جميع المجلدات"
+                    : "Collapse all folders"
+                  : locale === "ar"
+                    ? "توسيع وعرض جميع المجلدات ومحتوياتها"
+                    : "Expand all folders"
+              }
+            >
+              {allExpanded ? (
+                <>
+                  <FolderMinus className="size-3.5 text-accent" />
+                  <span className="hidden sm:inline">{locale === "ar" ? "طي الكل" : "Collapse All"}</span>
+                </>
+              ) : (
+                <>
+                  <FolderTree className="size-3.5" />
+                  <span className="hidden sm:inline">{locale === "ar" ? "توسيع الكل" : "Expand All"}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {(search || categoryFilter || printFilter !== "all" || (mode === "all" && folderId)) && (
@@ -1321,9 +1557,24 @@ export function FileBrowser({
             return (
               <div
                 key={item.id}
+                draggable={!demoActive}
+                onDragStart={(e) => handleDragStartItem(e, item)}
+                onDragEnd={handleDragEndItem}
+                onDragOver={(e) => {
+                  if (item.isFolder) handleDragOverFolder(e, item);
+                }}
+                onDragLeave={(e) => {
+                  if (item.isFolder) handleDragLeaveFolder(e, item);
+                }}
+                onDrop={(e) => {
+                  if (item.isFolder) handleDropOnFolder(e, item);
+                }}
                 onClick={() => openItem(item)}
                 className={cn(
-                  "file-card relative transition-all cursor-pointer group",
+                  "file-card relative transition-all cursor-pointer group select-none",
+                  dragOverFolderId === item.id &&
+                    "ring-2 ring-accent border-accent bg-accent/15 scale-[1.02] shadow-lg",
+                  draggedItem?.id === item.id && "opacity-40 border-dashed",
                   selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
                   !selectedIds.has(item.id) &&
                   isPrinted &&
@@ -1333,6 +1584,11 @@ export function FileBrowser({
                   "border-amber-500/40 bg-amber-500/[0.03] hover:border-amber-500/60",
                 )}
               >
+                {dragOverFolderId === item.id && (
+                  <div className="rounded-lg bg-accent px-2 py-1 text-center text-xs font-bold text-white shadow-xs animate-pulse">
+                    📥 {locale === "ar" ? "إفلات للنقل هنا" : "Drop to move here"}
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5">
                     <CheckboxInput
@@ -1413,10 +1669,40 @@ export function FileBrowser({
                   </div>
                 </div>
 
-                <div className="mt-auto flex items-center gap-1.5 pt-2" onClick={(e) => e.stopPropagation()}>
+                <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2" onClick={(e) => e.stopPropagation()}>
                   <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border cursor-pointer">
                     {item.isFolder ? t("common.open") : t("common.preview")}
                   </button>
+                  {item.isFolder && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenNewSubFolder(item)}
+                        className="chip border border-accent/30 text-accent hover:bg-accent/10 flex items-center gap-1 cursor-pointer font-medium"
+                        title={
+                          locale === "ar"
+                            ? `إضافة مجلد فرعي داخل "${item.name}"`
+                            : `Add subfolder inside "${item.name}"`
+                        }
+                      >
+                        <FolderPlus className="size-3 text-accent" />
+                        <span>{locale === "ar" ? "+ مجلد" : "+ Folder"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenUploadForFolder(item)}
+                        className="chip border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 cursor-pointer font-medium"
+                        title={
+                          locale === "ar"
+                            ? `رفع ملفات مباشرة داخل "${item.name}"`
+                            : `Upload files into "${item.name}"`
+                        }
+                      >
+                        <CloudUpload className="size-3 text-emerald-600 dark:text-emerald-400" />
+                        <span>{locale === "ar" ? "+ ملف" : "+ File"}</span>
+                      </button>
+                    </>
+                  )}
                   {!item.isFolder && (
                     <a
                       href={`/print/${item.id}`}
@@ -1506,6 +1792,15 @@ export function FileBrowser({
                       setDeleteTarget(target);
                       setMenuId(null);
                     }}
+                    onNewSubFolder={handleOpenNewSubFolder}
+                    onUploadToFolder={handleOpenUploadForFolder}
+                    draggedItem={draggedItem}
+                    dragOverFolderId={dragOverFolderId}
+                    onDragStartItem={handleDragStartItem}
+                    onDragEndItem={handleDragEndItem}
+                    onDragOverFolder={handleDragOverFolder}
+                    onDragLeaveFolder={handleDragLeaveFolder}
+                    onDropOnFolder={handleDropOnFolder}
                   />
                 ))}
               </tbody>
@@ -1531,24 +1826,48 @@ export function FileBrowser({
 
       <UploadDialog
         open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        targetFolderId={mode === "all" ? folderId : null}
-        targetFolderName={mode === "all" ? currentFolder?.name ?? null : null}
+        onClose={() => {
+          setUploadOpen(false);
+          setUploadTargetFolder(null);
+        }}
+        targetFolderId={uploadTargetFolder?.id ?? (mode === "all" ? folderId : null)}
+        targetFolderName={uploadTargetFolder?.name ?? (mode === "all" ? currentFolder?.name ?? null : null)}
         demo={demoActive}
         maxUploadSizeMb={maxUploadSizeMb}
         allowedExtensions={allowedExtensions}
         allowMultiple={allowMultiple}
-        onUploaded={refresh}
+        onUploaded={() => {
+          if (uploadTargetFolder?.id) {
+            setExpandedFolderIds((prev) => new Set(prev).add(uploadTargetFolder.id));
+            void fetchFolderChildren(uploadTargetFolder.id);
+          }
+          refresh();
+        }}
       />
 
       <Modal
         open={newFolderOpen}
-        onClose={() => setNewFolderOpen(false)}
-        title={t("common.newFolder")}
+        onClose={() => {
+          setNewFolderOpen(false);
+          setNewFolderTargetParent(null);
+        }}
+        title={
+          newFolderTargetParent
+            ? locale === "ar"
+              ? `مجلد جديد داخل "${newFolderTargetParent.name}"`
+              : `New folder inside "${newFolderTargetParent.name}"`
+            : t("common.newFolder")
+        }
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setNewFolderOpen(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setNewFolderOpen(false);
+                setNewFolderTargetParent(null);
+              }}
+            >
               {t("common.cancel")}
             </Button>
             <Button onClick={() => void submitNewFolder()} loading={creating} disabled={!newFolderName.trim()}>
@@ -1571,6 +1890,20 @@ export function FileBrowser({
           placeholder={t("common.folderName")}
         />
       </Modal>
+
+      {/* Floating Drag Helper Pill */}
+      {draggedItem && (
+        <div className="fixed bottom-6 start-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 rounded-full border border-accent bg-surface-strong/95 px-5 py-2.5 text-xs font-semibold text-foreground shadow-2xl backdrop-blur-md animate-bounce pointer-events-none">
+          <span className="flex size-6 items-center justify-center rounded-full bg-accent text-white text-xs">
+            {draggedItem.isFolder ? "📁" : "📄"}
+          </span>
+          <span>
+            {locale === "ar"
+              ? `اسحب "${draggedItem.name}" وأفلته فوق أي مجلد أو مسار لنقله`
+              : `Drag "${draggedItem.name}" and drop onto any folder or breadcrumb to move it`}
+          </span>
+        </div>
+      )}
 
       <Modal
         open={Boolean(renameTarget)}
@@ -2025,6 +2358,15 @@ interface TreeRowProps {
   onRename: (item: DriveItem) => void;
   onMove: (item: DriveItem) => void;
   onDelete: (item: DriveItem) => void;
+  onNewSubFolder: (folder: DriveItem) => void;
+  onUploadToFolder: (folder: DriveItem) => void;
+  draggedItem: DriveItem | null;
+  dragOverFolderId: string | null;
+  onDragStartItem: (e: React.DragEvent, item: DriveItem) => void;
+  onDragEndItem: () => void;
+  onDragOverFolder: (e: React.DragEvent, folder: DriveItem) => void;
+  onDragLeaveFolder: (e: React.DragEvent, folder: DriveItem) => void;
+  onDropOnFolder: (e: React.DragEvent, folder: DriveItem) => void;
 }
 
 function TreeRow({
@@ -2049,6 +2391,15 @@ function TreeRow({
   onRename,
   onMove,
   onDelete,
+  onNewSubFolder,
+  onUploadToFolder,
+  draggedItem,
+  dragOverFolderId,
+  onDragStartItem,
+  onDragEndItem,
+  onDragOverFolder,
+  onDragLeaveFolder,
+  onDropOnFolder,
 }: TreeRowProps) {
   const { t, locale } = useI18n();
   const isPrinted = !item.isFolder && printedIds.has(item.id);
@@ -2072,17 +2423,32 @@ function TreeRow({
   return (
     <Fragment key={item.id}>
       <tr
+        draggable={!demoActive}
+        onDragStart={(e) => onDragStartItem(e, item)}
+        onDragEnd={onDragEndItem}
+        onDragOver={(e) => {
+          if (item.isFolder) onDragOverFolder(e, item);
+        }}
+        onDragLeave={(e) => {
+          if (item.isFolder) onDragLeaveFolder(e, item);
+        }}
+        onDrop={(e) => {
+          if (item.isFolder) onDropOnFolder(e, item);
+        }}
         onClick={() => onOpenItem(item)}
         className={cn(
-          "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-colors cursor-pointer group",
+          "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-all cursor-pointer group select-none",
+          dragOverFolderId === item.id &&
+            "bg-accent/20 border-y-2 border-accent ring-2 ring-accent shadow-md scale-[1.005]",
+          draggedItem?.id === item.id && "opacity-40 border-dashed",
           depth > 0 && "bg-surface-soft/20",
           selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
           !selectedIds.has(item.id) &&
-          isPrinted &&
-          "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
+            isPrinted &&
+            "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
           !selectedIds.has(item.id) &&
-          isPending &&
-          "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
+            isPending &&
+            "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
         )}
       >
         <td className="w-10 px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -2141,9 +2507,16 @@ function TreeRow({
             )}
             <FileIcon category={item.category} extension={item.extension} size="sm" />
             <div className="min-w-0 flex-1">
-              <span className="truncate text-start font-medium group-hover:text-accent block max-w-full text-xs sm:text-sm transition-colors">
-                {item.name}
-              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="truncate text-start font-medium group-hover:text-accent max-w-full text-xs sm:text-sm transition-colors">
+                  {item.name}
+                </span>
+                {dragOverFolderId === item.id && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-xs animate-pulse shrink-0">
+                    📥 {locale === "ar" ? "إفلات للنقل هنا" : "Drop to move here"}
+                  </span>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                 <ExamBadges name={item.name} />
                 {!item.isFolder && (
@@ -2174,7 +2547,38 @@ function TreeRow({
           {formatDate(item.modifiedTime, locale)}
         </td>
         <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-end gap-0.5">
+          <div className="flex items-center justify-end gap-1">
+            {item.isFolder && (
+              <div className="flex items-center gap-1 me-1">
+                <button
+                  type="button"
+                  onClick={() => onNewSubFolder(item)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted hover:text-accent hover:border-accent hover:bg-accent/10 transition-all cursor-pointer shadow-2xs"
+                  title={
+                    locale === "ar"
+                      ? `إضافة مجلد فرعي داخل "${item.name}"`
+                      : `Add subfolder inside "${item.name}"`
+                  }
+                >
+                  <FolderPlus className="size-3.5 text-accent" />
+                  <span className="hidden sm:inline">{locale === "ar" ? "+ مجلد" : "+ Folder"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onUploadToFolder(item)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted hover:text-emerald-600 hover:border-emerald-500 hover:bg-emerald-500/10 transition-all cursor-pointer shadow-2xs"
+                  title={
+                    locale === "ar"
+                      ? `رفع ملفات مباشرة داخل "${item.name}"`
+                      : `Upload files into "${item.name}"`
+                  }
+                >
+                  <CloudUpload className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline">{locale === "ar" ? "+ ملف" : "+ File"}</span>
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => onToggleFavorite(item)}
@@ -2270,6 +2674,15 @@ function TreeRow({
               onRename={onRename}
               onMove={onMove}
               onDelete={onDelete}
+              onNewSubFolder={onNewSubFolder}
+              onUploadToFolder={onUploadToFolder}
+              draggedItem={draggedItem}
+              dragOverFolderId={dragOverFolderId}
+              onDragStartItem={onDragStartItem}
+              onDragEndItem={onDragEndItem}
+              onDragOverFolder={onDragOverFolder}
+              onDragLeaveFolder={onDragLeaveFolder}
+              onDropOnFolder={onDropOnFolder}
             />
           ))
         )
