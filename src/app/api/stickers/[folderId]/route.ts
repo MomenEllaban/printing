@@ -36,7 +36,8 @@ export async function GET(request: Request, context: Context) {
       20,
       Math.min(200, Number(url.searchParams.get("height")) || settings.printing.stickerHeightMm || 50),
     );
-    const paperMode = (url.searchParams.get("paper") as "custom" | "a4") || settings.printing.stickerPaperMode || "custom";
+    const paperMode = (url.searchParams.get("paper") as "custom" | "a4") || settings.printing.stickerPaperMode || "a4";
+    const orientation = (url.searchParams.get("orientation") as "portrait" | "landscape") || settings.printing.stickerOrientation || "landscape";
 
     let breadcrumbs: Array<{ id?: string; name?: string | null }> = [];
 
@@ -97,10 +98,12 @@ export async function GET(request: Request, context: Context) {
 
     const stickerContent = buildStickerContent(breadcrumbs);
     const pdfBytes = await generateStickerPdf({
+      content: stickerContent,
       lines: stickerContent.lines,
       widthMm,
       heightMm,
       paperMode,
+      orientation,
     });
 
     const targetName = breadcrumbs[breadcrumbs.length - 1]?.name || "EST";

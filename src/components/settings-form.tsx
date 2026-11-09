@@ -132,6 +132,7 @@ const PRINT_KEYS = [
   "printing.stickerWidthMm",
   "printing.stickerHeightMm",
   "printing.stickerPaperMode",
+  "printing.stickerOrientation",
 ];
 const STORAGE_KEYS = ["storage.rootFolderId", "storage.organizeByType", "storage.createDefaultFolders"];
 
@@ -521,6 +522,28 @@ export function SettingsForm({ initialValues, connection, environment, initialTa
               {t("settings.stickerSection")}
             </h3>
             <div className="grid gap-4 md:grid-cols-3">
+              <Field label={t("settings.stickerPaperMode")} htmlFor="sticker-paper-mode">
+                <Select
+                  id="sticker-paper-mode"
+                  value={text("printing.stickerPaperMode") || "a4"}
+                  onChange={(event) => setValue("printing.stickerPaperMode", event.target.value)}
+                >
+                  <option value="a4">{t("settings.stickerPaperModeA4")}</option>
+                  <option value="custom">{t("settings.stickerPaperModeCustom")}</option>
+                </Select>
+              </Field>
+              <Field label={t("settings.stickerOrientation")} htmlFor="sticker-orientation">
+                <Select
+                  id="sticker-orientation"
+                  value={text("printing.stickerOrientation") || "landscape"}
+                  onChange={(event) => setValue("printing.stickerOrientation", event.target.value)}
+                >
+                  <option value="landscape">{t("settings.landscape")}</option>
+                  <option value="portrait">{t("settings.portrait")}</option>
+                </Select>
+              </Field>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 mt-4">
               <Field label={t("settings.stickerWidth")} htmlFor="sticker-width" error={errors["printing.stickerWidthMm"]}>
                 <Input
                   id="sticker-width"
@@ -540,16 +563,6 @@ export function SettingsForm({ initialValues, connection, environment, initialTa
                   value={num("printing.stickerHeightMm") || 50}
                   onChange={(event) => setValue("printing.stickerHeightMm", Number(event.target.value))}
                 />
-              </Field>
-              <Field label={t("settings.stickerPaperMode")} htmlFor="sticker-paper-mode">
-                <Select
-                  id="sticker-paper-mode"
-                  value={text("printing.stickerPaperMode") || "custom"}
-                  onChange={(event) => setValue("printing.stickerPaperMode", event.target.value)}
-                >
-                  <option value="custom">{t("settings.stickerPaperModeCustom")}</option>
-                  <option value="a4">{t("settings.stickerPaperModeA4")}</option>
-                </Select>
               </Field>
             </div>
           </div>

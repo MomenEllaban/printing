@@ -7,13 +7,14 @@ describe("buildStickerContent", () => {
   it("A. Generates correct sticker for Exam Root (EST 1)", () => {
     const result = buildStickerContent([{ name: "Root" }, { name: "EST 1" }]);
     expect(result.level).toBe("root");
+    expect(result.rawLines).toEqual(["EST", "EST 1"]);
     expect(result.lines).toEqual(["EST", "EST 1"]);
   });
 
   it("A2. Generates correct sticker for Exam Root (EST 2)", () => {
     const result = buildStickerContent(["EST 2"]);
     expect(result.level).toBe("root");
-    expect(result.lines).toEqual(["EST", "EST 2"]);
+    expect(result.rawLines).toEqual(["EST", "EST 2"]);
   });
 
   it("B. Generates correct sticker for Governorate (Alexandria)", () => {
@@ -23,7 +24,9 @@ describe("buildStickerContent", () => {
       { name: "Alexandria" },
     ]);
     expect(result.level).toBe("governorate");
-    expect(result.lines).toEqual(["EST", "Alexandria"]);
+    expect(result.governorate).toBe("Alexandria");
+    expect(result.rawLines).toEqual(["EST", "Alexandria"]);
+    expect(result.lines).toEqual(["EST", "Governorate : Alexandria"]);
   });
 
   it("C. Generates correct sticker for Test Center (Abu Qir)", () => {
@@ -33,7 +36,9 @@ describe("buildStickerContent", () => {
       "Abu Qir",
     ]);
     expect(result.level).toBe("center");
-    expect(result.lines).toEqual(["EST", "Alexandria", "Abu Qir"]);
+    expect(result.center).toBe("Abu Qir");
+    expect(result.rawLines).toEqual(["EST", "Alexandria", "Abu Qir"]);
+    expect(result.lines).toEqual(["EST", "Governorate : Alexandria", "Center : Abu Qir"]);
   });
 
   it("D. Generates correct sticker for Building (Pharmacy)", () => {
@@ -44,7 +49,14 @@ describe("buildStickerContent", () => {
       "Pharmacy",
     ]);
     expect(result.level).toBe("building");
-    expect(result.lines).toEqual(["EST", "Alexandria", "Abu Qir", "Pharmacy"]);
+    expect(result.building).toBe("Pharmacy");
+    expect(result.rawLines).toEqual(["EST", "Alexandria", "Abu Qir", "Pharmacy"]);
+    expect(result.lines).toEqual([
+      "EST",
+      "Governorate : Alexandria",
+      "Center : Abu Qir",
+      "Building : Pharmacy",
+    ]);
   });
 
   it("E. Generates correct sticker for Floor (2nd Floor)", () => {
@@ -56,12 +68,20 @@ describe("buildStickerContent", () => {
       "2nd Floor",
     ]);
     expect(result.level).toBe("floor");
-    expect(result.lines).toEqual([
+    expect(result.floor).toBe("2nd Floor");
+    expect(result.rawLines).toEqual([
       "EST",
       "Alexandria",
       "Abu Qir",
       "Pharmacy",
       "2nd Floor",
+    ]);
+    expect(result.lines).toEqual([
+      "EST",
+      "Governorate : Alexandria",
+      "Center : Abu Qir",
+      "Building : Pharmacy",
+      "Floor : 2nd Floor",
     ]);
   });
 
@@ -75,13 +95,22 @@ describe("buildStickerContent", () => {
       "204",
     ]);
     expect(result.level).toBe("room");
-    expect(result.lines).toEqual([
+    expect(result.room).toBe("204");
+    expect(result.rawLines).toEqual([
       "EST",
       "Alexandria",
       "Abu Qir",
       "Pharmacy",
       "2nd Floor",
       "204",
+    ]);
+    expect(result.lines).toEqual([
+      "EST",
+      "Governorate : Alexandria",
+      "Center : Abu Qir",
+      "Building : Pharmacy",
+      "Floor : 2nd Floor",
+      "Room : 204",
     ]);
   });
 
@@ -93,7 +122,7 @@ describe("buildStickerContent", () => {
       " 3rd Floor ",
       " 3rd floor MathsClass ",
     ]);
-    expect(result.lines).toEqual([
+    expect(result.rawLines).toEqual([
       "EST",
       "Alexandria",
       "Future International School",
@@ -104,9 +133,9 @@ describe("buildStickerContent", () => {
 });
 
 describe("generateStickerPdf", () => {
-  it("Generates a single-page valid PDF with exact sticker dimensions", async () => {
+  it("Generates a single-page valid PDF with exact custom sticker dimensions", async () => {
     const lines = [
-      "EST",
+      "EST 1",
       "Alexandria",
       "Abu Qir",
       "Pharmacy",
@@ -124,7 +153,6 @@ describe("generateStickerPdf", () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(100);
 
-    // Verify it is a valid PDF
     const pdfDoc = await PDFDocument.load(pdfBytes);
     expect(pdfDoc.getPageCount()).toBe(1);
 
@@ -136,13 +164,12 @@ describe("generateStickerPdf", () => {
     expect(size.height).toBeCloseTo(141.73, 0);
   });
 
-  it("Supports A4 paper mode with centered sticker area", async () => {
-    const lines = ["EST", "Cairo", "Sheraton"];
+  it("Supports A4 landscape paper mode for large clear examination placard", async () => {
+    const lines = ["EST 1", "Cairo", "Sheraton", "Transport & Logistics", "2nd Floor", "201A"];
     const pdfBytes = await generateStickerPdf({
       lines,
-      widthMm: 100,
-      heightMm: 50,
       paperMode: "a4",
+      orientation: "landscape",
     });
 
     const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -150,20 +177,38 @@ describe("generateStickerPdf", () => {
 
     const page = pdfDoc.getPage(0);
     const size = page.getSize();
-    // A4 width ~595.28, height ~841.89
+    // A4 Landscape: 841.89 x 595.28
+    expect(size.width).toBeCloseTo(841.89, 0);
+    expect(size.height).toBeCloseTo(595.28, 0);
+  });
+
+  it("Supports A4 portrait paper mode", async () => {
+    const lines = ["EST 1", "Cairo", "Sheraton"];
+    const pdfBytes = await generateStickerPdf({
+      lines,
+      paperMode: "a4",
+      orientation: "portrait",
+    });
+
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(1);
+
+    const page = pdfDoc.getPage(0);
+    const size = page.getSize();
+    // A4 Portrait: 595.28 x 841.89
     expect(size.width).toBeCloseTo(595.28, 0);
     expect(size.height).toBeCloseTo(841.89, 0);
   });
 
   it("Builds sticker correctly from nested December 2026 / EST 1 path", async () => {
     const { getDemoBreadcrumbs } = await import("../../demo");
-    // Find room 204 in demo data
     const { breadcrumbs } = getDemoBreadcrumbs("demo-gov-alexandria-abu-qir-pharmacy-2nd-floor-204");
     expect(breadcrumbs.length).toBeGreaterThan(0);
 
     const sticker = buildStickerContent(breadcrumbs);
     expect(sticker.level).toBe("room");
-    expect(sticker.lines).toEqual([
+    expect(sticker.room).toBe("204");
+    expect(sticker.rawLines).toEqual([
       "EST",
       "Alexandria",
       "Abu Qir",
@@ -173,4 +218,3 @@ describe("generateStickerPdf", () => {
     ]);
   });
 });
-
