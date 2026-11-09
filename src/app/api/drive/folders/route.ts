@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
-import { createFolder, searchFolders, toDriveItem } from "@/lib/drive";
+import { createFolder, getFileMeta, searchFolders, toDriveItem } from "@/lib/drive";
 import { demoItems, isDemoEnabled } from "@/lib/demo";
 import { syncDriveItems } from "@/lib/metadata";
 import { AppError } from "@/lib/errors";
@@ -54,7 +54,17 @@ export async function POST(request: Request) {
     }
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
-    const parentId = body.parentId || rootFolderId;
+    let parentId = body.parentId || rootFolderId;
+    if (parentId) {
+      try {
+        const meta = await getFileMeta(drive, parentId, { resolveShortcut: false });
+        if (meta.mimeType === "application/vnd.google-apps.shortcut" && meta.shortcutDetails?.targetId) {
+          parentId = meta.shortcutDetails.targetId;
+        }
+      } catch {
+        // ignore
+      }
+    }
     const existing = await drive.files.list({
       q: `name = '${body.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}' and '${parentId.replace(/'/g, "\\'")}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
       fields: "files(id)",

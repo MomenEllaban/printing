@@ -15,10 +15,13 @@ const TYPE_FOLDERS: Record<FileCategory, string> = {
 
 export async function validateParentFolder(drive: drive_v3.Drive, folderId: string): Promise<string> {
   const folder = await getFileMeta(drive, folderId);
-  if (folder.mimeType !== "application/vnd.google-apps.folder") {
+  const isFolder =
+    folder.mimeType === "application/vnd.google-apps.folder" ||
+    folder.shortcutDetails?.targetMimeType === "application/vnd.google-apps.folder";
+  if (!isFolder) {
     throw new AppError("Destination is not a folder", { code: "invalidRequest" });
   }
-  return folderId;
+  return folder.shortcutDetails?.targetId || folderId;
 }
 
 async function findOrCreateTypeFolder(drive: drive_v3.Drive, rootId: string, name: string): Promise<string> {

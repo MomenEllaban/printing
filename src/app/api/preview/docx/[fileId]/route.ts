@@ -36,6 +36,7 @@ export async function GET(request: Request, context: Context) {
     if (!accessToken) throw new AppError("Google authorization expired", { status: 401, code: "tokenRefresh" });
 
     const meta = await getFileMeta(drive, fileId);
+    const effectiveFileId = meta.shortcutDetails?.targetId || fileId;
     const mimeType = meta.mimeType ?? "";
     const maxBytes = settings.preview.maxPreviewSizeMb * 1024 * 1024;
     if (meta.size && Number(meta.size) > maxBytes) {
@@ -55,12 +56,12 @@ export async function GET(request: Request, context: Context) {
       if (!resolved) {
         throw new AppError("This document cannot be exported to DOCX", { status: 415, code: "unsupportedType" });
       }
-      upstream = await fetch(exportDownloadUrl(fileId, resolved.mimeType), {
+      upstream = await fetch(exportDownloadUrl(effectiveFileId, resolved.mimeType), {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
     } else if (mimeType === MIME.docx) {
-      upstream = await fetch(mediaDownloadUrl(fileId), {
+      upstream = await fetch(mediaDownloadUrl(effectiveFileId), {
         headers: { Authorization: `Bearer ${accessToken}`, "Accept-Encoding": "identity" },
         cache: "no-store",
       });

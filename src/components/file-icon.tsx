@@ -24,11 +24,13 @@ export function FileIcon({
   extension,
   className,
   size = "md",
+  isShortcut,
 }: {
   category: FileCategory | "folder";
   extension?: string | null;
   className?: string;
   size?: "sm" | "md" | "lg";
+  isShortcut?: boolean;
 }) {
   let Icon = styles[category].icon;
   if (category === "other") {
@@ -41,8 +43,23 @@ export function FileIcon({
     lg: "size-16 rounded-2xl [&>svg]:size-8",
   };
   return (
-    <span className={cn("flex shrink-0 items-center justify-center", sizes[size], styles[category].className, className)}>
+    <span
+      className={cn(
+        "relative flex shrink-0 items-center justify-center",
+        sizes[size],
+        styles[category].className,
+        className,
+      )}
+    >
       <Icon />
+      {isShortcut && (
+        <span
+          className="absolute -bottom-1 -end-1 flex size-3.5 items-center justify-center rounded-full bg-surface border border-border text-[9px] font-bold text-accent shadow-2xs leading-none"
+          title="Shortcut"
+        >
+          ↗
+        </span>
+      )}
     </span>
   );
 }

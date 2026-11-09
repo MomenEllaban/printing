@@ -524,7 +524,8 @@ export function FileBrowser({
       );
 
       try {
-        const response = await fetch(`/api/drive/files/${itemToMove.id}`, {
+        const moveFileId = itemToMove.shortcutId || itemToMove.id;
+        const response = await fetch(`/api/drive/files/${moveFileId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ parentId: targetFolder.id }),
@@ -1218,7 +1219,8 @@ export function FileBrowser({
     if (!moveTarget || !requireWritable()) return;
     setMoving(true);
     try {
-      const response = await fetch(`/api/drive/files/${moveTarget.id}`, {
+      const moveFileId = moveTarget.shortcutId || moveTarget.id;
+      const response = await fetch(`/api/drive/files/${moveFileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parentId: destinationId }),
@@ -1248,7 +1250,8 @@ export function FileBrowser({
     if (!requireWritable()) return;
     setDeleting(true);
     try {
-      const response = await fetch(`/api/drive/files/${deleteTarget.id}`, { method: "DELETE" });
+      const deleteFileId = deleteTarget.shortcutId || deleteTarget.id;
+      const response = await fetch(`/api/drive/files/${deleteFileId}`, { method: "DELETE" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || t("common.error"));
       toast.success(t("common.deleted"));
@@ -1336,7 +1339,7 @@ export function FileBrowser({
                   "rounded-lg px-2 py-0.5 hover:bg-surface-strong hover:text-foreground cursor-pointer transition-all",
                   currentFolder?.id === crumb.id && "font-semibold text-foreground",
                   dragOverFolderId === crumb.id &&
-                    "bg-accent/20 ring-2 ring-accent text-accent font-bold scale-105 shadow-xs",
+                  "bg-accent/20 ring-2 ring-accent text-accent font-bold scale-105 shadow-xs",
                 )}
                 title={
                   draggedItem && currentFolder?.id !== crumb.id
@@ -1573,7 +1576,7 @@ export function FileBrowser({
                 className={cn(
                   "file-card relative transition-all cursor-pointer group select-none",
                   dragOverFolderId === item.id &&
-                    "ring-2 ring-accent border-accent bg-accent/15 scale-[1.02] shadow-lg",
+                  "ring-2 ring-accent border-accent bg-accent/15 scale-[1.02] shadow-lg",
                   draggedItem?.id === item.id && "opacity-40 border-dashed",
                   selectedIds.has(item.id) && "ring-2 ring-accent border-accent bg-accent/5",
                   !selectedIds.has(item.id) &&
@@ -1600,7 +1603,7 @@ export function FileBrowser({
                       ariaLabel={`Select ${item.name}`}
                     />
                     <div className="min-w-0 text-start">
-                      <FileIcon category={item.category} extension={item.extension} size="lg" />
+                      <FileIcon category={item.category} extension={item.extension} size="lg" isShortcut={item.isShortcut} />
                     </div>
                   </div>
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -1644,9 +1647,16 @@ export function FileBrowser({
                 </div>
 
                 <div className="min-w-0">
-                  <span className="block w-full truncate text-start text-sm font-semibold group-hover:text-accent transition-colors">
-                    {item.name}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="block truncate text-start text-sm font-semibold group-hover:text-accent transition-colors">
+                      {item.name}
+                    </span>
+                    {item.isShortcut && (
+                      <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold text-accent bg-accent/10 border border-accent/20">
+                        ↗ {locale === "ar" ? "اختصار" : "Shortcut"}
+                      </span>
+                    )}
+                  </div>
                   <ExamBadges name={item.name} />
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {!item.isFolder && (
@@ -2439,16 +2449,16 @@ function TreeRow({
         className={cn(
           "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-all cursor-pointer group select-none",
           dragOverFolderId === item.id &&
-            "bg-accent/20 border-y-2 border-accent ring-2 ring-accent shadow-md scale-[1.005]",
+          "bg-accent/20 border-y-2 border-accent ring-2 ring-accent shadow-md scale-[1.005]",
           draggedItem?.id === item.id && "opacity-40 border-dashed",
           depth > 0 && "bg-surface-soft/20",
           selectedIds.has(item.id) && "bg-accent/10 hover:bg-accent/15",
           !selectedIds.has(item.id) &&
-            isPrinted &&
-            "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
+          isPrinted &&
+          "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08] border-s-4 border-s-emerald-500 dark:border-s-emerald-400",
           !selectedIds.has(item.id) &&
-            isPending &&
-            "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
+          isPending &&
+          "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
         )}
       >
         <td className="w-10 px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -2505,12 +2515,17 @@ function TreeRow({
             ) : (
               <span className="w-7 shrink-0" />
             )}
-            <FileIcon category={item.category} extension={item.extension} size="sm" />
+            <FileIcon category={item.category} extension={item.extension} size="sm" isShortcut={item.isShortcut} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="truncate text-start font-medium group-hover:text-accent max-w-full text-xs sm:text-sm transition-colors">
                   {item.name}
                 </span>
+                {item.isShortcut && (
+                  <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold text-accent bg-accent/10 border border-accent/20">
+                    ↗ {locale === "ar" ? "اختصار" : "Shortcut"}
+                  </span>
+                )}
                 {dragOverFolderId === item.id && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-xs animate-pulse shrink-0">
                     📥 {locale === "ar" ? "إفلات للنقل هنا" : "Drop to move here"}

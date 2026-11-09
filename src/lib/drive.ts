@@ -18,14 +18,21 @@ import { DRIVE_FILE_FIELDS } from "./google";
 const FOLDER_MIME = MIME.folder;
 
 export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string>): DriveItem {
-  const mimeType = file.mimeType ?? "application/octet-stream";
+  const isShortcut = file.mimeType === MIME.shortcut;
+  const targetId = isShortcut ? file.shortcutDetails?.targetId ?? null : null;
+  const targetMimeType = isShortcut ? file.shortcutDetails?.targetMimeType ?? null : null;
+
+  const rawMimeType = file.mimeType ?? "application/octet-stream";
+  const effectiveMimeType = isShortcut && targetMimeType ? targetMimeType : rawMimeType;
   const name = file.name ?? "(untitled)";
-  const extension = file.fileExtension ?? extensionOf(name, mimeType);
-  const isFolder = mimeType === FOLDER_MIME && !file.fileExtension && !extension;
+  const extension = file.fileExtension ?? extensionOf(name, effectiveMimeType);
+  const isFolder = effectiveMimeType === FOLDER_MIME && !file.fileExtension && !extension;
+  const primaryId = isShortcut && targetId ? targetId : file.id ?? "";
+
   return {
-    id: file.id ?? "",
+    id: primaryId,
     name,
-    mimeType,
+    mimeType: effectiveMimeType,
     size: file.size ? Number(file.size) : 0,
     extension,
     modifiedTime: file.modifiedTime ?? null,
@@ -34,9 +41,15 @@ export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string
     thumbnailLink: file.thumbnailLink ?? null,
     iconLink: file.iconLink ?? null,
     isFolder,
-    category: isFolder ? "folder" : categoryFor(mimeType, name),
+    category: isFolder ? "folder" : categoryFor(effectiveMimeType, name),
     parentId: file.parents?.[0] ?? null,
-    isFavorite: file.id ? favoriteIds?.has(file.id) : false,
+    isFavorite: file.id
+      ? favoriteIds?.has(file.id) || (targetId ? favoriteIds?.has(targetId) : false)
+      : false,
+    isShortcut,
+    shortcutId: isShortcut ? file.id ?? null : null,
+    targetId,
+    targetMimeType,
   };
 }
 
@@ -100,12 +113,22 @@ function buildOrderBy(sort?: string): string | undefined {
 }
 
 export async function listFolder(drive: drive_v3.Drive, folderId: string, options: ListOptions = {}) {
-  const conditions = [`'${escapeDriveQuery(folderId)}' in parents`, "trashed = false"];
+  let resolvedFolderId = folderId;
+  try {
+    const meta = await getFileMeta(drive, folderId, { resolveShortcut: false });
+    if (meta.mimeType === MIME.shortcut && meta.shortcutDetails?.targetId) {
+      resolvedFolderId = meta.shortcutDetails.targetId;
+    }
+  } catch {
+    // proceed with original folderId
+  }
+
+  const conditions = [`'${escapeDriveQuery(resolvedFolderId)}' in parents`, "trashed = false"];
   if (options.category) {
     conditions.push(mimeCondition(options.category));
   }
   if (options.foldersOnly) {
-    conditions.push(`mimeType = '${FOLDER_MIME}'`);
+    conditions.push(`(mimeType = '${FOLDER_MIME}' or mimeType = '${MIME.shortcut}')`);
   } else if (options.includeFolders === false) {
     conditions.push(`mimeType != '${FOLDER_MIME}'`);
   }
@@ -119,8 +142,20 @@ export async function listFolder(drive: drive_v3.Drive, folderId: string, option
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
   });
+
+  let rawFiles = response.data.files ?? [];
+  if (options.foldersOnly) {
+    rawFiles = rawFiles.filter(
+      (f) => f.mimeType === FOLDER_MIME || f.shortcutDetails?.targetMimeType === FOLDER_MIME,
+    );
+  } else if (options.includeFolders === false) {
+    rawFiles = rawFiles.filter(
+      (f) => f.mimeType !== FOLDER_MIME && f.shortcutDetails?.targetMimeType !== FOLDER_MIME,
+    );
+  }
+
   return {
-    files: response.data.files ?? [],
+    files: rawFiles,
     nextPageToken: response.data.nextPageToken ?? null,
   };
 }
@@ -134,8 +169,21 @@ export async function getFolderDescendants(
   descendantIds: string[];
   folderTree: Record<string, DriveItem[]>;
 }> {
-  const visitedFolderIds = new Set<string>(folderIds);
-  const queue = [...folderIds];
+  // Resolve any initial folder IDs that might be shortcuts
+  const resolvedInitialIds = await Promise.all(
+    folderIds.map(async (id) => {
+      try {
+        const meta = await getFileMeta(drive, id, { resolveShortcut: false });
+        if (meta.mimeType === MIME.shortcut && meta.shortcutDetails?.targetId) {
+          return meta.shortcutDetails.targetId;
+        }
+      } catch {}
+      return id;
+    }),
+  );
+
+  const visitedFolderIds = new Set<string>(resolvedInitialIds);
+  const queue = [...resolvedInitialIds];
   const filesMap = new Map<string, DriveItem>();
   const foldersMap = new Map<string, DriveItem>();
   const folderTree: Record<string, DriveItem[]> = {};
@@ -192,7 +240,7 @@ export async function searchFiles(drive: drive_v3.Drive, options: ListOptions = 
   const conditions = ["trashed = false"];
   if (options.category) conditions.push(mimeCondition(options.category));
   if (options.search) conditions.push(`name contains '${escapeDriveQuery(options.search)}'`);
-  if (options.foldersOnly) conditions.push(`mimeType = '${FOLDER_MIME}'`);
+  if (options.foldersOnly) conditions.push(`(mimeType = '${FOLDER_MIME}' or mimeType = '${MIME.shortcut}')`);
   else if (options.includeFolders === false) conditions.push(`mimeType != '${FOLDER_MIME}'`);
   const response = await drive.files.list({
     q: conditions.join(" and "),
@@ -203,8 +251,20 @@ export async function searchFiles(drive: drive_v3.Drive, options: ListOptions = 
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
   });
+
+  let rawFiles = response.data.files ?? [];
+  if (options.foldersOnly) {
+    rawFiles = rawFiles.filter(
+      (f) => f.mimeType === FOLDER_MIME || f.shortcutDetails?.targetMimeType === FOLDER_MIME,
+    );
+  } else if (options.includeFolders === false) {
+    rawFiles = rawFiles.filter(
+      (f) => f.mimeType !== FOLDER_MIME && f.shortcutDetails?.targetMimeType !== FOLDER_MIME,
+    );
+  }
+
   return {
-    files: response.data.files ?? [],
+    files: rawFiles,
     nextPageToken: response.data.nextPageToken ?? null,
   };
 }
@@ -229,7 +289,11 @@ export async function listRecentFiles(drive: drive_v3.Drive, days = 30, options:
   };
 }
 
-export async function getFileMeta(drive: drive_v3.Drive, fileId: string): Promise<drive_v3.Schema$File> {
+export async function getFileMeta(
+  drive: drive_v3.Drive,
+  fileId: string,
+  options?: { resolveShortcut?: boolean },
+): Promise<drive_v3.Schema$File> {
   try {
     const response = await drive.files.get({
       fileId,
@@ -237,6 +301,31 @@ export async function getFileMeta(drive: drive_v3.Drive, fileId: string): Promis
       supportsAllDrives: true,
     });
     if (!response.data.id) throw new AppError("File not found", { status: 404, code: "fileNotFound" });
+
+    if (
+      options?.resolveShortcut !== false &&
+      response.data.mimeType === MIME.shortcut &&
+      response.data.shortcutDetails?.targetId
+    ) {
+      try {
+        const target = await drive.files.get({
+          fileId: response.data.shortcutDetails.targetId,
+          fields: DRIVE_FILE_FIELDS,
+          supportsAllDrives: true,
+        });
+        if (target.data.id) {
+          return {
+            ...target.data,
+            name: response.data.name ?? target.data.name,
+            parents: response.data.parents ?? target.data.parents,
+            shortcutDetails: response.data.shortcutDetails,
+          };
+        }
+      } catch (err) {
+        console.warn(`[drive] Could not resolve shortcut target ${response.data.shortcutDetails.targetId}:`, err);
+      }
+    }
+
     return response.data;
   } catch (error) {
     const candidate = error as { code?: number };
@@ -272,8 +361,19 @@ export async function buildBreadcrumbs(
   folderId: string | null,
 ): Promise<{ currentFolder: Breadcrumb | null; breadcrumbs: Breadcrumb[] }> {
   if (!folderId) return { currentFolder: null, breadcrumbs: [] };
+
+  let resolvedFolderId = folderId;
+  try {
+    const meta = await getFileMeta(drive, folderId, { resolveShortcut: false });
+    if (meta.mimeType === MIME.shortcut && meta.shortcutDetails?.targetId) {
+      resolvedFolderId = meta.shortcutDetails.targetId;
+    }
+  } catch {
+    // ignore
+  }
+
   const chain: Breadcrumb[] = [];
-  let cursor: string | null = folderId;
+  let cursor: string | null = resolvedFolderId;
   const seen = new Set<string>();
 
   while (cursor && !seen.has(cursor) && chain.length < 12) {
@@ -287,6 +387,16 @@ export async function buildBreadcrumbs(
     chain.unshift({ id: cursor, name: file.name ?? "…" });
     if (cursor === rootId) break;
     cursor = file.parents?.[0] ?? null;
+  }
+
+  // Prepend root if it wasn't reached in the hierarchy
+  if (rootId && !seen.has(rootId)) {
+    try {
+      const rootFile = await getFileMeta(drive, rootId);
+      chain.unshift({ id: rootId, name: rootFile.name ?? "Root" });
+    } catch {
+      // ignore
+    }
   }
 
   const currentFolder = chain.length ? chain[chain.length - 1] : null;
@@ -333,10 +443,13 @@ export async function ensureRootFolder(
   if (preferredRootId) {
     try {
       const file = await getFileMeta(drive, preferredRootId);
-      if (file.mimeType !== FOLDER_MIME) {
+      const isFolder =
+        file.mimeType === FOLDER_MIME ||
+        file.shortcutDetails?.targetMimeType === FOLDER_MIME;
+      if (!isFolder) {
         throw new AppError("Configured root folder is not a folder", { code: "invalidRequest" });
       }
-      return preferredRootId;
+      return file.shortcutDetails?.targetId || preferredRootId;
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw new AppError("Configured root folder is not accessible", {
@@ -459,7 +572,7 @@ export async function verifyDriveConnection(drive: drive_v3.Drive, rootId: strin
 }
 
 export async function searchFolders(drive: drive_v3.Drive, search?: string) {
-  const conditions = [`mimeType = '${FOLDER_MIME}'`, "trashed = false"];
+  const conditions = [`(mimeType = '${FOLDER_MIME}' or mimeType = '${MIME.shortcut}')`, "trashed = false"];
   if (search) conditions.push(`name contains '${escapeDriveQuery(search)}'`);
   const response = await drive.files.list({
     q: conditions.join(" and "),
@@ -469,7 +582,10 @@ export async function searchFolders(drive: drive_v3.Drive, search?: string) {
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
   });
-  return response.data.files ?? [];
+  const files = response.data.files ?? [];
+  return files.filter(
+    (f) => f.mimeType === FOLDER_MIME || f.shortcutDetails?.targetMimeType === FOLDER_MIME,
+  );
 }
 
 export interface ResolvedExport {

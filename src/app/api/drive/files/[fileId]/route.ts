@@ -29,7 +29,10 @@ async function demoGuard() {
 
 async function assertFolder(drive: Awaited<ReturnType<typeof getDriveContextWithRoot>>["drive"], folderId: string) {
   const folder = await getFileMeta(drive, folderId);
-  if (folder.mimeType !== "application/vnd.google-apps.folder") {
+  const isFolder =
+    folder.mimeType === "application/vnd.google-apps.folder" ||
+    folder.shortcutDetails?.targetMimeType === "application/vnd.google-apps.folder";
+  if (!isFolder) {
     throw new AppError("Destination is not a folder", { code: "invalidRequest" });
   }
   return folder;

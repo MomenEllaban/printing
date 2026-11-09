@@ -44,10 +44,14 @@ export async function GET(request: Request, context: Context) {
     }
 
     const meta = await getFileMeta(drive, fileId);
-    if (meta.mimeType === "application/vnd.google-apps.folder") {
+    const isFolder =
+      meta.mimeType === "application/vnd.google-apps.folder" ||
+      meta.shortcutDetails?.targetMimeType === "application/vnd.google-apps.folder";
+    if (isFolder) {
       throw new AppError("Folders cannot be downloaded", { code: "invalidRequest" });
     }
 
+    const effectiveFileId = meta.shortcutDetails?.targetId || fileId;
     const maxPreviewBytes = settings.preview.maxPreviewSizeMb * 1024 * 1024;
     const size = meta.size ? Number(meta.size) : 0;
     if (!download && size > 0 && size > maxPreviewBytes) {
@@ -70,7 +74,7 @@ export async function GET(request: Request, context: Context) {
       contentType = resolved.mimeType;
       const baseName = (meta.name ?? "document").replace(/\.(pdf|docx|xlsx|pptx)$/i, "");
       outName = `${baseName}.${resolved.extension}`;
-      upstream = await fetch(exportDownloadUrl(fileId, resolved.mimeType), {
+      upstream = await fetch(exportDownloadUrl(effectiveFileId, resolved.mimeType), {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -81,7 +85,7 @@ export async function GET(request: Request, context: Context) {
       contentType = resolvedMime;
       outName = meta.name ?? `file-${fileId}`;
       const range = request.headers.get("range");
-      upstream = await fetch(mediaDownloadUrl(fileId), {
+      upstream = await fetch(mediaDownloadUrl(effectiveFileId), {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Accept-Encoding": "identity",

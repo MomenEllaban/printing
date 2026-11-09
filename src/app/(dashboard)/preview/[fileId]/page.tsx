@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { FileQuestion } from "lucide-react";
 import { PreviewShell, type PreviewKind } from "@/components/preview/preview-shell";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
@@ -73,6 +74,11 @@ export default async function PreviewPage({ params, searchParams }: Props) {
         </Link>
       </div>
     );
+  }
+
+  // If a folder or folder shortcut was opened, redirect directly to folder browser
+  if (item.isFolder) {
+    redirect(`/files?folder=${encodeURIComponent(item.id)}`);
   }
 
   const kind = previewKind(item.mimeType, item.name) as PreviewKind;

@@ -20,6 +20,10 @@ export interface DriveItem {
   parentName?: string | null;
   isFavorite?: boolean;
   isDemo?: boolean;
+  isShortcut?: boolean;
+  shortcutId?: string | null;
+  targetId?: string | null;
+  targetMimeType?: string | null;
 }
 
 export interface Breadcrumb {

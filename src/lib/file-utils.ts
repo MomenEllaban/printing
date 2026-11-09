@@ -16,6 +16,7 @@ export const MIME = {
   googleDoc: "application/vnd.google-apps.document",
   googleSheet: "application/vnd.google-apps.spreadsheet",
   googleSlides: "application/vnd.google-apps.presentation",
+  shortcut: "application/vnd.google-apps.shortcut",
 } as const;
 
 export const EXCEL_MIMES: string[] = [
@@ -234,7 +235,11 @@ export const EXPORT_FORMATS: Record<string, { mime: string; extension: string }[
 };
 
 export function isGoogleWorkspaceFile(mimeType: string): boolean {
-  return mimeType.startsWith("application/vnd.google-apps.") && mimeType !== MIME.folder;
+  return (
+    mimeType.startsWith("application/vnd.google-apps.") &&
+    mimeType !== MIME.folder &&
+    mimeType !== MIME.shortcut
+  );
 }
 
 export function previewKind(mimeType: string, name: string): "pdf" | "excel" | "word" | "image" | "unsupported" {
