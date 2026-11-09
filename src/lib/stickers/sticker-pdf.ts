@@ -293,13 +293,21 @@ function drawA4PlacardPage(params: {
         accentColor: COLOR_GOLD,
       });
 
-      renderRoomChecklistBox({
+      renderChecklistBox({
         page,
         font,
         x: rightColX,
         y: bodyBottom,
         width: rightColWidth,
         height: bottomAreaHeight,
+        headerText: "ROOM FILE CONTENTS CHECKLIST",
+        items: [
+          "1. Student Register",
+          "2. Proctor Report",
+          "3. Seating Numbers / Room List",
+          "4. Mobile Collection Forms",
+          "5. Student Misconduct Forms",
+        ],
       });
     } else {
       // Portrait layout
@@ -339,25 +347,32 @@ function drawA4PlacardPage(params: {
         accentColor: COLOR_GOLD,
       });
 
-      renderRoomChecklistBox({
+      renderChecklistBox({
         page,
         font,
         x: bodyStartX,
         y: bodyBottom,
         width: bodyWidth,
         height: checklistHeight,
+        headerText: "ROOM FILE CONTENTS CHECKLIST",
+        items: [
+          "1. Student Register",
+          "2. Proctor Report",
+          "3. Seating Numbers / Room List",
+          "4. Mobile Collection Forms",
+          "5. Student Misconduct Forms",
+        ],
       });
     }
   } else if (isFloor) {
     // ========================================================
-    // 2. FLOOR LEVEL
-    // Displays total rooms inside this floor and lists them all
+    // 2. FLOOR LEVEL (SENIOR SUPERVISOR DOSSIER)
+    // Displays total rooms inside this floor, lists them,
+    // and includes the Senior Floor Dossier Checklist
     // ========================================================
     const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
-
-    const heroBoxHeight = Math.min(240, availBodyHeight * 0.60);
-    const summaryHeight = availBodyHeight - heroBoxHeight - 16;
-    const summaryY = bodyTop - summaryHeight;
+    const summaryCardHeight = isLandscape ? 56 : 52;
+    const summaryY = bodyTop - summaryCardHeight;
 
     const cards = [
       { label: "Governorate", value: content.governorate || "—" },
@@ -369,24 +384,13 @@ function drawA4PlacardPage(params: {
       },
     ];
 
-    const colWidth = (bodyWidth - 36) / 4;
-    for (let i = 0; i < 4; i++) {
-      const cardX = isLandscape ? bodyStartX + i * (colWidth + 12) : bodyStartX;
-      const cardY = isLandscape ? summaryY : summaryY + (3 - i) * ((summaryHeight - 24) / 4 + 8);
-      const cardW = isLandscape ? colWidth : bodyWidth;
-      const cardH = isLandscape ? summaryHeight : (summaryHeight - 24) / 4;
-
-      renderSummaryCard({
-        page,
-        font,
-        x: cardX,
-        y: cardY,
-        width: cardW,
-        height: cardH,
-        label: cards[i].label,
-        value: cards[i].value,
-      });
-    }
+    const floorChecklistItems = [
+      "1. Proctor Register",
+      "2. Senior Report",
+      "3. Seating Numbers / Room List",
+      "4. Mobile Collection Forms",
+      "5. Proctor Misconduct Forms",
+    ];
 
     const subText =
       content.childNames && content.childNames.length > 0
@@ -395,18 +399,102 @@ function drawA4PlacardPage(params: {
         ? `TOTAL INCLUDED ROOMS : ${childRoomsCount} ROOMS IN THIS FLOOR`
         : undefined;
 
-    renderHeroCard({
-      page,
-      font,
-      x: bodyStartX,
-      y: bodyBottom,
-      width: bodyWidth,
-      height: heroBoxHeight,
-      badgeText: "FLOOR",
-      valueText: content.floor || "",
-      subText,
-      accentColor: COLOR_GOLD,
-    });
+    if (isLandscape) {
+      // 4 horizontal summary cards
+      const colWidth = (bodyWidth - 36) / 4;
+      for (let i = 0; i < 4; i++) {
+        renderSummaryCard({
+          page,
+          font,
+          x: bodyStartX + i * (colWidth + 12),
+          y: summaryY,
+          width: colWidth,
+          height: summaryCardHeight,
+          label: cards[i].label,
+          value: cards[i].value,
+        });
+      }
+
+      // Bottom Area: Left = Floor Hero (40%), Right = Senior Floor Dossier Checklist (60%)
+      const bottomAreaTop = summaryY - 14;
+      const bottomAreaHeight = bottomAreaTop - bodyBottom;
+      const leftColWidth = (bodyWidth - 16) * 0.40;
+      const rightColWidth = (bodyWidth - 16) * 0.60;
+      const rightColX = bodyStartX + leftColWidth + 16;
+
+      renderHeroCard({
+        page,
+        font,
+        x: bodyStartX,
+        y: bodyBottom,
+        width: leftColWidth,
+        height: bottomAreaHeight,
+        badgeText: "FLOOR",
+        valueText: content.floor || "",
+        subText,
+        accentColor: COLOR_GOLD,
+      });
+
+      renderChecklistBox({
+        page,
+        font,
+        x: rightColX,
+        y: bodyBottom,
+        width: rightColWidth,
+        height: bottomAreaHeight,
+        headerText: "FLOOR DOSSIER CHECKLIST (SENIOR)",
+        items: floorChecklistItems,
+      });
+    } else {
+      // Portrait layout
+      const rowHeight = 48;
+      const colWidth = (bodyWidth - 12) / 2;
+      for (let i = 0; i < 4; i++) {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const cardX = bodyStartX + col * (colWidth + 12);
+        const cardY = bodyTop - (row + 1) * rowHeight - row * 8;
+        renderSummaryCard({
+          page,
+          font,
+          x: cardX,
+          y: cardY,
+          width: colWidth,
+          height: rowHeight,
+          label: cards[i].label,
+          value: cards[i].value,
+        });
+      }
+
+      const gridBottom = bodyTop - 2 * rowHeight - 8;
+      const remainingHeight = gridBottom - bodyBottom - 16;
+      const heroHeight = Math.min(150, remainingHeight * 0.38);
+      const checklistHeight = remainingHeight - heroHeight - 12;
+
+      renderHeroCard({
+        page,
+        font,
+        x: bodyStartX,
+        y: gridBottom - heroHeight - 10,
+        width: bodyWidth,
+        height: heroHeight,
+        badgeText: "FLOOR",
+        valueText: content.floor || "",
+        subText,
+        accentColor: COLOR_GOLD,
+      });
+
+      renderChecklistBox({
+        page,
+        font,
+        x: bodyStartX,
+        y: bodyBottom,
+        width: bodyWidth,
+        height: checklistHeight,
+        headerText: "FLOOR DOSSIER CHECKLIST (SENIOR)",
+        items: floorChecklistItems,
+      });
+    }
   } else if (isBuilding) {
     // ========================================================
     // 3. BUILDING LEVEL
@@ -779,23 +867,21 @@ function renderHeroCard(params: {
 }
 
 /**
- * Renders the official Room File Contents Checklist Box.
- * Designed with 5 clean empty square checkboxes for proctors/staff to manually check off with a pen:
- * 1. Student Register
- * 2. Proctor Report
- * 3. Seating Numbers
- * 4. Mobile Collection Forms
- * 5. Student Misconduct Forms
+ * Renders an official File Contents Checklist Box.
+ * Designed with clean empty square checkboxes for proctors/supervisors to manually check off with a pen.
+ * Used for Room Dossiers (Proctor) and Floor Dossiers (Senior).
  */
-function renderRoomChecklistBox(params: {
+function renderChecklistBox(params: {
   page: any;
   font: any;
   x: number;
   y: number;
   width: number;
   height: number;
+  headerText: string;
+  items: string[];
 }) {
-  const { page, font, x, y, width, height } = params;
+  const { page, font, x, y, width, height, headerText, items } = params;
 
   // Outer framing card
   page.drawRectangle({
@@ -828,7 +914,6 @@ function renderRoomChecklistBox(params: {
   });
 
   // Header Text
-  const headerText = "ROOM FILE CONTENTS CHECKLIST";
   const headerSize = Math.max(10, Math.min(13, bannerHeight * 0.44));
   const hWidth = font.widthOfTextAtSize(headerText, headerSize);
   page.drawText(headerText, {
@@ -838,15 +923,6 @@ function renderRoomChecklistBox(params: {
     font,
     color: COLOR_GOLD,
   });
-
-  // 5 Checklist items in clear, professional English
-  const items = [
-    "1. Student Register",
-    "2. Proctor Report",
-    "3. Seating Numbers / Room List",
-    "4. Mobile Collection Forms",
-    "5. Student Misconduct Forms",
-  ];
 
   const availContentHeight = bannerY - y;
   const footerHeight = Math.max(30, Math.min(38, availContentHeight * 0.16));
@@ -900,7 +976,7 @@ function renderRoomChecklistBox(params: {
     }
   }
 
-  // Footer: Proctor Verification & Signature
+  // Footer: Verification & Signature
   const footerY = y + 2;
   page.drawLine({
     start: { x: x + 12, y: footerY + footerHeight },
@@ -988,10 +1064,13 @@ function drawCustomLabelPage(params: {
     displayItems.push(`Total Buildings : ${content.childCount}`);
   } else if (content.level === "building" && content.childCount) {
     displayItems.push(`Total Floors : ${content.childCount}`);
-  } else if (content.level === "floor" && content.childCount) {
-    displayItems.push(`Total Rooms : ${content.childCount}`);
+  } else if (content.level === "floor") {
+    if (content.childCount) {
+      displayItems.push(`Total Rooms : ${content.childCount}`);
+    }
+    displayItems.push("[ ] Proc Reg  [ ] Senior Rep  [ ] Seating  [ ] Mobile  [ ] Proc Misconduct");
   } else if (content.level === "room") {
-    displayItems.push("[ ] Register  [ ] Proctor  [ ] Seating  [ ] Mobile  [ ] Misconduct");
+    displayItems.push("[ ] Reg  [ ] Proctor  [ ] Seating  [ ] Mobile  [ ] Misconduct");
   }
 
   const remainingHeight = currentY - paddingY;
