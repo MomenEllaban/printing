@@ -258,6 +258,15 @@ function drawA4PlacardPage(params: {
       { label: "Floor", value: content.floor || "—" },
     ];
 
+    const roomChecklistItems = [
+      "1. Student Register",
+      "2. Proctor Report",
+      "3. Seating Numbers / Room List",
+      "4. Mobile Collection Forms",
+      "5. Student Misconduct Forms",
+      "6. Draft papers, pens, and IDs",
+    ];
+
     if (isLandscape) {
       // 4 horizontal summary cards
       const colWidth = (bodyWidth - 36) / 4;
@@ -301,13 +310,7 @@ function drawA4PlacardPage(params: {
         width: rightColWidth,
         height: bottomAreaHeight,
         headerText: "ROOM FILE CONTENTS CHECKLIST",
-        items: [
-          "1. Student Register",
-          "2. Proctor Report",
-          "3. Seating Numbers / Room List",
-          "4. Mobile Collection Forms",
-          "5. Student Misconduct Forms",
-        ],
+        items: roomChecklistItems,
       });
     } else {
       // Portrait layout
@@ -355,13 +358,7 @@ function drawA4PlacardPage(params: {
         width: bodyWidth,
         height: checklistHeight,
         headerText: "ROOM FILE CONTENTS CHECKLIST",
-        items: [
-          "1. Student Register",
-          "2. Proctor Report",
-          "3. Seating Numbers / Room List",
-          "4. Mobile Collection Forms",
-          "5. Student Misconduct Forms",
-        ],
+        items: roomChecklistItems,
       });
     }
   } else if (isFloor) {
@@ -390,6 +387,7 @@ function drawA4PlacardPage(params: {
       "3. Seating Numbers / Room List",
       "4. Mobile Collection Forms",
       "5. Proctor Misconduct Forms",
+      "6. Draft papers, pens, and IDs",
     ];
 
     const subText =
@@ -1068,9 +1066,9 @@ function drawCustomLabelPage(params: {
     if (content.childCount) {
       displayItems.push(`Total Rooms : ${content.childCount}`);
     }
-    displayItems.push("[ ] Proc Reg  [ ] Senior Rep  [ ] Seating  [ ] Mobile  [ ] Proc Misconduct");
+    displayItems.push("[ ] Proc Reg  [ ] Senior Rep  [ ] Seating  [ ] Mobile  [ ] Proc Misconduct  [ ] Draft/Pens/IDs");
   } else if (content.level === "room") {
-    displayItems.push("[ ] Reg  [ ] Proctor  [ ] Seating  [ ] Mobile  [ ] Misconduct");
+    displayItems.push("[ ] Reg  [ ] Proctor  [ ] Seating  [ ] Mobile  [ ] Misconduct  [ ] Draft/Pens/IDs");
   }
 
   const remainingHeight = currentY - paddingY;

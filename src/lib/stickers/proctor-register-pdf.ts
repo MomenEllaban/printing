@@ -375,3 +375,4 @@ export async function generateProctorRegisterPdf(params: ProctorRegisterPdfParam
 
   return await pdfDoc.save();
 }
+

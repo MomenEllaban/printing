@@ -284,6 +284,21 @@ describe("generateStickerPdf", () => {
     expect(pdfDoc.getPageCount()).toBe(1);
   });
 
+  it("Generates Floor placard with Senior Dossier Checklist Box (including Draft papers, pens, and IDs)", async () => {
+    const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor"]);
+    expect(sticker.level).toBe("floor");
+
+    const pdfBytes = await generateStickerPdf({
+      content: sticker,
+      paperMode: "a4",
+      orientation: "landscape",
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(1);
+  });
+
   it("Generates official EST Proctor Attendance & Assignment Register PDF (A4 Landscape)", async () => {
     const pdfBytes = await generateProctorRegisterPdf({
       examName: "EST 1",
