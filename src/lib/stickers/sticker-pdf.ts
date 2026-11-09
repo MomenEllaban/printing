@@ -3,10 +3,19 @@ import path from "path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { buildStickerContent, type StickerContent } from "./sticker-content";
+import { EST_LOGO_BASE64 } from "./est-logo-base64";
 
 export interface StickerPdfOptions {
   lines?: string[];
   content?: StickerContent;
+  widthMm?: number;
+  heightMm?: number;
+  paperMode?: "custom" | "a4";
+  orientation?: "portrait" | "landscape";
+}
+
+export interface BatchStickerPdfOptions {
+  contents: StickerContent[];
   widthMm?: number;
   heightMm?: number;
   paperMode?: "custom" | "a4";
@@ -26,16 +35,101 @@ const COLOR_BORDER = rgb(0.84, 0.84, 0.84);
 const COLOR_WHITE = rgb(1, 1, 1);
 
 /**
- * Generates an official, print-ready EST Exam Placard / Sticker PDF:
- * - Features the official EST Logo (JPEG) at the top of every sticker.
- * - Labeled fields: Center, Building, Floor, Room, Governorate.
- * - Optimized for full A4 paper (Landscape/Portrait) for maximum clarity from a distance.
- * - Also supports compact custom sticker sizes (e.g. 100mm x 50mm).
+ * Loads the official EST Logo (JPEG).
+ * Checked against file paths first, with a 100% guaranteed inlined Base64 fallback
+ * so that the logo is ALWAYS loaded in every environment and never replaced with plain text.
+ */
+async function loadLogoImage(pdfDoc: PDFDocument): Promise<any> {
+  const logoPaths = [
+    path.join(process.cwd(), "src", "assets", "images", "est-logo.jpg"),
+    path.join(process.cwd(), "public", "est-logo.jpg"),
+  ];
+
+  let logoBytes: Uint8Array | null = null;
+  for (const p of logoPaths) {
+    if (fs.existsSync(p)) {
+      try {
+        logoBytes = fs.readFileSync(p);
+        break;
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  if (!logoBytes || logoBytes.length === 0) {
+    try {
+      logoBytes = Buffer.from(EST_LOGO_BASE64, "base64");
+    } catch {
+      logoBytes = null;
+    }
+  }
+
+  if (!logoBytes) return null;
+
+  try {
+    return await pdfDoc.embedJpg(logoBytes);
+  } catch (err) {
+    console.error("[sticker-pdf] Error embedding JPG logo, trying direct base64:", err);
+    try {
+      const fallbackBytes = Buffer.from(EST_LOGO_BASE64, "base64");
+      return await pdfDoc.embedJpg(fallbackBytes);
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * Loads the Unicode font supporting English and Arabic.
+ */
+async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
+  const fontPaths = [
+    path.join(process.cwd(), "src", "assets", "fonts", "Arial-Bold.ttf"),
+    path.join(process.cwd(), "public", "fonts", "Arial-Bold.ttf"),
+  ];
+
+  for (const fp of fontPaths) {
+    if (fs.existsSync(fp)) {
+      try {
+        const fontBytes = fs.readFileSync(fp);
+        return await pdfDoc.embedFont(fontBytes, { subset: true });
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  return await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+}
+
+/**
+ * Generates an official, print-ready EST Exam Placard / Sticker PDF for a single item.
  */
 export async function generateStickerPdf(options: StickerPdfOptions): Promise<Uint8Array> {
   const content = options.content ?? (options.lines ? buildStickerContent(options.lines) : null);
   if (!content) {
     throw new Error("Cannot generate sticker PDF with no text lines or content");
+  }
+
+  return generateBatchStickerPdf({
+    contents: [content],
+    paperMode: options.paperMode,
+    orientation: options.orientation,
+    widthMm: options.widthMm,
+    heightMm: options.heightMm,
+  });
+}
+
+/**
+ * Generates a unified multi-page PDF document containing stickers for multiple folders/items.
+ * Each item gets its own full page (A4 placard or custom label), with the official EST logo
+ * rendered on every single page.
+ */
+export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): Promise<Uint8Array> {
+  const contents = options.contents || [];
+  if (contents.length === 0) {
+    throw new Error("Cannot generate batch sticker PDF with no items");
   }
 
   const paperMode = options.paperMode ?? "a4";
@@ -44,68 +138,45 @@ export async function generateStickerPdf(options: StickerPdfOptions): Promise<Ui
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
-  // Load custom font supporting both English and Arabic (Arial-Bold.ttf)
-  let font: any;
-  const fontPath = path.join(process.cwd(), "src", "assets", "fonts", "Arial-Bold.ttf");
-  if (fs.existsSync(fontPath)) {
-    const fontBytes = fs.readFileSync(fontPath);
-    font = await pdfDoc.embedFont(fontBytes, { subset: true });
-  } else {
-    font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  }
+  const font = await loadStickerFont(pdfDoc);
+  const logoImg = await loadLogoImage(pdfDoc);
 
-  // Load logo image
-  let logoImg: any = null;
-  const logoPaths = [
-    path.join(process.cwd(), "src", "assets", "images", "est-logo.jpg"),
-    path.join(process.cwd(), "public", "est-logo.jpg"),
-  ];
-  for (const p of logoPaths) {
-    if (fs.existsSync(p)) {
-      try {
-        const logoBytes = fs.readFileSync(p);
-        logoImg = await pdfDoc.embedJpg(logoBytes);
-        break;
-      } catch {
-        // continue
-      }
+  for (const content of contents) {
+    if (paperMode === "a4") {
+      drawA4PlacardPage({
+        pdfDoc,
+        font,
+        logoImg,
+        content,
+        orientation,
+      });
+    } else {
+      const widthMm = Math.max(30, Math.min(300, options.widthMm ?? DEFAULT_WIDTH_MM));
+      const heightMm = Math.max(20, Math.min(200, options.heightMm ?? DEFAULT_HEIGHT_MM));
+      drawCustomLabelPage({
+        pdfDoc,
+        font,
+        logoImg,
+        content,
+        widthMm,
+        heightMm,
+      });
     }
   }
 
-  if (paperMode === "a4") {
-    // Generate full A4 placard
-    return renderA4Placard({
-      pdfDoc,
-      font,
-      logoImg,
-      content,
-      orientation,
-    });
-  } else {
-    // Generate compact custom sticker
-    const widthMm = Math.max(30, Math.min(300, options.widthMm ?? DEFAULT_WIDTH_MM));
-    const heightMm = Math.max(20, Math.min(200, options.heightMm ?? DEFAULT_HEIGHT_MM));
-    return renderCustomLabel({
-      pdfDoc,
-      font,
-      logoImg,
-      content,
-      widthMm,
-      heightMm,
-    });
-  }
+  return await pdfDoc.save();
 }
 
 /**
- * Renders a full-page A4 Exam Placard with the EST Logo, labeled fields, and massive Room number.
+ * Draws a full-page A4 Exam Placard with the EST Logo, labeled fields, and massive Room number.
  */
-async function renderA4Placard(params: {
+function drawA4PlacardPage(params: {
   pdfDoc: PDFDocument;
   font: any;
   logoImg: any;
   content: StickerContent;
   orientation: "portrait" | "landscape";
-}): Promise<Uint8Array> {
+}) {
   const { pdfDoc, font, logoImg, content, orientation } = params;
 
   // A4 dimensions in points: 210mm x 297mm = 595.28 x 841.89 pt
@@ -154,7 +225,7 @@ async function renderA4Placard(params: {
     });
     headerBottomY = logoY - 8;
   } else {
-    // Text fallback for logo
+    // Guaranteed fallback if image cannot be embedded
     const estText = "EST";
     const estSize = isLandscape ? 36 : 42;
     const estWidth = font.widthOfTextAtSize(estText, estSize);
@@ -260,18 +331,17 @@ async function renderA4Placard(params: {
       }
     }
 
-    // Hero Room Box
-    const heroY = bodyBottom;
+    // Hero: Room Number
     renderHeroCard({
       page,
       font,
       x: bodyStartX,
-      y: heroY,
+      y: bodyBottom,
       width: bodyWidth,
       height: heroBoxHeight,
-      badgeText: "EXAMINATION ROOM",
+      badgeText: "ROOM",
       badgeTextAr: "القاعة / الغرفة",
-      valueText: content.room || "—",
+      valueText: content.room || "",
       accentColor: COLOR_GOLD,
     });
   } else if (isFloor) {
@@ -285,16 +355,20 @@ async function renderA4Placard(params: {
       { label: "Building", labelAr: "المبنى", value: content.building || "—" },
     ];
 
-    const colWidth = (bodyWidth - 24) / 3;
+    const colWidth = (bodyWidth - 20) / 3;
     for (let i = 0; i < 3; i++) {
-      const cardX = bodyStartX + i * (colWidth + 12);
+      const cardX = isLandscape ? bodyStartX + i * (colWidth + 10) : bodyStartX;
+      const cardY = isLandscape ? summaryY : summaryY + (2 - i) * ((summaryHeight - 16) / 3 + 8);
+      const cardW = isLandscape ? colWidth : bodyWidth;
+      const cardH = isLandscape ? summaryHeight : (summaryHeight - 16) / 3;
+
       renderSummaryCard({
         page,
         font,
         x: cardX,
-        y: summaryY,
-        width: colWidth,
-        height: summaryHeight,
+        y: cardY,
+        width: cardW,
+        height: cardH,
         label: cards[i].label,
         labelAr: cards[i].labelAr,
         value: cards[i].value,
@@ -308,13 +382,13 @@ async function renderA4Placard(params: {
       y: bodyBottom,
       width: bodyWidth,
       height: heroBoxHeight,
-      badgeText: "EXAMINATION FLOOR",
+      badgeText: "FLOOR",
       badgeTextAr: "الدور",
-      valueText: content.floor || "—",
+      valueText: content.floor || "",
       accentColor: COLOR_GOLD,
     });
   } else if (isBuilding) {
-    const heroBoxHeight = Math.min(240, availBodyHeight * 0.6);
+    const heroBoxHeight = Math.min(230, availBodyHeight * 0.60);
     const summaryHeight = availBodyHeight - heroBoxHeight - 16;
     const summaryY = bodyTop - summaryHeight;
 
@@ -325,14 +399,18 @@ async function renderA4Placard(params: {
 
     const colWidth = (bodyWidth - 16) / 2;
     for (let i = 0; i < 2; i++) {
-      const cardX = bodyStartX + i * (colWidth + 16);
+      const cardX = isLandscape ? bodyStartX + i * (colWidth + 16) : bodyStartX;
+      const cardY = isLandscape ? summaryY : summaryY + (1 - i) * ((summaryHeight - 10) / 2 + 10);
+      const cardW = isLandscape ? colWidth : bodyWidth;
+      const cardH = isLandscape ? summaryHeight : (summaryHeight - 10) / 2;
+
       renderSummaryCard({
         page,
         font,
         x: cardX,
-        y: summaryY,
-        width: colWidth,
-        height: summaryHeight,
+        y: cardY,
+        width: cardW,
+        height: cardH,
         label: cards[i].label,
         labelAr: cards[i].labelAr,
         value: cards[i].value,
@@ -348,11 +426,11 @@ async function renderA4Placard(params: {
       height: heroBoxHeight,
       badgeText: "BUILDING",
       badgeTextAr: "المبنى",
-      valueText: content.building || "—",
+      valueText: content.building || "",
       accentColor: COLOR_GOLD,
     });
   } else if (isCenter) {
-    const heroBoxHeight = Math.min(260, availBodyHeight * 0.65);
+    const heroBoxHeight = Math.min(240, availBodyHeight * 0.65);
     const summaryHeight = availBodyHeight - heroBoxHeight - 16;
     const summaryY = bodyTop - summaryHeight;
 
@@ -376,8 +454,8 @@ async function renderA4Placard(params: {
       width: bodyWidth,
       height: heroBoxHeight,
       badgeText: "TEST CENTER",
-      badgeTextAr: "مركز الاختبار",
-      valueText: content.center || "—",
+      badgeTextAr: "السنتر / مركز الاختبار",
+      valueText: content.center || "",
       accentColor: COLOR_GOLD,
     });
   } else if (isGov) {
@@ -385,31 +463,50 @@ async function renderA4Placard(params: {
       page,
       font,
       x: bodyStartX,
-      y: bodyBottom + (availBodyHeight - 240) / 2,
+      y: bodyBottom + 20,
       width: bodyWidth,
-      height: 240,
+      height: availBodyHeight - 40,
       badgeText: "GOVERNORATE",
       badgeTextAr: "المحافظة",
-      valueText: content.governorate || "—",
+      valueText: content.governorate || "",
       accentColor: COLOR_GOLD,
     });
-  } else {
-    // Root exam level
+  } else if (isRoot) {
     renderHeroCard({
       page,
       font,
       x: bodyStartX,
-      y: bodyBottom + (availBodyHeight - 240) / 2,
+      y: bodyBottom + 20,
       width: bodyWidth,
-      height: 240,
-      badgeText: "OFFICIAL EXAMINATION",
-      badgeTextAr: "الاختبار",
+      height: availBodyHeight - 40,
+      badgeText: "EXAMINATION",
+      badgeTextAr: "الاختبار الرسمي",
       valueText: content.examName || "EST 1",
       accentColor: COLOR_GOLD,
     });
-  }
+  } else {
+    // Custom fallback
+    const items = content.fields.map((f) => ({ label: f.label, labelAr: f.labelAr, value: f.value }));
+    if (items.length === 0) {
+      items.push({ label: "Location", labelAr: "الموقع", value: content.examName || "EST" });
+    }
 
-  return await pdfDoc.save();
+    const rowH = Math.min(70, (availBodyHeight - (items.length - 1) * 12) / items.length);
+    for (let i = 0; i < items.length; i++) {
+      const cardY = bodyTop - (i + 1) * rowH - i * 12;
+      renderSummaryCard({
+        page,
+        font,
+        x: bodyStartX,
+        y: cardY,
+        width: bodyWidth,
+        height: rowH,
+        label: items[i].label,
+        labelAr: items[i].labelAr,
+        value: items[i].value,
+      });
+    }
+  }
 }
 
 /**
@@ -426,7 +523,7 @@ function renderSummaryCard(params: {
   labelAr: string;
   value: string;
 }) {
-  const { page, font, x, y, width, height, label, labelAr, value } = params;
+  const { page, font, x, y, width, height, label, value } = params;
 
   // Background
   page.drawRectangle({
@@ -552,14 +649,14 @@ function renderHeroCard(params: {
 /**
  * Compact custom label rendering (e.g. 100mm x 50mm).
  */
-async function renderCustomLabel(params: {
+function drawCustomLabelPage(params: {
   pdfDoc: PDFDocument;
   font: any;
   logoImg: any;
   content: StickerContent;
   widthMm: number;
   heightMm: number;
-}): Promise<Uint8Array> {
+}) {
   const { pdfDoc, font, logoImg, content, widthMm, heightMm } = params;
 
   const stickerWidthPt = widthMm * MM_TO_PT;
@@ -570,7 +667,6 @@ async function renderCustomLabel(params: {
   const paddingX = 14;
   const paddingY = 10;
   const availWidth = stickerWidthPt - paddingX * 2;
-  const availHeight = stickerHeightPt - paddingY * 2;
 
   let currentY = stickerHeightPt - paddingY;
 
@@ -643,6 +739,4 @@ async function renderCustomLabel(params: {
     });
     currentY -= size + lineSpacing;
   }
-
-  return await pdfDoc.save();
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Layers, Printer, X } from "lucide-react";
+import { ExternalLink, Layers, Printer, Tag, X } from "lucide-react";
 import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
 import { formatBytes } from "@/lib/file-utils";
@@ -12,9 +12,10 @@ interface BatchPrintDialogProps {
   onClose: () => void;
   selectedItems: DriveItem[];
   isLoading?: boolean;
+  onOpenStickers?: () => void;
 }
 
-export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = false }: BatchPrintDialogProps) {
+export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = false, onOpenStickers }: BatchPrintDialogProps) {
   const { t, locale } = useI18n();
   const [opening, setOpening] = useState(false);
 
@@ -57,6 +58,37 @@ export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = fal
       }
     >
       <div className="space-y-4">
+        {/* Optional Prompt to print stickers for selected folders */}
+        {selectedItems.some((i) => i.isFolder) && onOpenStickers && (
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/5">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <Tag className="size-4" />
+              </span>
+              <div>
+                <span className="font-bold text-indigo-950 dark:text-indigo-200 block">
+                  {locale === "ar" ? "هل تود أيضاً طباعة استيكرات المجلدات؟" : "Want to print folder stickers too?"}
+                </span>
+                <span className="text-[11px] text-muted block">
+                  {locale === "ar"
+                    ? `قمت باختيار ${selectedItems.filter((i) => i.isFolder).length} مجلد يحتاج استيكرات A4 للأبواب`
+                    : `You selected ${selectedItems.filter((i) => i.isFolder).length} folder(s) eligible for A4 placards`}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                onClose();
+                onOpenStickers();
+              }}
+              className="text-xs shrink-0 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/15 cursor-pointer font-bold"
+            >
+              {locale === "ar" ? "طباعة الاستيكرات" : "Print Stickers"}
+            </Button>
+          </div>
+        )}
+
         {/* Print Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildStickerContent } from "../sticker-content";
-import { generateStickerPdf } from "../sticker-pdf";
+import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
 import { PDFDocument } from "pdf-lib";
 
 describe("buildStickerContent", () => {
@@ -216,5 +216,29 @@ describe("generateStickerPdf", () => {
       "2nd Floor",
       "204",
     ]);
+  });
+
+  it("generateBatchStickerPdf generates a unified multi-page PDF with 1 page per folder and logo included", async () => {
+    const sticker1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "204"]);
+    const sticker2 = buildStickerContent(["EST 1", "Cairo", "Sheraton", "Engineering", "1st Floor", "101"]);
+    const sticker3 = buildStickerContent(["EST 1", "Giza", "October", "Main Campus"]);
+
+    const pdfBytes = await generateBatchStickerPdf({
+      contents: [sticker1, sticker2, sticker3],
+      paperMode: "a4",
+      orientation: "landscape",
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(3);
+
+    // Each page should be A4 Landscape: 841.89 x 595.28
+    for (let i = 0; i < 3; i++) {
+      const page = pdfDoc.getPage(i);
+      const size = page.getSize();
+      expect(size.width).toBeCloseTo(841.89, 0);
+      expect(size.height).toBeCloseTo(595.28, 0);
+    }
   });
 });

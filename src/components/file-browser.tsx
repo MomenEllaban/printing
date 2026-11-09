@@ -40,6 +40,7 @@ import { UploadDialog } from "./upload-dialog";
 import { FolderPicker } from "./folder-picker";
 import { FileIcon } from "./file-icon";
 import { BatchPrintDialog } from "./batch-print-dialog";
+import { BatchStickersDialog } from "./batch-stickers-dialog";
 import { useI18n } from "./locale-provider";
 import { useActiveProfile } from "./profile-provider";
 import { cn } from "@/lib/cn";
@@ -1027,6 +1028,134 @@ export function FileBrowser({
       setBatchDeleting(false);
     }
   };
+
+  const [batchStickersOpen, setBatchStickersOpen] = useState(false);
+  const [busyBatchStickers, setBusyBatchStickers] = useState(false);
+  const [batchStickerAction, setBatchStickerAction] = useState<"show" | "print" | null>(null);
+
+  const handleBatchStickersAction = useCallback(
+    async ({
+      action,
+      includeChildren = false,
+      orientation,
+    }: {
+      action: "show" | "print";
+      includeChildren?: boolean;
+      orientation?: "landscape" | "portrait";
+    }) => {
+      const selectedFolders = selectedItems.filter((i) => i.isFolder);
+      const targetFolders =
+        selectedFolders.length > 0
+          ? selectedFolders
+          : currentFolder
+          ? [currentFolder]
+          : [];
+
+      if (targetFolders.length === 0) {
+        toast.error(
+          locale === "ar"
+            ? "يرجى تحديد مجلد واحد على الأقل لطباعة استيكراته"
+            : "Please select at least one folder for stickers",
+        );
+        return;
+      }
+
+      setBusyBatchStickers(true);
+      setBatchStickerAction(action);
+
+      const toastId = toast.loading(
+        action === "show"
+          ? (locale === "ar"
+            ? `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للمعاينة...`
+            : `Generating sticker preview for ${targetFolders.length} folder(s)...`)
+          : (locale === "ar"
+            ? `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للطباعة...`
+            : `Preparing stickers for ${targetFolders.length} folder(s)...`),
+      );
+
+      try {
+        const res = await fetch("/api/stickers/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            folderIds: targetFolders.map((f) => f.id),
+            includeChildren,
+            orientation,
+          }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(
+            errData.message ||
+              (locale === "ar" ? "فشل إنشاء استيكرات المجلدات" : "Failed to generate stickers"),
+          );
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+
+        if (action === "show") {
+          const newTab = window.open(objectUrl, "_blank");
+          if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = `EST-Stickers-Batch.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          toast.success(
+            locale === "ar"
+              ? "تم فتح جميع الاستيكرات للمعاينة بنجاح"
+              : "Stickers preview opened",
+            { id: toastId },
+          );
+        } else {
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.right = "0";
+          iframe.style.bottom = "0";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "0";
+          iframe.src = objectUrl;
+          document.body.appendChild(iframe);
+          iframe.onload = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              const w = window.open(objectUrl, "_blank");
+              w?.focus();
+              w?.print();
+            }
+          };
+          toast.success(
+            locale === "ar"
+              ? "تم إرسال جميع الاستيكرات للطباعة بنجاح"
+              : "All stickers sent to printer",
+            { id: toastId },
+          );
+        }
+      } catch (err) {
+        console.error("[batch-stickers] Failed:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : locale === "ar"
+            ? "حدث خطأ أثناء معالجة الاستيكرات"
+            : "Error processing stickers",
+          { id: toastId },
+        );
+      } finally {
+        setBusyBatchStickers(false);
+        setBatchStickerAction(null);
+      }
+    },
+    [selectedItems, currentFolder, locale],
+  );
 
   const handleBatchPrint = async () => {
     if (selectedItems.length === 0) return;
@@ -2253,6 +2382,65 @@ export function FileBrowser({
           </div>
 
           <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
+            {/* Batch Stickers Action Button */}
+            <div className="inline-flex items-center rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-0.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setBatchStickersOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 rounded-s-lg border-e border-indigo-500/25 transition-all cursor-pointer"
+                title={
+                  locale === "ar"
+                    ? "خيارات استيكرات العناصر المحددة (تحديد النطاق والاتجاه)"
+                    : "Options for selected folder stickers"
+                }
+              >
+                <Tag className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>
+                  {locale === "ar"
+                    ? `استيكرات (${selectedFolderCount > 0 ? selectedFolderCount : 1})`
+                    : `Stickers (${selectedFolderCount > 0 ? selectedFolderCount : 1})`}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleBatchStickersAction({ action: "show" })}
+                disabled={busyBatchStickers}
+                className="inline-flex items-center justify-center size-7 rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                title={
+                  locale === "ar"
+                    ? "معاينة استيكرات العناصر المحددة في مستند PDF موحد (Show)"
+                    : "Preview unified stickers in new tab (Show)"
+                }
+                aria-label="Preview Stickers"
+              >
+                {busyBatchStickers && batchStickerAction === "show" ? (
+                  <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                ) : (
+                  <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleBatchStickersAction({ action: "print" })}
+                disabled={busyBatchStickers}
+                className="inline-flex items-center justify-center size-7 rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                title={
+                  locale === "ar"
+                    ? "طباعة استيكرات العناصر المحددة مباشرة (Print)"
+                    : "Print unified stickers directly"
+                }
+                aria-label="Print Stickers"
+              >
+                {busyBatchStickers && batchStickerAction === "print" ? (
+                  <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                ) : (
+                  <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                )}
+              </button>
+            </div>
+
             <Button
               variant="primary"
               onClick={handleBatchPrint}
@@ -2320,6 +2508,17 @@ export function FileBrowser({
         onClose={() => setBatchPrintOpen(false)}
         selectedItems={selectedItems}
         isLoading={loadingDescendantIds.size > 0}
+        onOpenStickers={() => setBatchStickersOpen(true)}
+      />
+
+      {/* Batch Stickers Dialog */}
+      <BatchStickersDialog
+        open={batchStickersOpen}
+        onClose={() => setBatchStickersOpen(false)}
+        selectedFolders={selectedItems.filter((i) => i.isFolder)}
+        currentFolder={currentFolder}
+        loading={busyBatchStickers}
+        onExecute={handleBatchStickersAction}
       />
     </div>
   );
