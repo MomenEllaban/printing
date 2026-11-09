@@ -909,7 +909,7 @@ function renderRoomChecklistBox(params: {
     color: COLOR_GOLD,
   });
 
-  const signText = "Proctor Signature: _______________________    Date: _____ / _____ / 2026";
+  const signText = "Signature: _______________________    Date: _____ / _____ / 2026";
   const signSize = Math.max(8.5, Math.min(10, footerHeight * 0.32));
   page.drawText(signText, {
     x: x + 14,
