@@ -458,21 +458,28 @@ export function FileBrowser({
     [requireWritable],
   );
 
-  const [printingStickerId, setPrintingStickerId] = useState<string | null>(null);
+  const [busyStickerId, setBusyStickerId] = useState<string | null>(null);
+  const [stickerAction, setStickerAction] = useState<"show" | "print" | null>(null);
 
-  const handlePrintSticker = useCallback(
+  const handleStickerAction = useCallback(
     async (
       e: React.MouseEvent | null,
       target: { id: string; name?: string | null },
+      action: "show" | "print",
     ) => {
       if (e) e.stopPropagation();
-      if (!target.id || printingStickerId) return;
+      if (!target.id || busyStickerId) return;
 
-      setPrintingStickerId(target.id);
+      setBusyStickerId(target.id);
+      setStickerAction(action);
       const toastId = toast.loading(
-        locale === "ar"
-          ? `جاري تجهيز استيكر "${target.name || "EST"}"...`
-          : `Preparing sticker for "${target.name || "EST"}"...`,
+        action === "show"
+          ? (locale === "ar"
+            ? `جاري تجهيز معاينة استيكر "${target.name || "EST"}"...`
+            : `Loading sticker preview for "${target.name || "EST"}"...`)
+          : (locale === "ar"
+            ? `جاري تجهيز استيكر "${target.name || "EST"}" للطباعة...`
+            : `Preparing sticker for "${target.name || "EST"}" for printing...`),
       );
 
       try {
@@ -489,37 +496,74 @@ export function FileBrowser({
         const pdfBlob = new Blob([blob], { type: "application/pdf" });
         const objectUrl = URL.createObjectURL(pdfBlob);
 
-        const newTab = window.open(objectUrl, "_blank");
-        if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
-          const link = document.createElement("a");
-          link.href = objectUrl;
-          link.download = `Sticker-${(target.name || "EST").replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+        if (action === "show") {
+          const newTab = window.open(objectUrl, "_blank");
+          if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = `Sticker-${(target.name || "EST").replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          toast.success(
+            locale === "ar" ? "تم فتح الاستيكر للمعاينة بنجاح" : "Sticker preview opened",
+            { id: toastId },
+          );
+        } else {
+          // Direct print via hidden iframe with window.open fallback
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.right = "0";
+          iframe.style.bottom = "0";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "0";
+          iframe.src = objectUrl;
+          document.body.appendChild(iframe);
+          iframe.onload = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              const w = window.open(objectUrl, "_blank");
+              w?.focus();
+              w?.print();
+            }
+          };
+          toast.success(
+            locale === "ar" ? "تم إرسال الاستيكر للطباعة بنجاح" : "Sticker sent to printer",
+            { id: toastId },
+          );
         }
-
-        toast.success(
-          locale === "ar"
-            ? "تم إنشاء الاستيكر بنجاح وجاهز للطباعة"
-            : "Sticker generated successfully and ready for printing",
-          { id: toastId },
-        );
       } catch (err) {
         console.error("[sticker] Failed:", err);
         toast.error(
           err instanceof Error
             ? err.message
             : locale === "ar"
-            ? "حدث خطأ أثناء إنشاء الاستيكر"
-            : "Error generating sticker",
+            ? "حدث خطأ أثناء معالجة الاستيكر"
+            : "Error processing sticker",
           { id: toastId },
         );
       } finally {
-        setPrintingStickerId(null);
+        setBusyStickerId(null);
+        setStickerAction(null);
       }
     },
-    [printingStickerId, locale],
+    [busyStickerId, locale],
+  );
+
+  const handleShowSticker = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleStickerAction(e, target, "show"),
+    [handleStickerAction],
+  );
+
+  const handlePrintSticker = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleStickerAction(e, target, "print"),
+    [handleStickerAction],
   );
 
   const [seedConfirmOpen, setSeedConfirmOpen] = useState(false);
@@ -1408,24 +1452,40 @@ export function FileBrowser({
             </Button>
           )}
           {currentFolder && (
-            <Button
-              variant="secondary"
-              onClick={(e) => handlePrintSticker(e, currentFolder)}
-              disabled={printingStickerId === currentFolder.id}
-              className="text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10 cursor-pointer"
-              title={
-                locale === "ar"
-                  ? `طباعة استيكر "${currentFolder.name}"`
-                  : `Print sticker for "${currentFolder.name}"`
-              }
-            >
-              {printingStickerId === currentFolder.id ? (
-                <Loader2 className="size-4 animate-spin text-indigo-600 dark:text-indigo-400" />
-              ) : (
-                <Tag className="size-4 text-indigo-600 dark:text-indigo-400" />
-              )}
-              <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
-            </Button>
+            <div className="inline-flex items-center rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-0.5 shadow-xs">
+              <span className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 border-e border-indigo-500/20 select-none">
+                <Tag className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span className="hidden sm:inline">{locale === "ar" ? "الاستيكر" : "Sticker"}</span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => handleShowSticker(e, currentFolder)}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer transition-all"
+                title={locale === "ar" ? `معاينة استيكر "${currentFolder.name}" (عرض)` : `Preview sticker for "${currentFolder.name}" (Show)`}
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "show" ? (
+                  <Loader2 className="size-3.5 animate-spin text-indigo-600" />
+                ) : (
+                  <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                )}
+                <span>{locale === "ar" ? "معاينة" : "Show"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintSticker(e, currentFolder)}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer transition-all"
+                title={locale === "ar" ? `طباعة استيكر "${currentFolder.name}" مباشرة` : `Print sticker for "${currentFolder.name}" directly`}
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "print" ? (
+                  <Loader2 className="size-3.5 animate-spin text-indigo-600" />
+                ) : (
+                  <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                )}
+                <span>{locale === "ar" ? "طباعة" : "Print"}</span>
+              </button>
+            </div>
           )}
           <Button variant="secondary" onClick={refresh} disabled={loading}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
@@ -1768,6 +1828,7 @@ export function FileBrowser({
                       item={item}
                       isPrinted={isPrinted}
                       onTogglePrint={() => void togglePrintStatus(item)}
+                      onShowSticker={(folder) => handleShowSticker(null, folder)}
                       onPrintSticker={(folder) => handlePrintSticker(null, folder)}
                       open={menuId === item.id}
                       onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
@@ -1859,24 +1920,38 @@ export function FileBrowser({
                         <CloudUpload className="size-3 text-emerald-600 dark:text-emerald-400" />
                         <span>{locale === "ar" ? "+ ملف" : "+ File"}</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={(e) => handlePrintSticker(e, item)}
-                        disabled={printingStickerId === item.id}
-                        className="chip border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-1 cursor-pointer font-medium"
-                        title={
-                          locale === "ar"
-                            ? `طباعة استيكر "${item.name}"`
-                            : `Print sticker for "${item.name}"`
-                        }
-                      >
-                        {printingStickerId === item.id ? (
-                          <Loader2 className="size-3 animate-spin text-indigo-600 dark:text-indigo-400" />
-                        ) : (
+                      <div className="inline-flex items-center rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-0.5 text-xs">
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 border-e border-indigo-500/20 select-none">
                           <Tag className="size-3 text-indigo-600 dark:text-indigo-400" />
-                        )}
-                        <span>{locale === "ar" ? "استيكر" : "Sticker"}</span>
-                      </button>
+                          <span>{locale === "ar" ? "استيكر" : "Sticker"}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleShowSticker(e, item)}
+                          disabled={busyStickerId === item.id}
+                          className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer"
+                          title={locale === "ar" ? `معاينة استيكر "${item.name}" (عرض)` : `Preview sticker for "${item.name}" (Show)`}
+                        >
+                          {busyStickerId === item.id && stickerAction === "show" ? (
+                            <Loader2 className="size-3 animate-spin text-indigo-600" />
+                          ) : (
+                            <Eye className="size-3 text-indigo-600 dark:text-indigo-400" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handlePrintSticker(e, item)}
+                          disabled={busyStickerId === item.id}
+                          className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer"
+                          title={locale === "ar" ? `طباعة استيكر "${item.name}" مباشرة` : `Print sticker for "${item.name}" directly`}
+                        >
+                          {busyStickerId === item.id && stickerAction === "print" ? (
+                            <Loader2 className="size-3 animate-spin text-indigo-600" />
+                          ) : (
+                            <Printer className="size-3 text-indigo-600 dark:text-indigo-400" />
+                          )}
+                        </button>
+                      </div>
                     </>
                   )}
                   {!item.isFolder && (
@@ -1970,8 +2045,10 @@ export function FileBrowser({
                     }}
                     onNewSubFolder={handleOpenNewSubFolder}
                     onUploadToFolder={handleOpenUploadForFolder}
+                    onShowSticker={handleShowSticker}
                     onPrintSticker={handlePrintSticker}
-                    printingStickerId={printingStickerId}
+                    busyStickerId={busyStickerId}
+                    stickerAction={stickerAction}
                     draggedItem={draggedItem}
                     dragOverFolderId={dragOverFolderId}
                     onDragStartItem={handleDragStartItem}
@@ -2259,6 +2336,7 @@ function ItemMenu({
   onDelete,
   isPrinted,
   onTogglePrint,
+  onShowSticker,
   onPrintSticker,
   demo,
 }: {
@@ -2272,6 +2350,7 @@ function ItemMenu({
   onDelete: () => void;
   isPrinted?: boolean;
   onTogglePrint?: () => void;
+  onShowSticker?: (folder: DriveItem) => void;
   onPrintSticker?: (folder: DriveItem) => void;
   demo: boolean;
 }) {
@@ -2419,6 +2498,20 @@ function ItemMenu({
               <Eye className="size-4 text-accent" />
               <span>{item.isFolder ? t("common.open") : t("common.preview")}</span>
             </button>
+            {item.isFolder && onShowSticker && (
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item cursor-pointer text-indigo-600 dark:text-indigo-400 font-semibold"
+                onClick={() => {
+                  onShowSticker(item);
+                  onClose();
+                }}
+              >
+                <Eye className="size-4" />
+                <span>{locale === "ar" ? "معاينة الاستيكر (عرض)" : "Preview Sticker (Show)"}</span>
+              </button>
+            )}
             {item.isFolder && onPrintSticker && (
               <button
                 type="button"
@@ -2429,7 +2522,7 @@ function ItemMenu({
                   onClose();
                 }}
               >
-                <Tag className="size-4" />
+                <Printer className="size-4" />
                 <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
               </button>
             )}
@@ -2568,8 +2661,10 @@ interface TreeRowProps {
   onDelete: (item: DriveItem) => void;
   onNewSubFolder: (folder: DriveItem) => void;
   onUploadToFolder: (folder: DriveItem) => void;
+  onShowSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
-  printingStickerId: string | null;
+  busyStickerId: string | null;
+  stickerAction: "show" | "print" | null;
   draggedItem: DriveItem | null;
   dragOverFolderId: string | null;
   onDragStartItem: (e: React.DragEvent, item: DriveItem) => void;
@@ -2603,8 +2698,10 @@ function TreeRow({
   onDelete,
   onNewSubFolder,
   onUploadToFolder,
+  onShowSticker,
   onPrintSticker,
-  printingStickerId,
+  busyStickerId,
+  stickerAction,
   draggedItem,
   dragOverFolderId,
   onDragStartItem,
@@ -2795,24 +2892,50 @@ function TreeRow({
                   <span className="hidden sm:inline">{locale === "ar" ? "+ ملف" : "+ File"}</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={(e) => onPrintSticker(e, item)}
-                  disabled={printingStickerId === item.id}
-                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/5 px-2 py-1 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:text-indigo-600 hover:border-indigo-500 hover:bg-indigo-500/15 transition-all cursor-pointer shadow-2xs"
-                  title={
-                    locale === "ar"
-                      ? `طباعة استيكر "${item.name}"`
-                      : `Print sticker for "${item.name}"`
-                  }
-                >
-                  {printingStickerId === item.id ? (
-                    <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
-                  ) : (
-                    <Tag className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-                  )}
-                  <span className="hidden sm:inline">{locale === "ar" ? "استيكر" : "Sticker"}</span>
-                </button>
+                <div className="inline-flex items-center rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-0.5 shadow-2xs">
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 border-e border-indigo-500/20 select-none">
+                    <Tag className="size-3 text-indigo-600 dark:text-indigo-400" />
+                    <span className="hidden sm:inline">{locale === "ar" ? "استيكر" : "Sticker"}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={(e) => onShowSticker(e, item)}
+                    disabled={busyStickerId === item.id}
+                    className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                    title={
+                      locale === "ar"
+                        ? `معاينة استيكر "${item.name}" (عرض)`
+                        : `Preview sticker for "${item.name}" (Show)`
+                    }
+                    aria-label="Preview Sticker"
+                  >
+                    {busyStickerId === item.id && stickerAction === "show" ? (
+                      <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    ) : (
+                      <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => onPrintSticker(e, item)}
+                    disabled={busyStickerId === item.id}
+                    className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                    title={
+                      locale === "ar"
+                        ? `طباعة استيكر "${item.name}" مباشرة`
+                        : `Print sticker for "${item.name}" directly`
+                    }
+                    aria-label="Print Sticker"
+                  >
+                    {busyStickerId === item.id && stickerAction === "print" ? (
+                      <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    ) : (
+                      <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                    )}
+                  </button>
+                </div>
               </div>
             )}
             <button
@@ -2847,6 +2970,7 @@ function TreeRow({
               item={item}
               isPrinted={isPrinted}
               onTogglePrint={() => onTogglePrintStatus(item)}
+              onShowSticker={(folder) => onShowSticker(null, folder)}
               onPrintSticker={(folder) => onPrintSticker(null, folder)}
               open={menuId === item.id}
               onToggle={() => onMenuToggle(item.id)}
@@ -2913,8 +3037,10 @@ function TreeRow({
               onDelete={onDelete}
               onNewSubFolder={onNewSubFolder}
               onUploadToFolder={onUploadToFolder}
+              onShowSticker={onShowSticker}
               onPrintSticker={onPrintSticker}
-              printingStickerId={printingStickerId}
+              busyStickerId={busyStickerId}
+              stickerAction={stickerAction}
               draggedItem={draggedItem}
               dragOverFolderId={dragOverFolderId}
               onDragStartItem={onDragStartItem}
