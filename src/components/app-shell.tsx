@@ -14,6 +14,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Printer,
   Search,
   Settings,
   Star,
@@ -62,6 +63,15 @@ const primaryNav: NavItem[] = [
     color: "text-sky-600 dark:text-sky-400",
     bgColor: "bg-sky-500/10 dark:bg-sky-500/20",
     activeBg: "bg-sky-600 text-white shadow-md shadow-sky-500/25",
+  },
+  {
+    href: "/pending-print",
+    labelKey: "nav.pendingPrint",
+    icon: Printer,
+    exact: true,
+    color: "text-amber-600 dark:text-amber-400",
+    bgColor: "bg-amber-500/10 dark:bg-amber-500/20",
+    activeBg: "bg-amber-600 text-white shadow-md shadow-amber-500/25",
   },
   {
     href: "/files/pdf",
