@@ -284,7 +284,7 @@ describe("generateStickerPdf", () => {
     expect(pdfDoc.getPageCount()).toBe(1);
   });
 
-  it("Generates Floor placard with Senior Dossier Checklist Box (including Draft papers, pens, and IDs)", async () => {
+  it("Generates Floor placard with Senior Dossier Checklist Box (including Numbers & Mobile Collection Files)", async () => {
     const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor"]);
     expect(sticker.level).toBe("floor");
 

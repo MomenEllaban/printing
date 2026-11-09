@@ -261,10 +261,9 @@ function drawA4PlacardPage(params: {
     const roomChecklistItems = [
       "1. Student Register",
       "2. Proctor Report",
-      "3. Seating Numbers / Room List",
-      "4. Mobile Collection Forms",
-      "5. Student Misconduct Forms",
-      "6. Draft papers, pens, and IDs",
+      "3. Numbers & Mobile Collection Files",
+      "4. Student Misconduct Forms",
+      "5. Draft papers, pens, and IDs",
     ];
 
     if (isLandscape) {
@@ -384,10 +383,9 @@ function drawA4PlacardPage(params: {
     const floorChecklistItems = [
       "1. Proctor Register",
       "2. Senior Report",
-      "3. Seating Numbers / Room List",
-      "4. Mobile Collection Forms",
-      "5. Proctor Misconduct Forms",
-      "6. Draft papers, pens, and IDs",
+      "3. Numbers & Mobile Collection Files",
+      "4. Proctor Misconduct Forms",
+      "5. Draft papers, pens, and IDs",
     ];
 
     const subText =
@@ -1066,9 +1064,9 @@ function drawCustomLabelPage(params: {
     if (content.childCount) {
       displayItems.push(`Total Rooms : ${content.childCount}`);
     }
-    displayItems.push("[ ] Proc Reg  [ ] Senior Rep  [ ] Seating  [ ] Mobile  [ ] Proc Misconduct  [ ] Draft/Pens/IDs");
+    displayItems.push("[ ] Proc Reg  [ ] Senior Rep  [ ] Numbers & Mobile  [ ] Proc Misconduct  [ ] Draft/Pens/IDs");
   } else if (content.level === "room") {
-    displayItems.push("[ ] Reg  [ ] Proctor  [ ] Seating  [ ] Mobile  [ ] Misconduct  [ ] Draft/Pens/IDs");
+    displayItems.push("[ ] Reg  [ ] Proctor  [ ] Numbers & Mobile  [ ] Misconduct  [ ] Draft/Pens/IDs");
   }
 
   const remainingHeight = currentY - paddingY;
