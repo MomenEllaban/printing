@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDriveContextWithRoot } from "@/lib/auth";
 import { deleteFile, getFileMeta, toDriveItem, updateFile } from "@/lib/drive";
-import { getDemoItem, isDemoEnabled } from "@/lib/demo";
+import { deleteDemoRecord, getDemoItem, isDemoEnabled } from "@/lib/demo";
 import { getConnection } from "@/lib/auth";
 import { getFavoriteIds, removeMetadata, syncDriveItems } from "@/lib/metadata";
 import { unmarkFilesAsPrinted } from "@/lib/print-tracker";
@@ -122,18 +122,27 @@ export async function PATCH(request: Request, context: Context) {
 export async function DELETE(request: Request, context: Context) {
   try {
     await requireSession(request, { mutating: true });
-    await demoGuard();
 
     const activeProfile = await getActiveProfile();
     if (!activeProfile.canDelete) {
-      throw new AppError("حذف الملفات متاح لحساب المدير المسؤول (البرنتنج) فقط", {
+      throw new AppError("حذف الملفات متاح للحسابات المصرح لها فقط", {
         status: 403,
         code: "forbidden",
       });
     }
 
-    enforceRateLimit(request, "drive:delete", 30, 60_000);
     const { fileId } = await context.params;
+
+    const connection = await getConnection();
+    const connected = connection?.connectionStatus === "connected";
+    if (isDemoEnabled() && !connected) {
+      deleteDemoRecord(fileId);
+      await removeMetadata(fileId);
+      await unmarkFilesAsPrinted([fileId]);
+      return NextResponse.json({ ok: true });
+    }
+
+    enforceRateLimit(request, "drive:delete", 30, 60_000);
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     if (fileId === rootFolderId) {
       throw new AppError("The app root folder cannot be deleted", { code: "invalidRequest" });

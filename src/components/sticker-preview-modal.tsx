@@ -11,6 +11,8 @@ interface StickerPreviewModalProps {
   pdfUrl: string | null;
   title?: string;
   onPrint?: () => void;
+  customTitle?: string;
+  customDescription?: string;
 }
 
 export function StickerPreviewModal({
@@ -19,6 +21,8 @@ export function StickerPreviewModal({
   pdfUrl,
   title,
   onPrint,
+  customTitle,
+  customDescription,
 }: StickerPreviewModalProps) {
   const { locale } = useI18n();
 
@@ -37,7 +41,7 @@ export function StickerPreviewModal({
   const handleDownload = () => {
     const link = document.createElement("a");
     link.href = pdfUrl;
-    link.download = `Sticker-${(title || "EST").replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    link.download = `${(title || "Document").replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -78,14 +82,18 @@ export function StickerPreviewModal({
       open={open}
       onClose={onClose}
       title={
-        locale === "ar"
-          ? `معاينة الاستيكر: ${title || "EST"}`
-          : `Sticker Preview: ${title || "EST"}`
+        customTitle
+          ? customTitle
+          : locale === "ar"
+            ? `معاينة الاستيكر: ${title || "EST"}`
+            : `Sticker Preview: ${title || "EST"}`
       }
       description={
-        locale === "ar"
-          ? "معاينة مباشرة للاستيكر مع الشعار الرسمي وبيانات المكان قبل إرساله للطباعة."
-          : "Live sticker preview with official logo and location details before printing."
+        customDescription
+          ? customDescription
+          : locale === "ar"
+            ? "معاينة مباشرة للاستيكر مع الشعار الرسمي وبيانات المكان قبل إرساله للطباعة."
+            : "Live sticker preview with official logo and location details before printing."
       }
       size="lg"
       footer={

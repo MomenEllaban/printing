@@ -4,7 +4,7 @@ import { getDriveContextWithRoot, getConnection } from "@/lib/auth";
 import { deleteFile } from "@/lib/drive";
 import { removeMetadata } from "@/lib/metadata";
 import { unmarkFilesAsPrinted } from "@/lib/print-tracker";
-import { isDemoEnabled } from "@/lib/demo";
+import { deleteDemoRecord, isDemoEnabled } from "@/lib/demo";
 import { AppError } from "@/lib/errors";
 import { enforceRateLimit, jsonError, parseJson, requireSession } from "@/lib/api-utils";
 import { invalidateCache } from "@/lib/ttl-cache";
@@ -20,25 +20,28 @@ export async function POST(request: Request) {
   try {
     await requireSession(request, { mutating: true });
 
-    const connection = await getConnection();
-    const connected = connection?.connectionStatus === "connected";
-    if (isDemoEnabled() && !connected) {
-      throw new AppError("Demo data is read-only. Connect Google Drive to manage files.", {
-        status: 409,
-        code: "invalidRequest",
-      });
-    }
-
     const activeProfile = await getActiveProfile();
     if (!activeProfile.canDelete) {
-      throw new AppError("حذف الملفات متاح لحساب المدير المسؤول (البرنتنج) فقط", {
+      throw new AppError("حذف الملفات متاح للحسابات المصرح لها فقط", {
         status: 403,
         code: "forbidden",
       });
     }
 
-    enforceRateLimit(request, "drive:batch-delete", 30, 60_000);
     const body = await parseJson<z.infer<typeof schema>>(request, schema);
+
+    const connection = await getConnection();
+    const connected = connection?.connectionStatus === "connected";
+    if (isDemoEnabled() && !connected) {
+      body.fileIds.forEach((id) => deleteDemoRecord(id));
+      await Promise.all([
+        ...body.fileIds.map((id) => removeMetadata(id)),
+        unmarkFilesAsPrinted(body.fileIds),
+      ]);
+      return NextResponse.json({ ok: true, deleted: body.fileIds.length });
+    }
+
+    enforceRateLimit(request, "drive:batch-delete", 30, 60_000);
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
 

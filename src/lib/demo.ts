@@ -94,6 +94,23 @@ function buildEstDemoRecords(): DemoRecord[] {
         parentId: bldId,
         modifiedOffsetDays: 2,
       });
+
+      // Sample Proctor Register for Pharmacy - 2nd Floor
+      if (row.floor === "2nd Floor" && row.building === "Pharmacy") {
+        const flrProctorId = `${flrId}-proctor-register`;
+        if (!addedIds.has(flrProctorId)) {
+          addedIds.add(flrProctorId);
+          records.push({
+            id: flrProctorId,
+            name: `Proctor_Register_${row.floor.replace(/\s+/g, "_")}.pdf`,
+            mimeType: MIME.pdf,
+            size: 118_400,
+            parentId: flrId,
+            modifiedOffsetDays: 1,
+            content: "pdf",
+          });
+        }
+      }
     }
 
     // Room
@@ -232,6 +249,22 @@ function toItem(record: DemoRecord): DriveItem {
 
 export function demoItems(): DriveItem[] {
   return RECORDS.map(toItem);
+}
+
+export function addDemoRecord(record: DemoRecord): void {
+  const existingIdx = RECORDS.findIndex((r) => r.id === record.id);
+  if (existingIdx >= 0) {
+    RECORDS[existingIdx] = record;
+  } else {
+    RECORDS.unshift(record);
+  }
+}
+
+export function deleteDemoRecord(id: string): void {
+  const idx = RECORDS.findIndex((r) => r.id === id);
+  if (idx >= 0) {
+    RECORDS.splice(idx, 1);
+  }
 }
 
 export function getDemoRecord(id: string): DemoRecord | undefined {

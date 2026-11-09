@@ -16,6 +16,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileText,
   FolderPlus,
   FolderMinus,
   FolderTree,
@@ -42,6 +43,7 @@ import { FileIcon } from "./file-icon";
 import { BatchPrintDialog } from "./batch-print-dialog";
 import { BatchStickersDialog } from "./batch-stickers-dialog";
 import { StickerPreviewModal } from "./sticker-preview-modal";
+import { AddProctorDialog } from "./add-proctor-dialog";
 import { useI18n } from "./locale-provider";
 import { useActiveProfile } from "./profile-provider";
 import { cn } from "@/lib/cn";
@@ -49,6 +51,47 @@ import { formatBytes } from "@/lib/file-utils";
 import { formatDate, formatNumber } from "@/lib/format";
 import { parseExamInfoFromFileName } from "@/lib/exam-utils";
 import type { Breadcrumb, DriveItem, DriveListResult, FileCategory, Locale } from "@/lib/types";
+
+function isProctorRegisterFile(item: DriveItem): boolean {
+  if (item.isFolder) return false;
+  const isPdf = item.mimeType === "application/pdf" || item.name.toLowerCase().endsWith(".pdf");
+  if (!isPdf) return false;
+  return (
+    /proctor\s*register|كشف\s*مراقبين|كشف\s*المراقبين|ملاحظين/i.test(item.name) ||
+    item.name.toLowerCase().includes("proctor")
+  );
+}
+
+function findProctorFileInItems(items?: DriveItem[]): DriveItem | undefined {
+  if (!items || !items.length) return undefined;
+  return items.find(isProctorRegisterFile);
+}
+
+function isEligibleProctorFolder(
+  folder: { id: string; name: string; isFolder?: boolean },
+  crumbs?: Breadcrumb[],
+  depth?: number,
+  proctorFile?: DriveItem,
+): boolean {
+  if (folder.isFolder === false) return false;
+  if (proctorFile) return true;
+  const name = folder.name.trim();
+  if (/floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b/i.test(name)) return true;
+  if (/building|مبنى|قسم/i.test(name)) return true;
+  if (typeof depth === "number") {
+    if (depth === 3 || depth === 4) return true;
+  }
+  if (crumbs && crumbs.length > 0) {
+    const isEst = (n?: string | null) =>
+      /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s]+))?$/i.test((n || "").trim());
+    const estIdx = crumbs.findIndex((b) => isEst(b.name));
+    if (estIdx >= 0) {
+      const currentDepth = crumbs.length - 1 - estIdx;
+      if (currentDepth === 2 || currentDepth === 3) return true;
+    }
+  }
+  return false;
+}
 
 export type BrowserMode = "all" | "category" | "recent" | "favorites";
 
@@ -403,6 +446,19 @@ export function FileBrowser({
     }
   }, [refreshKey, fetchFolderChildren]);
 
+  // Prefetch direct children for eligible proctor folders so proctor file existence is detected immediately
+  useEffect(() => {
+    if (items.length > 0) {
+      items
+        .filter((i) => i.isFolder && isEligibleProctorFolder(i, breadcrumbs))
+        .forEach((f) => {
+          if (!folderChildren[f.id] && !loadingFolderIds.has(f.id)) {
+            void fetchFolderChildren(f.id);
+          }
+        });
+    }
+  }, [items, breadcrumbs, folderChildren, loadingFolderIds, fetchFolderChildren]);
+
   const totalKnownFolders = useMemo(() => {
     const ids = new Set<string>();
     items.filter((i) => i.isFolder).forEach((i) => ids.add(i.id));
@@ -462,11 +518,130 @@ export function FileBrowser({
 
   const [busyStickerId, setBusyStickerId] = useState<string | null>(null);
   const [stickerAction, setStickerAction] = useState<"show" | "print" | null>(null);
-  const [previewStickerState, setPreviewStickerState] = useState<{
+  const [previewPdfState, setPreviewPdfState] = useState<{
     open: boolean;
     url: string | null;
     title?: string;
+    customTitle?: string;
+    customDescription?: string;
   }>({ open: false, url: null });
+  const previewStickerState = previewPdfState;
+  const setPreviewStickerState = setPreviewPdfState;
+
+  // Proctor Register Dialog & Actions
+  const [proctorDialogOpen, setProctorDialogOpen] = useState(false);
+  const [proctorDialogFolder, setProctorDialogFolder] = useState<{ id: string; name: string } | null>(null);
+
+  const handleOpenProctorDialog = useCallback(
+    (folder: { id: string; name: string }) => {
+      setProctorDialogFolder({ id: folder.id, name: folder.name });
+      setProctorDialogOpen(true);
+      if (!folderChildren[folder.id]) {
+        void fetchFolderChildren(folder.id);
+      }
+    },
+    [folderChildren, fetchFolderChildren],
+  );
+
+  const handleShowProctorFile = useCallback(
+    (file: DriveItem, folder?: { id: string; name: string }) => {
+      setPreviewPdfState({
+        open: true,
+        url: `/api/drive/files/${file.id}/content`,
+        title: folder ? `Proctor Register - ${folder.name}` : file.name,
+        customTitle:
+          locale === "ar"
+            ? `معاينة كشف المراقبين: ${folder?.name || file.name}`
+            : `Proctor Register: ${folder?.name || file.name}`,
+        customDescription:
+          locale === "ar"
+            ? "معاينة مباشرة لكشف حضور وتوزيع السادة المراقبين والملاحظين قبل الطباعة."
+            : "Live preview of Proctor Attendance & Assignment Register before printing.",
+      });
+    },
+    [locale],
+  );
+
+  const handlePrintProctorFile = useCallback(
+    (file: DriveItem, folder?: { id: string; name: string }) => {
+      const toastId = toast.loading(
+        locale === "ar"
+          ? `جاري تجهيز كشف مراقبين "${folder?.name || file.name}" للطباعة...`
+          : `Preparing proctor register for print...`,
+      );
+      try {
+        const iframe = document.createElement("iframe");
+        iframe.style.position = "fixed";
+        iframe.style.right = "0";
+        iframe.style.bottom = "0";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "0";
+        iframe.src = `/api/drive/files/${file.id}/content`;
+        document.body.appendChild(iframe);
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+          } catch {
+            window.open(`/print/${file.id}`, "_blank");
+          }
+        };
+        toast.success(
+          locale === "ar" ? "تم إرسال كشف المراقبين للطباعة بنجاح" : "Proctor register sent to printer",
+          { id: toastId },
+        );
+      } catch {
+        window.open(`/print/${file.id}`, "_blank");
+        toast.dismiss(toastId);
+      }
+    },
+    [locale],
+  );
+
+  const handleProctorUploaded = useCallback(
+    (newFile: DriveItem) => {
+      if (!proctorDialogFolder) return;
+      const fId = proctorDialogFolder.id;
+      setFolderChildren((prev) => {
+        const existing = prev[fId] || [];
+        return {
+          ...prev,
+          [fId]: [newFile, ...existing.filter((item) => item.id !== newFile.id)],
+        };
+      });
+      if (currentFolder?.id === fId) {
+        setItems((prev) => [newFile, ...prev.filter((item) => item.id !== newFile.id)]);
+      }
+      setExpandedFolderIds((prev) => new Set(prev).add(fId));
+      setRefreshKey((v) => v + 1);
+    },
+    [proctorDialogFolder, currentFolder],
+  );
+
+  const getHierarchyInfoForFolder = useCallback(
+    (target: { id: string; name: string }) => {
+      const names = breadcrumbs.map((b) => b.name || "");
+      const isEst = (n: string) =>
+        /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s]+))?$/i.test(n.trim());
+      const estIdx = names.findIndex(isEst);
+      const relevant = estIdx >= 0 ? names.slice(estIdx) : names;
+
+      const examName = relevant[0] || "EST 1";
+      const governorate = relevant[1];
+      const center = relevant[2];
+      const building = relevant[3] || (!/floor|دور/i.test(target.name) ? target.name : undefined);
+      const floor = relevant[4] || (/floor|دور/i.test(target.name) ? target.name : undefined);
+
+      const children = folderChildren[target.id] || [];
+      const rooms = children
+        .filter((c) => c.isFolder || /room|قاعة|\d+/i.test(c.name))
+        .map((c) => c.name);
+
+      return { examName, governorate, center, building, floor, rooms };
+    },
+    [breadcrumbs, folderChildren],
+  );
 
   const handleStickerAction = useCallback(
     async (
@@ -1617,6 +1792,63 @@ export function FileBrowser({
               </button>
             </div>
           )}
+          {currentFolder && (() => {
+            const currentProctorFile = findProctorFileInItems(items);
+            const isEligible = isEligibleProctorFolder(currentFolder, breadcrumbs, undefined, currentProctorFile);
+            if (!isEligible) return null;
+
+            if (currentProctorFile) {
+              return (
+                <div className="inline-flex items-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-0.5 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenProctorDialog(currentFolder)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
+                    title={
+                      locale === "ar"
+                        ? `كشف المراقبين: "${currentProctorFile.name}" (اضغط للإدارة)`
+                        : `Proctor Register: "${currentProctorFile.name}" (Click to manage)`
+                    }
+                  >
+                    <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="hidden sm:inline">{locale === "ar" ? "كشف مراقبين" : "Proctor Reg"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShowProctorFile(currentProctorFile, currentFolder)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
+                    title={locale === "ar" ? `معاينة كشف مراقبين "${currentFolder.name}" (عرض)` : `Preview proctor register for "${currentFolder.name}" (Show)`}
+                  >
+                    <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{locale === "ar" ? "معاينة" : "Show"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePrintProctorFile(currentProctorFile, currentFolder)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
+                    title={locale === "ar" ? `طباعة كشف مراقبين "${currentFolder.name}" مباشرة` : `Print proctor register for "${currentFolder.name}" directly`}
+                  >
+                    <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{locale === "ar" ? "طباعة" : "Print"}</span>
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <button
+                type="button"
+                onClick={() => handleOpenProctorDialog(currentFolder)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all shadow-xs"
+                title={locale === "ar" ? `إضافة كشف مراقبين (PDF) لـ "${currentFolder.name}"` : `Add Proctor Register for "${currentFolder.name}"`}
+              >
+                <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg"}</span>
+              </button>
+            );
+          })()}
           <Button variant="secondary" onClick={refresh} disabled={loading}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             {t("common.refresh")}
@@ -1960,6 +2192,11 @@ export function FileBrowser({
                       onTogglePrint={() => void togglePrintStatus(item)}
                       onShowSticker={(folder) => handleShowSticker(null, folder)}
                       onPrintSticker={(folder) => handlePrintSticker(null, folder)}
+                      onOpenProctorDialog={handleOpenProctorDialog}
+                      onShowProctorFile={handleShowProctorFile}
+                      onPrintProctorFile={handlePrintProctorFile}
+                      proctorFile={item.isFolder ? findProctorFileInItems(folderChildren[item.id]) : undefined}
+                      breadcrumbs={breadcrumbs}
                       open={menuId === item.id}
                       onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
                       onClose={() => setMenuId(null)}
@@ -2082,6 +2319,86 @@ export function FileBrowser({
                           )}
                         </button>
                       </div>
+
+                      {(() => {
+                        const proctorFile = findProctorFileInItems(folderChildren[item.id]);
+                        const isEligible = isEligibleProctorFolder(item, breadcrumbs, undefined, proctorFile);
+                        if (!isEligible) return null;
+
+                        if (proctorFile) {
+                          return (
+                            <div className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-0.5 text-xs shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenProctorDialog(item);
+                                }}
+                                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
+                                title={
+                                  locale === "ar"
+                                    ? `كشف المراقبين: "${proctorFile.name}" (اضغط للإدارة)`
+                                    : `Proctor Register: "${proctorFile.name}" (Click to manage)`
+                                }
+                              >
+                                <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                <span>{locale === "ar" ? "كشف" : "Proctor"}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShowProctorFile(proctorFile, item);
+                                }}
+                                className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+                                title={
+                                  locale === "ar"
+                                    ? `معاينة كشف مراقبين "${item.name}" (عرض)`
+                                    : `Preview proctor register for "${item.name}" (Show)`
+                                }
+                              >
+                                <Eye className="size-3 text-emerald-600 dark:text-emerald-400" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePrintProctorFile(proctorFile, item);
+                                }}
+                                className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+                                title={
+                                  locale === "ar"
+                                    ? `طباعة كشف مراقبين "${item.name}" مباشرة`
+                                    : `Print proctor register for "${item.name}" directly`
+                                }
+                              >
+                                <Printer className="size-3 text-emerald-600 dark:text-emerald-400" />
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenProctorDialog(item);
+                            }}
+                            className="chip border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 flex items-center gap-1 cursor-pointer font-bold text-xs"
+                            title={
+                              locale === "ar"
+                                ? `إضافة كشف مراقبين (PDF) داخل "${item.name}"`
+                                : `Add Proctor Register (PDF) into "${item.name}"`
+                            }
+                          >
+                            <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                            <span>{locale === "ar" ? "+ كشف" : "+ Proctor"}</span>
+                          </button>
+                        );
+                      })()}
                     </>
                   )}
                   {!item.isFolder && (
@@ -2177,6 +2494,10 @@ export function FileBrowser({
                     onUploadToFolder={handleOpenUploadForFolder}
                     onShowSticker={handleShowSticker}
                     onPrintSticker={handlePrintSticker}
+                    onOpenProctorDialog={handleOpenProctorDialog}
+                    onShowProctorFile={handleShowProctorFile}
+                    onPrintProctorFile={handlePrintProctorFile}
+                    breadcrumbs={breadcrumbs}
                     busyStickerId={busyStickerId}
                     stickerAction={stickerAction}
                     draggedItem={draggedItem}
@@ -2522,12 +2843,34 @@ export function FileBrowser({
         onExecute={handleBatchStickersAction}
       />
 
-      {/* In-app Sticker Preview Modal */}
+      {/* In-app PDF Preview Modal (Stickers & Proctor Registers) */}
       <StickerPreviewModal
-        open={previewStickerState.open}
-        onClose={() => setPreviewStickerState({ open: false, url: null })}
-        pdfUrl={previewStickerState.url}
-        title={previewStickerState.title}
+        open={previewPdfState.open}
+        onClose={() => setPreviewPdfState({ open: false, url: null })}
+        pdfUrl={previewPdfState.url}
+        title={previewPdfState.title}
+        customTitle={previewPdfState.customTitle}
+        customDescription={previewPdfState.customDescription}
+      />
+
+      {/* Add / Manage Proctor Register Dialog */}
+      <AddProctorDialog
+        open={proctorDialogOpen}
+        onClose={() => {
+          setProctorDialogOpen(false);
+          setProctorDialogFolder(null);
+        }}
+        folder={proctorDialogFolder}
+        currentProctorFile={
+          proctorDialogFolder
+            ? findProctorFileInItems(folderChildren[proctorDialogFolder.id]) ||
+              (currentFolder?.id === proctorDialogFolder.id ? findProctorFileInItems(items) : undefined)
+            : undefined
+        }
+        hierarchyInfo={proctorDialogFolder ? getHierarchyInfoForFolder(proctorDialogFolder) : undefined}
+        onSuccess={handleProctorUploaded}
+        onPreviewFile={(file) => handleShowProctorFile(file, proctorDialogFolder || undefined)}
+        onPrintFile={(file) => handlePrintProctorFile(file, proctorDialogFolder || undefined)}
       />
     </div>
   );
@@ -2546,6 +2889,11 @@ function ItemMenu({
   onTogglePrint,
   onShowSticker,
   onPrintSticker,
+  onOpenProctorDialog,
+  onShowProctorFile,
+  onPrintProctorFile,
+  proctorFile,
+  breadcrumbs,
   demo,
 }: {
   item: DriveItem;
@@ -2560,6 +2908,11 @@ function ItemMenu({
   onTogglePrint?: () => void;
   onShowSticker?: (folder: DriveItem) => void;
   onPrintSticker?: (folder: DriveItem) => void;
+  onOpenProctorDialog?: (folder: DriveItem) => void;
+  onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
+  onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
+  proctorFile?: DriveItem;
+  breadcrumbs?: Breadcrumb[];
   demo: boolean;
 }) {
   const { t, locale } = useI18n();
@@ -2734,6 +3087,63 @@ function ItemMenu({
                 <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
               </button>
             )}
+            {item.isFolder && onOpenProctorDialog && isEligibleProctorFolder(item, breadcrumbs, undefined, proctorFile) && (
+              <>
+                {proctorFile ? (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                      onClick={() => {
+                        onShowProctorFile?.(proctorFile, item);
+                        onClose();
+                      }}
+                    >
+                      <Eye className="size-4" />
+                      <span>{locale === "ar" ? "معاينة كشف المراقبين (عرض)" : "Preview Proctor Register (Show)"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                      onClick={() => {
+                        onPrintProctorFile?.(proctorFile, item);
+                        onClose();
+                      }}
+                    >
+                      <Printer className="size-4" />
+                      <span>{locale === "ar" ? "طباعة كشف المراقبين" : "Print Proctor Register"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400"
+                      onClick={() => {
+                        onOpenProctorDialog(item);
+                        onClose();
+                      }}
+                    >
+                      <FileText className="size-4" />
+                      <span>{locale === "ar" ? "إدارة / استبدال كشف المراقبين" : "Manage / Replace Proctor Register"}</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                    onClick={() => {
+                      onOpenProctorDialog(item);
+                      onClose();
+                    }}
+                  >
+                    <FileText className="size-4" />
+                    <span>{locale === "ar" ? "إضافة كشف مراقبين (PDF)" : "Add Proctor Register (PDF)"}</span>
+                  </button>
+                )}
+              </>
+            )}
             <button
               type="button"
               role="menuitem"
@@ -2871,6 +3281,10 @@ interface TreeRowProps {
   onUploadToFolder: (folder: DriveItem) => void;
   onShowSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onOpenProctorDialog?: (folder: DriveItem) => void;
+  onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
+  onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
+  breadcrumbs?: Breadcrumb[];
   busyStickerId: string | null;
   stickerAction: "show" | "print" | null;
   draggedItem: DriveItem | null;
@@ -2908,6 +3322,10 @@ function TreeRow({
   onUploadToFolder,
   onShowSticker,
   onPrintSticker,
+  onOpenProctorDialog,
+  onShowProctorFile,
+  onPrintProctorFile,
+  breadcrumbs,
   busyStickerId,
   stickerAction,
   draggedItem,
@@ -3144,6 +3562,88 @@ function TreeRow({
                     )}
                   </button>
                 </div>
+
+                {(() => {
+                  const proctorFile = findProctorFileInItems(folderChildren[item.id]);
+                  const isEligible = isEligibleProctorFolder(item, breadcrumbs, depth, proctorFile);
+                  if (!isEligible) return null;
+
+                  if (proctorFile) {
+                    return (
+                      <div className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenProctorDialog?.(item);
+                          }}
+                          className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
+                          title={
+                            locale === "ar"
+                              ? `كشف المراقبين: "${proctorFile.name}" (اضغط للإدارة)`
+                              : `Proctor Register: "${proctorFile.name}" (Click to manage)`
+                          }
+                        >
+                          <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          <span className="hidden sm:inline">{locale === "ar" ? "كشف مراقبين" : "Proctor"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onShowProctorFile?.(proctorFile, item);
+                          }}
+                          className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
+                          title={
+                            locale === "ar"
+                              ? `معاينة كشف مراقبين "${item.name}" (عرض)`
+                              : `Preview proctor register for "${item.name}" (Show)`
+                          }
+                          aria-label="Preview Proctor Register"
+                        >
+                          <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPrintProctorFile?.(proctorFile, item);
+                          }}
+                          className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
+                          title={
+                            locale === "ar"
+                              ? `طباعة كشف مراقبين "${item.name}" مباشرة`
+                              : `Print proctor register for "${item.name}" directly`
+                          }
+                          aria-label="Print Proctor Register"
+                        >
+                          <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenProctorDialog?.(item);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
+                      title={
+                        locale === "ar"
+                          ? `إضافة كشف مراقبين (PDF) داخل "${item.name}"`
+                          : `Add Proctor Register (PDF) into "${item.name}"`
+                      }
+                    >
+                      <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                      <span className="hidden sm:inline">{locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg"}</span>
+                    </button>
+                  );
+                })()}
               </div>
             )}
             <button
@@ -3180,6 +3680,11 @@ function TreeRow({
               onTogglePrint={() => onTogglePrintStatus(item)}
               onShowSticker={(folder) => onShowSticker(null, folder)}
               onPrintSticker={(folder) => onPrintSticker(null, folder)}
+              onOpenProctorDialog={onOpenProctorDialog}
+              onShowProctorFile={onShowProctorFile}
+              onPrintProctorFile={onPrintProctorFile}
+              proctorFile={item.isFolder ? findProctorFileInItems(folderChildren[item.id]) : undefined}
+              breadcrumbs={breadcrumbs}
               open={menuId === item.id}
               onToggle={() => onMenuToggle(item.id)}
               onClose={onMenuClose}
@@ -3247,6 +3752,10 @@ function TreeRow({
               onUploadToFolder={onUploadToFolder}
               onShowSticker={onShowSticker}
               onPrintSticker={onPrintSticker}
+              onOpenProctorDialog={onOpenProctorDialog}
+              onShowProctorFile={onShowProctorFile}
+              onPrintProctorFile={onPrintProctorFile}
+              breadcrumbs={breadcrumbs}
               busyStickerId={busyStickerId}
               stickerAction={stickerAction}
               draggedItem={draggedItem}

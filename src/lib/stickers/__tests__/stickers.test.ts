@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildStickerContent } from "../sticker-content";
 import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
+import { generateProctorRegisterPdf } from "../proctor-register-pdf";
+import { PROFILES } from "../../profiles";
 import { PDFDocument } from "pdf-lib";
 
 describe("buildStickerContent", () => {
@@ -280,5 +282,31 @@ describe("generateStickerPdf", () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     const pdfDoc = await PDFDocument.load(pdfBytes);
     expect(pdfDoc.getPageCount()).toBe(1);
+  });
+
+  it("Generates official EST Proctor Attendance & Assignment Register PDF (A4 Landscape)", async () => {
+    const pdfBytes = await generateProctorRegisterPdf({
+      examName: "EST 1",
+      governorate: "Alexandria",
+      center: "Abu Qir",
+      building: "Pharmacy",
+      floor: "2nd Floor",
+      rooms: ["204", "205", "219"],
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(1);
+
+    const page = pdfDoc.getPage(0);
+    const size = page.getSize();
+    expect(size.width).toBeCloseTo(841.89, 0);
+    expect(size.height).toBeCloseTo(595.28, 0);
+  });
+
+  it("Ensures Dina and Nabil have full delete permissions (canDelete: true)", () => {
+    expect(PROFILES.dina.canDelete).toBe(true);
+    expect(PROFILES.nabil.canDelete).toBe(true);
+    expect(PROFILES.printing.canDelete).toBe(true);
   });
 });

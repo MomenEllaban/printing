@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { Readable } from "node:stream";
-import { getDriveContextWithRoot } from "@/lib/auth";
+import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
 import { enforceRateLimit, jsonError, requireSession } from "@/lib/api-utils";
 import { getSettings } from "@/lib/settings";
 import { buildExamFileName, resolveAvailableName, resolveUploadFolder, validateUploadInput, type ExamUploadMeta } from "@/lib/upload";
-import { isValidFileName, mimeForFileName } from "@/lib/file-utils";
+import { categoryFor, extensionOf, isValidFileName, mimeForFileName } from "@/lib/file-utils";
 import { AppError } from "@/lib/errors";
 import { toDriveItem } from "@/lib/drive";
 import { syncDriveItems } from "@/lib/metadata";
 import { invalidateCache } from "@/lib/ttl-cache";
 import { getActiveProfile } from "@/lib/profile-server";
+import { addDemoRecord, isDemoEnabled } from "@/lib/demo";
+import type { DriveItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +77,39 @@ export async function POST(request: Request) {
 
     const isExam = Boolean(examMetadata?.enabled);
     const targetName = isExam ? buildExamFileName(name, examMetadata) : name;
+
+    const connection = await getConnection();
+    const connected = connection?.connectionStatus === "connected";
+    if (isDemoEnabled() && !connected) {
+      const demoId = `demo-file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const parentId = requestedParentId || "demo-root";
+      const item: DriveItem = {
+        id: demoId,
+        name: targetName,
+        mimeType,
+        size,
+        extension: extensionOf(targetName, mimeType),
+        modifiedTime: new Date().toISOString(),
+        createdTime: new Date().toISOString(),
+        webViewLink: null,
+        thumbnailLink: null,
+        iconLink: null,
+        isFolder: false,
+        category: categoryFor(mimeType, targetName),
+        parentId,
+        isDemo: true,
+      };
+      addDemoRecord({
+        id: demoId,
+        name: targetName,
+        mimeType,
+        size,
+        parentId,
+        modifiedOffsetDays: 0,
+        content: "pdf",
+      });
+      return NextResponse.json(item, { status: 201 });
+    }
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const parentId = await resolveUploadFolder(
