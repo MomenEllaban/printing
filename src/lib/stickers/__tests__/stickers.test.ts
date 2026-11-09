@@ -241,4 +241,35 @@ describe("generateStickerPdf", () => {
       expect(size.height).toBeCloseTo(595.28, 0);
     }
   });
+
+  it("Computes subfolder floors count for Building sticker", () => {
+    const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy"]);
+    expect(sticker.level).toBe("building");
+    expect(sticker.childLabel).toBe("Floors");
+    expect(sticker.childCount).toBe(4);
+    expect(sticker.childNames).toEqual(["2nd Floor", "3rd Floor", "4th Floor", "5th Floor"]);
+  });
+
+  it("Computes subfolder rooms count for Floor sticker", () => {
+    const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor"]);
+    expect(sticker.level).toBe("floor");
+    expect(sticker.childLabel).toBe("Rooms");
+    expect(sticker.childCount).toBe(3);
+    expect(sticker.childNames).toEqual(["204", "205", "219"]);
+  });
+
+  it("Generates Room placard with File Contents Checklist Box", async () => {
+    const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "204"]);
+    expect(sticker.level).toBe("room");
+
+    const pdfBytes = await generateStickerPdf({
+      content: sticker,
+      paperMode: "a4",
+      orientation: "landscape",
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(1);
+  });
 });

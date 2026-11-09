@@ -342,3 +342,87 @@ export async function seedEstFolderStructure(
   return { totalCreated: cache.size, estRootId, scheduleFolderId };
 }
 
+/**
+ * Resolves child subfolder information (e.g. floors inside a building, or rooms inside a floor)
+ * based on the reference EST dataset.
+ */
+export function getReferenceSubfolderInfo(params: {
+  level: "governorate" | "center" | "building" | "floor" | "room" | "root" | "custom";
+  governorate?: string;
+  center?: string;
+  building?: string;
+  floor?: string;
+}): { childCount: number; childLabel: string; childLabelAr: string; childNames: string[] } {
+  const norm = (s?: string) => s?.trim().toLowerCase() || "";
+  const gov = norm(params.governorate);
+  const center = norm(params.center);
+  const building = norm(params.building);
+  const floor = norm(params.floor);
+
+  if (params.level === "building" && building) {
+    const matching = EST_REFERENCE_DATA.filter((r) => {
+      const matchB = norm(r.building) === building;
+      const matchC = !center || norm(r.testCenter) === center;
+      const matchG = !gov || norm(r.governorate) === gov;
+      return matchB && matchC && matchG;
+    });
+    const uniqueFloors = Array.from(new Set(matching.map((r) => r.floor))).filter(Boolean);
+    return {
+      childCount: uniqueFloors.length,
+      childLabel: "Floors",
+      childLabelAr: "الأدوار",
+      childNames: uniqueFloors,
+    };
+  }
+
+  if (params.level === "floor" && floor) {
+    const matching = EST_REFERENCE_DATA.filter((r) => {
+      const matchF = norm(r.floor) === floor;
+      const matchB = !building || norm(r.building) === building;
+      const matchC = !center || norm(r.testCenter) === center;
+      const matchG = !gov || norm(r.governorate) === gov;
+      return matchF && matchB && matchC && matchG;
+    });
+    const uniqueRooms = Array.from(new Set(matching.map((r) => r.room))).filter(Boolean);
+    return {
+      childCount: uniqueRooms.length,
+      childLabel: "Rooms",
+      childLabelAr: "القاعات",
+      childNames: uniqueRooms,
+    };
+  }
+
+  if (params.level === "center" && center) {
+    const matching = EST_REFERENCE_DATA.filter((r) => {
+      const matchC = norm(r.testCenter) === center;
+      const matchG = !gov || norm(r.governorate) === gov;
+      return matchC && matchG;
+    });
+    const uniqueBuildings = Array.from(new Set(matching.map((r) => r.building))).filter(Boolean);
+    return {
+      childCount: uniqueBuildings.length,
+      childLabel: "Buildings",
+      childLabelAr: "المباني",
+      childNames: uniqueBuildings,
+    };
+  }
+
+  if (params.level === "governorate" && gov) {
+    const matching = EST_REFERENCE_DATA.filter((r) => norm(r.governorate) === gov);
+    const uniqueCenters = Array.from(new Set(matching.map((r) => r.testCenter))).filter(Boolean);
+    return {
+      childCount: uniqueCenters.length,
+      childLabel: "Centers",
+      childLabelAr: "السناتر",
+      childNames: uniqueCenters,
+    };
+  }
+
+  return {
+    childCount: 0,
+    childLabel: "",
+    childLabelAr: "",
+    childNames: [],
+  };
+}
+

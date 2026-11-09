@@ -4,7 +4,7 @@ import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
 import { buildBreadcrumbs, getFileMeta } from "@/lib/drive";
 import { getDemoBreadcrumbs, isDemoEnabled } from "@/lib/demo";
 import { getSettings } from "@/lib/settings";
-import { buildStickerContent } from "@/lib/stickers/sticker-content";
+import { buildStickerContent, type StickerSubfolderInfo } from "@/lib/stickers/sticker-content";
 import { generateStickerPdf } from "@/lib/stickers/sticker-pdf";
 import { AppError } from "@/lib/errors";
 
@@ -40,6 +40,7 @@ export async function GET(request: Request, context: Context) {
     const orientation = (url.searchParams.get("orientation") as "portrait" | "landscape") || settings.printing.stickerOrientation || "landscape";
 
     let breadcrumbs: Array<{ id?: string; name?: string | null }> = [];
+    let driveSubfolderInfo: StickerSubfolderInfo | undefined;
 
     if (customChainParam) {
       try {
@@ -86,6 +87,26 @@ export async function GET(request: Request, context: Context) {
         if (breadcrumbs.length === 0 && data.currentFolder) {
           breadcrumbs = [data.currentFolder];
         }
+
+        // Query direct subfolders to provide live count of floors or rooms
+        try {
+          const subRes = await drive.files.list({
+            q: `'${resolvedFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: "files(id, name)",
+            pageSize: 100,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          });
+          const subs = subRes.data.files || [];
+          if (subs.length > 0) {
+            driveSubfolderInfo = {
+              childCount: subs.length,
+              childNames: subs.map((s) => s.name || "").filter(Boolean),
+            };
+          }
+        } catch (err) {
+          console.warn("[sticker] Error querying direct subfolders:", err);
+        }
       }
     }
 
@@ -96,7 +117,7 @@ export async function GET(request: Request, context: Context) {
       });
     }
 
-    const stickerContent = buildStickerContent(breadcrumbs);
+    const stickerContent = buildStickerContent(breadcrumbs, driveSubfolderInfo);
     const pdfBytes = await generateStickerPdf({
       content: stickerContent,
       lines: stickerContent.lines,

@@ -5,7 +5,7 @@ import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
 import { buildBreadcrumbs, getFileMeta, getFolderDescendants } from "@/lib/drive";
 import { getDemoBreadcrumbs, getDemoDescendants, isDemoEnabled } from "@/lib/demo";
 import { getSettings } from "@/lib/settings";
-import { buildStickerContent, type StickerContent } from "@/lib/stickers/sticker-content";
+import { buildStickerContent, type StickerContent, type StickerSubfolderInfo } from "@/lib/stickers/sticker-content";
 import { generateBatchStickerPdf } from "@/lib/stickers/sticker-pdf";
 import { AppError } from "@/lib/errors";
 
@@ -62,6 +62,8 @@ export async function POST(request: Request) {
     for (const folderId of orderedFolderIds) {
       let breadcrumbs: Array<{ id?: string; name?: string | null }> = [];
 
+      let driveSubfolderInfo: StickerSubfolderInfo | undefined;
+
       if (isDemo || folderId.startsWith("demo-")) {
         const demoData = getDemoBreadcrumbs(folderId);
         breadcrumbs = demoData.breadcrumbs;
@@ -85,11 +87,29 @@ export async function POST(request: Request) {
         if (breadcrumbs.length === 0 && data.currentFolder) {
           breadcrumbs = [data.currentFolder];
         }
+
+        // Query direct subfolder count (floors or rooms)
+        try {
+          const subRes = await drive.files.list({
+            q: `'${resolvedFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: "files(id, name)",
+            pageSize: 100,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          });
+          const subs = subRes.data.files || [];
+          if (subs.length > 0) {
+            driveSubfolderInfo = {
+              childCount: subs.length,
+              childNames: subs.map((s) => s.name || "").filter(Boolean),
+            };
+          }
+        } catch {}
       }
 
       if (breadcrumbs.length > 0) {
         try {
-          const content = buildStickerContent(breadcrumbs);
+          const content = buildStickerContent(breadcrumbs, driveSubfolderInfo);
           contents.push(content);
         } catch (err) {
           console.warn(`[stickers/batch] Skipping folder ${folderId}:`, err);

@@ -1,3 +1,5 @@
+import { getReferenceSubfolderInfo } from "./est-reference-data";
+
 export type StickerLevel = "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom";
 
 export interface StickerFieldItem {
@@ -5,6 +7,13 @@ export interface StickerFieldItem {
   label: string;       // e.g. "Center", "Building", "Floor", "Room"
   labelAr: string;     // e.g. "السنتر", "المبنى", "الدور", "القاعة"
   value: string;
+}
+
+export interface StickerSubfolderInfo {
+  childCount?: number;
+  childLabel?: string;
+  childLabelAr?: string;
+  childNames?: string[];
 }
 
 export interface StickerContent {
@@ -19,6 +28,11 @@ export interface StickerContent {
   floor?: string;
   room?: string;
   fields: StickerFieldItem[];
+  // Dynamic subfolder counts
+  childCount?: number;
+  childLabel?: string;
+  childLabelAr?: string;
+  childNames?: string[];
 }
 
 /**
@@ -33,7 +47,10 @@ export interface StickerContent {
  *
  * With the official EST Logo at the top of the sticker.
  */
-export function buildStickerContent(rawChain: Array<{ name?: string | null } | string>): StickerContent {
+export function buildStickerContent(
+  rawChain: Array<{ name?: string | null } | string>,
+  subfolderInfo?: StickerSubfolderInfo,
+): StickerContent {
   let chain = (rawChain || [])
     .map((item) => (typeof item === "string" ? item : item?.name ?? ""))
     .map((name) => name.trim().replace(/\s+/g, " "))
@@ -128,6 +145,16 @@ export function buildStickerContent(rawChain: Array<{ name?: string | null } | s
   const lines = ["EST", ...fields.map((f) => `${f.label} : ${f.value}`)];
   const rawLines = ["EST", ...locationChain];
 
+  const refInfo =
+    subfolderInfo && typeof subfolderInfo.childCount === "number" && subfolderInfo.childCount > 0
+      ? subfolderInfo
+      : getReferenceSubfolderInfo({ level, governorate, center, building, floor });
+
+  const childCount = subfolderInfo?.childCount ?? refInfo.childCount;
+  const childLabel = subfolderInfo?.childLabel ?? refInfo.childLabel;
+  const childLabelAr = subfolderInfo?.childLabelAr ?? refInfo.childLabelAr;
+  const childNames = subfolderInfo?.childNames ?? refInfo.childNames;
+
   return {
     level,
     lines,
@@ -140,5 +167,9 @@ export function buildStickerContent(rawChain: Array<{ name?: string | null } | s
     floor,
     room,
     fields,
+    childCount,
+    childLabel,
+    childLabelAr,
+    childNames,
   };
 }
