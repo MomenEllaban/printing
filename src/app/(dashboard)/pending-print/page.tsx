@@ -15,3 +15,4 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function PendingPrintPage() {
   return <PendingPrintTree />;
 }
+

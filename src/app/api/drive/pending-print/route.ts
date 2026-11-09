@@ -26,11 +26,26 @@ export async function GET(request: Request) {
       allFiles = demoData.files;
       rootFolderId = "demo-root";
     } else if (connected) {
-      const ctx = await getDriveContextWithRoot();
-      rootFolderId = ctx.rootFolderId;
-      const data = await getFolderDescendants(ctx.drive, [ctx.rootFolderId]);
-      allFolders = data.folders;
-      allFiles = data.files;
+      try {
+        const ctx = await getDriveContextWithRoot();
+        rootFolderId = ctx.rootFolderId;
+        if (rootFolderId) {
+          const data = await getFolderDescendants(ctx.drive, [rootFolderId]);
+          allFolders = data.folders;
+          allFiles = data.files;
+        }
+      } catch (err) {
+        console.warn("[pending-print] error fetching Google Drive descendants, falling back to demo:", err);
+        const demoData = getDemoDescendants(["demo-root"]);
+        allFolders = demoData.folders;
+        allFiles = demoData.files;
+        rootFolderId = "demo-root";
+      }
+    } else {
+      const demoData = getDemoDescendants(["demo-root"]);
+      allFolders = demoData.folders;
+      allFiles = demoData.files;
+      rootFolderId = "demo-root";
     }
 
     const printedMap = await getPrintedRecordsMap();
@@ -52,3 +67,4 @@ export async function GET(request: Request) {
     return jsonError(error);
   }
 }
+
