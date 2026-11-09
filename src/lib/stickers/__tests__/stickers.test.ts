@@ -9,6 +9,8 @@ import {
   isControlRegisterFile,
   isProctorRegisterFile,
   isStudentRegisterFile,
+  canProfileAddRegister,
+  getRegisterTheme,
 } from "../register-utils";
 import { PROFILES } from "../../profiles";
 import { PDFDocument } from "pdf-lib";
@@ -488,5 +490,45 @@ describe("generateStickerPdf", () => {
     expect(PROFILES.dina.canDelete).toBe(true);
     expect(PROFILES.nabil.canDelete).toBe(true);
     expect(PROFILES.printing.canDelete).toBe(true);
+  });
+
+  it("Enforces profile permissions for adding registers (canProfileAddRegister)", () => {
+    // Printing Admin can add everything
+    expect(canProfileAddRegister("printing", "control")).toBe(true);
+    expect(canProfileAddRegister("printing", "proctor")).toBe(true);
+    expect(canProfileAddRegister("printing", "student")).toBe(true);
+    expect(canProfileAddRegister("printing", null)).toBe(false);
+
+    // Dina: can add control (buildings) & proctor (floors), but NOT student (rooms)
+    expect(canProfileAddRegister("dina", "control")).toBe(true);
+    expect(canProfileAddRegister("dina", "proctor")).toBe(true);
+    expect(canProfileAddRegister("dina", "student")).toBe(false);
+    expect(canProfileAddRegister("dina", null)).toBe(false);
+
+    // Nabil: can add student (rooms), but NOT control or proctor
+    expect(canProfileAddRegister("nabil", "student")).toBe(true);
+    expect(canProfileAddRegister("nabil", "control")).toBe(false);
+    expect(canProfileAddRegister("nabil", "proctor")).toBe(false);
+    expect(canProfileAddRegister("nabil", null)).toBe(false);
+  });
+
+  it("Provides distinct visual themes and owners for each register category", () => {
+    const controlTheme = getRegisterTheme("control");
+    expect(controlTheme.category).toBe("control");
+    expect(controlTheme.nameAr).toBe("كشف الكنترول");
+    expect(controlTheme.ownerAr).toBe("دينا");
+    expect(controlTheme.textClass).toContain("sky");
+
+    const proctorTheme = getRegisterTheme("proctor");
+    expect(proctorTheme.category).toBe("proctor");
+    expect(proctorTheme.nameAr).toBe("كشف المراقبين");
+    expect(proctorTheme.ownerAr).toBe("دينا");
+    expect(proctorTheme.textClass).toContain("emerald");
+
+    const studentTheme = getRegisterTheme("student");
+    expect(studentTheme.category).toBe("student");
+    expect(studentTheme.nameAr).toBe("كشف الطلاب");
+    expect(studentTheme.ownerAr).toBe("نبيل");
+    expect(studentTheme.textClass).toContain("purple");
   });
 });

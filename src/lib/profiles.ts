@@ -22,7 +22,7 @@ export interface AppProfile {
   canPrint: boolean;
   canManageSettings: boolean;
   canDelete: boolean;
-  allowedUploadType: "all" | "proctor_only" | "student_only";
+  allowedUploadType: "all" | "proctor_only" | "student_only" | "proctor_and_control";
 }
 
 export const PROFILE_COOKIE = "fm_profile";
@@ -56,15 +56,15 @@ export const PROFILES: Record<ProfileId, AppProfile> = {
     id: "dina",
     nameAr: "دينا",
     nameEn: "Dina",
-    roleAr: "مسؤولة كشوف المراقبين (Proctor Register)",
-    roleEn: "Proctor Register Coordinator",
+    roleAr: "مسؤولة كشوف الكنترول والمراقبين (Control & Proctor)",
+    roleEn: "Control & Proctor Register Coordinator",
     avatar: "👩‍💼",
-    badgeAr: "كشوف المراقبين",
-    badgeEn: "Proctor Register",
-    taglineAr: "رفع وتوثيق كشوف المراقبين فقط (منع التداخل مع الطلاب)",
-    taglineEn: "Uploads Proctor Register files exclusively",
-    descriptionAr: "حساب مخصص لرفع وتوثيق كشوف المراقبين (Proctor Register)، مع كامل صلاحيات الحذف والطباعة كالمسؤول.",
-    descriptionEn: "Dedicated account for Proctor Register uploads, with full delete and print permissions.",
+    badgeAr: "كنترول ومراقبين",
+    badgeEn: "Control & Proctor",
+    taglineAr: "رفع وتوثيق كشوف الكنترول للمباني والمراقبين للأدوار",
+    taglineEn: "Uploads Control & Proctor Register files exclusively",
+    descriptionAr: "حساب مخصص لرفع وتوثيق كشوف الكنترول للمباني والمراقبين للأدوار، مع كامل صلاحيات الحذف والطباعة كالمسؤول.",
+    descriptionEn: "Dedicated account for Control & Proctor Register uploads, with full delete and print permissions.",
     color: "text-emerald-600 dark:text-emerald-400",
     bgColor: "bg-emerald-500/10 dark:bg-emerald-500/20",
     borderColor: "border-emerald-500/40 hover:border-emerald-500",
@@ -74,7 +74,7 @@ export const PROFILES: Record<ProfileId, AppProfile> = {
     canPrint: true,
     canManageSettings: false,
     canDelete: true,
-    allowedUploadType: "proctor_only",
+    allowedUploadType: "proctor_and_control",
   },
   nabil: {
     id: "nabil",

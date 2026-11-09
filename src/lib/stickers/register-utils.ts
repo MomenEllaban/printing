@@ -2,6 +2,113 @@ import type { DriveItem, Breadcrumb } from "@/lib/types";
 
 export type RegisterCategory = "proctor" | "control" | "student" | null;
 
+export interface RegisterTheme {
+  category: "control" | "proctor" | "student";
+  nameAr: string;
+  nameEn: string;
+  shortAr: string;
+  shortEn: string;
+  addLabelAr: string;
+  addLabelEn: string;
+  ownerAr: string;
+  ownerEn: string;
+  textClass: string;
+  bgClass: string;
+  borderClass: string;
+  hoverBgClass: string;
+  chipBorderClass: string;
+  chipBgClass: string;
+  chipHoverClass: string;
+  iconColorClass: string;
+}
+
+/**
+ * Checks whether a user profile is authorized to upload/add a specific register category:
+ * - "printing": Full admin, can add control, proctor, and student registers.
+ * - "dina": Can add control (buildings) and proctor (floors).
+ * - "nabil": Can add student (rooms).
+ */
+export function canProfileAddRegister(profileId: string | undefined | null, category: RegisterCategory): boolean {
+  if (!category) return false;
+  if (!profileId || profileId === "printing") return true;
+  if (profileId === "dina") return category === "control" || category === "proctor";
+  if (profileId === "nabil") return category === "student";
+  return false;
+}
+
+/**
+ * Returns distinct visual styling and labels for each register category:
+ * - control: Sky Blue (Buildings / دينا + طباعة)
+ * - proctor: Emerald Green (Floors / دينا + طباعة)
+ * - student: Purple / Violet (Rooms / نبيل + طباعة)
+ */
+export function getRegisterTheme(category: "control" | "proctor" | "student"): RegisterTheme {
+  if (category === "control") {
+    return {
+      category: "control",
+      nameAr: "كشف الكنترول",
+      nameEn: "Control Register",
+      shortAr: "كنترول",
+      shortEn: "Control",
+      addLabelAr: "+ كشف كنترول",
+      addLabelEn: "+ Control Reg",
+      ownerAr: "دينا",
+      ownerEn: "Dina",
+      textClass: "text-sky-700 dark:text-sky-300",
+      bgClass: "bg-sky-500/10 dark:bg-sky-500/20",
+      borderClass: "border-sky-500/35",
+      hoverBgClass: "hover:bg-sky-500/20",
+      chipBorderClass: "border-sky-500/30",
+      chipBgClass: "bg-sky-500/10",
+      chipHoverClass: "hover:bg-sky-500/20",
+      iconColorClass: "text-sky-600 dark:text-sky-400",
+    };
+  }
+
+  if (category === "student") {
+    return {
+      category: "student",
+      nameAr: "كشف الطلاب",
+      nameEn: "Student Register",
+      shortAr: "طلاب",
+      shortEn: "Students",
+      addLabelAr: "+ كشف طلاب",
+      addLabelEn: "+ Student Reg",
+      ownerAr: "نبيل",
+      ownerEn: "Nabil",
+      textClass: "text-purple-700 dark:text-purple-300",
+      bgClass: "bg-purple-500/10 dark:bg-purple-500/20",
+      borderClass: "border-purple-500/35",
+      hoverBgClass: "hover:bg-purple-500/20",
+      chipBorderClass: "border-purple-500/30",
+      chipBgClass: "bg-purple-500/10",
+      chipHoverClass: "hover:bg-purple-500/20",
+      iconColorClass: "text-purple-600 dark:text-purple-400",
+    };
+  }
+
+  // Default: proctor
+  return {
+    category: "proctor",
+    nameAr: "كشف المراقبين",
+    nameEn: "Proctor Register",
+    shortAr: "مراقبين",
+    shortEn: "Proctors",
+    addLabelAr: "+ كشف مراقبين",
+    addLabelEn: "+ Proctor Reg",
+    ownerAr: "دينا",
+    ownerEn: "Dina",
+    textClass: "text-emerald-700 dark:text-emerald-300",
+    bgClass: "bg-emerald-500/10 dark:bg-emerald-500/20",
+    borderClass: "border-emerald-500/35",
+    hoverBgClass: "hover:bg-emerald-500/20",
+    chipBorderClass: "border-emerald-500/30",
+    chipBgClass: "bg-emerald-500/10",
+    chipHoverClass: "hover:bg-emerald-500/20",
+    iconColorClass: "text-emerald-600 dark:text-emerald-400",
+  };
+}
+
 /**
  * Checks whether an item is a valid Proctor Register PDF.
  */

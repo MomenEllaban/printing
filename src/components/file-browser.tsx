@@ -7,10 +7,12 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Clock,
   CloudUpload,
   Download,
@@ -20,6 +22,7 @@ import {
   FolderPlus,
   FolderMinus,
   FolderTree,
+  GraduationCap,
   Grid2X2,
   List,
   Loader2,
@@ -61,8 +64,16 @@ import {
   findStudentFileInItems,
   findRegisterFileInItems,
   getFolderRegisterCategory,
+  canProfileAddRegister,
+  getRegisterTheme,
   type RegisterCategory,
 } from "@/lib/stickers/register-utils";
+
+function RegisterIcon({ category, className }: { category: RegisterCategory; className?: string }) {
+  if (category === "control") return <Building2 className={className} />;
+  if (category === "student") return <GraduationCap className={className} />;
+  return <ClipboardList className={className} />;
+}
 
 export type BrowserMode = "all" | "category" | "recent" | "favorites";
 
@@ -515,6 +526,14 @@ export function FileBrowser({
 
   const handleOpenRegisterDialog = useCallback(
     (folder: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
+      if (!canProfileAddRegister(activeProfile.id, type)) {
+        toast.error(
+          locale === "ar"
+            ? "غير مصرح لحسابك برفع أو تعديل هذا النوع من الكشوفات."
+            : "Your profile is not authorized to upload or manage this register type.",
+        );
+        return;
+      }
       setProctorDialogFolder({ id: folder.id, name: folder.name });
       setProctorDialogType(type);
       setProctorDialogOpen(true);
@@ -522,7 +541,7 @@ export function FileBrowser({
         void fetchFolderChildren(folder.id);
       }
     },
-    [folderChildren, fetchFolderChildren],
+    [folderChildren, fetchFolderChildren, activeProfile.id, locale],
   );
 
   const handleOpenProctorDialog = useCallback(
@@ -1837,82 +1856,95 @@ export function FileBrowser({
             });
             if (!regCategory) return null;
 
-            const isControl = regCategory === "control";
-            const isStudent = regCategory === "student";
             const currentRegFile = findRegisterFileInItems(regCategory, items);
-            const labelShort = isControl
-              ? (locale === "ar" ? "كشف كنترول" : "Control Reg")
-              : isStudent
-              ? (locale === "ar" ? "كشف طلاب" : "Student Reg")
-              : (locale === "ar" ? "كشف مراقبين" : "Proctor Reg");
-            const labelAdd = isControl
-              ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg")
-              : isStudent
-              ? (locale === "ar" ? "+ كشف طلاب" : "+ Student Reg")
-              : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg");
-            const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
-            const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+            const theme = getRegisterTheme(regCategory);
+            const labelShort = locale === "ar" ? theme.shortAr : theme.shortEn;
+            const labelAdd = locale === "ar" ? theme.addLabelAr : theme.addLabelEn;
+            const regNameAr = theme.nameAr;
+            const regNameEn = theme.nameEn;
+            const canAdd = canProfileAddRegister(activeProfile.id, regCategory);
 
             if (currentRegFile) {
               return (
-                <div className="inline-flex items-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-0.5 shadow-xs">
+                <div className={cn("inline-flex items-center rounded-xl border p-0.5 shadow-xs", theme.chipBorderClass, theme.chipBgClass)}>
                   <button
                     type="button"
                     onClick={() => handleOpenRegisterDialog(currentFolder, regCategory)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold border-e rounded-s cursor-pointer select-none transition-all",
+                      theme.textClass,
+                      theme.chipBorderClass,
+                      theme.hoverBgClass,
+                    )}
                     title={
                       locale === "ar"
-                        ? `${regNameAr}: "${currentRegFile.name}" (اضغط للإدارة)`
-                        : `${regNameEn}: "${currentRegFile.name}" (Click to manage)`
+                        ? `${regNameAr}: "${currentRegFile.name}" (اضغط للإدارة — المسؤول: ${theme.ownerAr})`
+                        : `${regNameEn}: "${currentRegFile.name}" (Click to manage — Owner: ${theme.ownerEn})`
                     }
                   >
-                    <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <RegisterIcon category={regCategory} className={cn("size-3.5", theme.iconColorClass)} />
                     <span className="hidden sm:inline">{labelShort}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleShowRegisterFile(currentRegFile, currentFolder, regCategory)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
+                    className={cn(
+                      "inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg cursor-pointer transition-all",
+                      theme.textClass,
+                      theme.hoverBgClass,
+                    )}
                     title={
                       locale === "ar"
                         ? `معاينة ${regNameAr} "${currentFolder.name}" (عرض)`
                         : `Preview ${regNameEn.toLowerCase()} for "${currentFolder.name}" (Show)`
                     }
                   >
-                    <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <Eye className={cn("size-3.5", theme.iconColorClass)} />
                     <span>{locale === "ar" ? "معاينة" : "Show"}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handlePrintRegisterFile(currentRegFile, currentFolder, regCategory)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
+                    className={cn(
+                      "inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg cursor-pointer transition-all",
+                      theme.textClass,
+                      theme.hoverBgClass,
+                    )}
                     title={
                       locale === "ar"
                         ? `طباعة ${regNameAr} "${currentFolder.name}" مباشرة`
                         : `Print ${regNameEn.toLowerCase()} for "${currentFolder.name}" directly`
                     }
                   >
-                    <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <Printer className={cn("size-3.5", theme.iconColorClass)} />
                     <span>{locale === "ar" ? "طباعة" : "Print"}</span>
                   </button>
                 </div>
               );
             }
 
+            if (!canAdd) return null;
+
             return (
               <button
                 type="button"
                 onClick={() => handleOpenRegisterDialog(currentFolder, regCategory)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all shadow-xs"
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border cursor-pointer transition-all shadow-xs",
+                  theme.borderClass,
+                  theme.bgClass,
+                  theme.textClass,
+                  theme.hoverBgClass,
+                )}
                 title={
                   locale === "ar"
-                    ? `إضافة ${regNameAr} (PDF) لـ "${currentFolder.name}"`
-                    : `Add ${regNameEn} for "${currentFolder.name}"`
+                    ? `إضافة ${regNameAr} (PDF) لـ "${currentFolder.name}" (المسؤول: ${theme.ownerAr})`
+                    : `Add ${regNameEn} for "${currentFolder.name}" (Responsible: ${theme.ownerEn})`
                 }
               >
-                <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <RegisterIcon category={regCategory} className={cn("size-3.5", theme.iconColorClass)} />
                 <span>{labelAdd}</span>
               </button>
             );
@@ -2254,39 +2286,51 @@ export function FileBrowser({
                     >
                       <Star className={cn("size-4", item.isFavorite && "fill-current")} />
                     </button>
-                    <ItemMenu
-                      item={item}
-                      isPrinted={isPrinted}
-                      onTogglePrint={() => void togglePrintStatus(item)}
-                      onShowSticker={(folder) => handleShowSticker(null, folder)}
-                      onPrintSticker={(folder) => handlePrintSticker(null, folder)}
-                      onOpenProctorDialog={handleOpenProctorDialog}
-                      onShowProctorFile={handleShowProctorFile}
-                      onPrintProctorFile={handlePrintProctorFile}
-                      proctorFile={item.isFolder ? findProctorFileInItems(folderChildren[item.id]) : undefined}
-                      breadcrumbs={breadcrumbs}
-                      open={menuId === item.id}
-                      onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
-                      onClose={() => setMenuId(null)}
-                      onPreview={() => openItem(item)}
-                      onRename={() => {
-                        if (!requireWritable()) return;
-                        setRenameTarget(item);
-                        setRenameValue(item.name);
-                        setMenuId(null);
-                      }}
-                      onMove={() => {
-                        if (!requireWritable()) return;
-                        setMoveTarget(item);
-                        setMenuId(null);
-                      }}
-                      onDelete={() => {
-                        if (!requireWritable()) return;
-                        setDeleteTarget(item);
-                        setMenuId(null);
-                      }}
-                      demo={demoActive}
-                    />
+                    {(() => {
+                      const regCategory = getFolderRegisterCategory({
+                        folder: item,
+                        breadcrumbs,
+                        isCurrentFolder: false,
+                      });
+                      const regFile = regCategory ? findRegisterFileInItems(regCategory, folderChildren[item.id]) : undefined;
+                      return (
+                        <ItemMenu
+                          item={item}
+                          isPrinted={isPrinted}
+                          onTogglePrint={() => void togglePrintStatus(item)}
+                          onShowSticker={(folder) => handleShowSticker(null, folder)}
+                          onPrintSticker={(folder) => handlePrintSticker(null, folder)}
+                          onOpenProctorDialog={handleOpenProctorDialog}
+                          onShowProctorFile={handleShowProctorFile}
+                          onPrintProctorFile={handlePrintProctorFile}
+                          proctorFile={regFile}
+                          registerFile={regFile}
+                          registerCategory={regCategory}
+                          breadcrumbs={breadcrumbs}
+                          open={menuId === item.id}
+                          onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
+                          onClose={() => setMenuId(null)}
+                          onPreview={() => openItem(item)}
+                          onRename={() => {
+                            if (!requireWritable()) return;
+                            setRenameTarget(item);
+                            setRenameValue(item.name);
+                            setMenuId(null);
+                          }}
+                          onMove={() => {
+                            if (!requireWritable()) return;
+                            setMoveTarget(item);
+                            setMenuId(null);
+                          }}
+                          onDelete={() => {
+                            if (!requireWritable()) return;
+                            setDeleteTarget(item);
+                            setMenuId(null);
+                          }}
+                          demo={demoActive}
+                        />
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -2396,39 +2440,36 @@ export function FileBrowser({
                         });
                         if (!regCategory) return null;
 
-                        const isControl = regCategory === "control";
-                        const isStudent = regCategory === "student";
                         const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
-                        const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
-                        const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
-                        const chipLabel = isControl
-                          ? (locale === "ar" ? "كنترول" : "Control")
-                          : isStudent
-                          ? (locale === "ar" ? "طلاب" : "Student")
-                          : (locale === "ar" ? "مراقبين" : "Proctor");
-                        const chipAddLabel = isControl
-                          ? (locale === "ar" ? "+ كنترول" : "+ Control")
-                          : isStudent
-                          ? (locale === "ar" ? "+ طلاب" : "+ Student")
-                          : (locale === "ar" ? "+ مراقبين" : "+ Proctor");
+                        const theme = getRegisterTheme(regCategory);
+                        const regNameAr = theme.nameAr;
+                        const regNameEn = theme.nameEn;
+                        const chipLabel = locale === "ar" ? theme.shortAr : theme.shortEn;
+                        const chipAddLabel = locale === "ar" ? theme.addLabelAr : theme.addLabelEn;
+                        const canAdd = canProfileAddRegister(activeProfile.id, regCategory);
 
                         if (regFile) {
                           return (
-                            <div className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-0.5 text-xs shadow-2xs">
+                            <div className={cn("inline-flex items-center rounded-lg border p-0.5 text-xs shadow-2xs", theme.chipBorderClass, theme.chipBgClass)}>
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleOpenRegisterDialog(item, regCategory);
                                 }}
-                                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
+                                className={cn(
+                                  "flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold border-e rounded-s cursor-pointer select-none",
+                                  theme.textClass,
+                                  theme.chipBorderClass,
+                                  theme.hoverBgClass,
+                                )}
                                 title={
                                   locale === "ar"
-                                    ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة)`
-                                    : `${regNameEn}: "${regFile.name}" (Click to manage)`
+                                    ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة — المسؤول: ${theme.ownerAr})`
+                                    : `${regNameEn}: "${regFile.name}" (Click to manage — Owner: ${theme.ownerEn})`
                                 }
                               >
-                                <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
                                 <span>{chipLabel}</span>
                               </button>
 
@@ -2438,14 +2479,14 @@ export function FileBrowser({
                                   e.stopPropagation();
                                   handleShowRegisterFile(regFile, item, regCategory);
                                 }}
-                                className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+                                className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer", theme.hoverBgClass, theme.textClass)}
                                 title={
                                   locale === "ar"
                                     ? `معاينة ${regNameAr} "${item.name}" (عرض)`
                                     : `Preview ${regNameEn.toLowerCase()} for "${item.name}" (Show)`
                                 }
                               >
-                                <Eye className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                <Eye className={cn("size-3", theme.iconColorClass)} />
                               </button>
 
                               <button
@@ -2454,18 +2495,20 @@ export function FileBrowser({
                                   e.stopPropagation();
                                   handlePrintRegisterFile(regFile, item, regCategory);
                                 }}
-                                className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+                                className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer", theme.hoverBgClass, theme.textClass)}
                                 title={
                                   locale === "ar"
                                     ? `طباعة ${regNameAr} "${item.name}" مباشرة`
                                     : `Print ${regNameEn.toLowerCase()} for "${item.name}" directly`
                                 }
                               >
-                                <Printer className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                <Printer className={cn("size-3", theme.iconColorClass)} />
                               </button>
                             </div>
                           );
                         }
+
+                        if (!canAdd) return null;
 
                         return (
                           <button
@@ -2474,14 +2517,20 @@ export function FileBrowser({
                               e.stopPropagation();
                               handleOpenRegisterDialog(item, regCategory);
                             }}
-                            className="chip border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 flex items-center gap-1 cursor-pointer font-bold text-xs"
+                            className={cn(
+                              "chip border flex items-center gap-1 cursor-pointer font-bold text-xs transition-all",
+                              theme.borderClass,
+                              theme.bgClass,
+                              theme.textClass,
+                              theme.hoverBgClass,
+                            )}
                             title={
                               locale === "ar"
-                                ? `إضافة ${regNameAr} (PDF) داخل "${item.name}"`
-                                : `Add ${regNameEn} (PDF) into "${item.name}"`
+                                ? `إضافة ${regNameAr} (PDF) داخل "${item.name}" (المسؤول: ${theme.ownerAr})`
+                                : `Add ${regNameEn} (PDF) into "${item.name}" (Responsible: ${theme.ownerEn})`
                             }
                           >
-                            <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                            <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
                             <span>{chipAddLabel}</span>
                           </button>
                         );
@@ -2981,6 +3030,8 @@ function ItemMenu({
   onShowProctorFile,
   onPrintProctorFile,
   proctorFile,
+  registerFile,
+  registerCategory,
   breadcrumbs,
   demo,
 }: {
@@ -3000,6 +3051,8 @@ function ItemMenu({
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   proctorFile?: DriveItem;
+  registerFile?: DriveItem;
+  registerCategory?: RegisterCategory;
   breadcrumbs?: Breadcrumb[];
   demo: boolean;
 }) {
@@ -3176,21 +3229,21 @@ function ItemMenu({
               </button>
             )}
             {item.isFolder && onOpenProctorDialog && (() => {
-              const regCategory = getFolderRegisterCategory({
+              const regCategory = registerCategory ?? getFolderRegisterCategory({
                 folder: item,
                 breadcrumbs,
                 isCurrentFolder: false,
               });
               if (!regCategory) return null;
-              const isControl = regCategory === "control";
-              const isStudent = regCategory === "student";
-              const targetRegFile = proctorFile;
-              const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
-              const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+              const theme = getRegisterTheme(regCategory);
+              const targetRegFile = registerFile ?? proctorFile;
+              const regNameAr = theme.nameAr;
+              const regNameEn = theme.nameEn;
               const labelShow = locale === "ar" ? `معاينة ${regNameAr} (عرض)` : `Preview ${regNameEn} (Show)`;
               const labelPrint = locale === "ar" ? `طباعة ${regNameAr}` : `Print ${regNameEn}`;
               const labelManage = locale === "ar" ? `إدارة / استبدال ${regNameAr}` : `Manage / Replace ${regNameEn}`;
               const labelAdd = locale === "ar" ? `إضافة ${regNameAr} (PDF)` : `Add ${regNameEn} (PDF)`;
+              const canAdd = canProfileAddRegister(activeProfile.id, regCategory);
 
               if (targetRegFile) {
                 return (
@@ -3198,7 +3251,7 @@ function ItemMenu({
                     <button
                       type="button"
                       role="menuitem"
-                      className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                      className={cn("menu-item cursor-pointer font-semibold", theme.textClass)}
                       onClick={() => {
                         onShowProctorFile?.(targetRegFile, item);
                         onClose();
@@ -3210,7 +3263,7 @@ function ItemMenu({
                     <button
                       type="button"
                       role="menuitem"
-                      className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                      className={cn("menu-item cursor-pointer font-semibold", theme.textClass)}
                       onClick={() => {
                         onPrintProctorFile?.(targetRegFile, item);
                         onClose();
@@ -3219,33 +3272,37 @@ function ItemMenu({
                       <Printer className="size-4" />
                       <span>{labelPrint}</span>
                     </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400"
-                      onClick={() => {
-                        onOpenProctorDialog(item);
-                        onClose();
-                      }}
-                    >
-                      <FileText className="size-4" />
-                      <span>{labelManage}</span>
-                    </button>
+                    {canAdd && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={cn("menu-item cursor-pointer", theme.textClass)}
+                        onClick={() => {
+                          onOpenProctorDialog(item);
+                          onClose();
+                        }}
+                      >
+                        <RegisterIcon category={regCategory} className="size-4" />
+                        <span>{labelManage}</span>
+                      </button>
+                    )}
                   </>
                 );
               }
+
+              if (!canAdd) return null;
 
               return (
                 <button
                   type="button"
                   role="menuitem"
-                  className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                  className={cn("menu-item cursor-pointer font-semibold", theme.textClass)}
                   onClick={() => {
                     onOpenProctorDialog(item);
                     onClose();
                   }}
                 >
-                  <FileText className="size-4" />
+                  <RegisterIcon category={regCategory} className="size-4" />
                   <span>{labelAdd}</span>
                 </button>
               );
@@ -3443,6 +3500,7 @@ function TreeRow({
   onDropOnFolder,
 }: TreeRowProps) {
   const { t, locale } = useI18n();
+  const { activeProfile } = useActiveProfile();
   const isPrinted = !item.isFolder && printedIds.has(item.id);
   const isPending = !item.isFolder && !printedIds.has(item.id);
   const isExpanded = item.isFolder && expandedFolderIds.has(item.id);
@@ -3678,39 +3736,36 @@ function TreeRow({
                   });
                   if (!regCategory) return null;
 
-                  const isControl = regCategory === "control";
-                  const isStudent = regCategory === "student";
                   const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
-                  const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
-                  const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
-                  const chipLabel = isControl
-                    ? (locale === "ar" ? "كنترول" : "Control")
-                    : isStudent
-                    ? (locale === "ar" ? "طلاب" : "Student")
-                    : (locale === "ar" ? "مراقبين" : "Proctor");
-                  const chipAddLabel = isControl
-                    ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg")
-                    : isStudent
-                    ? (locale === "ar" ? "+ كشف طلاب" : "+ Student Reg")
-                    : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg");
+                  const theme = getRegisterTheme(regCategory);
+                  const regNameAr = theme.nameAr;
+                  const regNameEn = theme.nameEn;
+                  const chipLabel = locale === "ar" ? theme.shortAr : theme.shortEn;
+                  const chipAddLabel = locale === "ar" ? theme.addLabelAr : theme.addLabelEn;
+                  const canAdd = canProfileAddRegister(activeProfile.id, regCategory);
 
                   if (regFile) {
                     return (
-                      <div className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-0.5 shadow-2xs">
+                      <div className={cn("inline-flex items-center rounded-lg border p-0.5 shadow-2xs", theme.chipBorderClass, theme.chipBgClass)}>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onOpenProctorDialog?.(item);
                           }}
-                          className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
+                          className={cn(
+                            "flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold border-e rounded-s cursor-pointer select-none",
+                            theme.textClass,
+                            theme.chipBorderClass,
+                            theme.hoverBgClass,
+                          )}
                           title={
                             locale === "ar"
-                              ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة)`
-                              : `${regNameEn}: "${regFile.name}" (Click to manage)`
+                              ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة — المسؤول: ${theme.ownerAr})`
+                              : `${regNameEn}: "${regFile.name}" (Click to manage — Owner: ${theme.ownerEn})`
                           }
                         >
-                          <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
                           <span className="hidden sm:inline">{chipLabel}</span>
                         </button>
 
@@ -3720,7 +3775,7 @@ function TreeRow({
                             e.stopPropagation();
                             onShowProctorFile?.(regFile, item);
                           }}
-                          className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
+                          className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer transition-all", theme.hoverBgClass, theme.textClass)}
                           title={
                             locale === "ar"
                               ? `معاينة ${regNameAr} "${item.name}" (عرض)`
@@ -3728,7 +3783,7 @@ function TreeRow({
                           }
                           aria-label={`Preview ${regNameEn}`}
                         >
-                          <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <Eye className={cn("size-3.5", theme.iconColorClass)} />
                         </button>
 
                         <button
@@ -3737,7 +3792,7 @@ function TreeRow({
                             e.stopPropagation();
                             onPrintProctorFile?.(regFile, item);
                           }}
-                          className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
+                          className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer transition-all", theme.hoverBgClass, theme.textClass)}
                           title={
                             locale === "ar"
                               ? `طباعة ${regNameAr} "${item.name}" مباشرة`
@@ -3745,11 +3800,13 @@ function TreeRow({
                           }
                           aria-label={`Print ${regNameEn}`}
                         >
-                          <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <Printer className={cn("size-3.5", theme.iconColorClass)} />
                         </button>
                       </div>
                     );
                   }
+
+                  if (!canAdd) return null;
 
                   return (
                     <button
@@ -3758,14 +3815,20 @@ function TreeRow({
                         e.stopPropagation();
                         onOpenProctorDialog?.(item);
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs",
+                        theme.borderClass,
+                        theme.bgClass,
+                        theme.textClass,
+                        theme.hoverBgClass,
+                      )}
                       title={
                         locale === "ar"
-                          ? `إضافة ${regNameAr} (PDF) داخل "${item.name}"`
-                          : `Add ${regNameEn} (PDF) into "${item.name}"`
+                          ? `إضافة ${regNameAr} (PDF) داخل "${item.name}" (المسؤول: ${theme.ownerAr})`
+                          : `Add ${regNameEn} (PDF) into "${item.name}" (Responsible: ${theme.ownerEn})`
                       }
                     >
-                      <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                      <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
                       <span className="hidden sm:inline">{chipAddLabel}</span>
                     </button>
                   );
@@ -3800,26 +3863,41 @@ function TreeRow({
                 <Download className="size-3.5" />
               </a>
             )}
-            <ItemMenu
-              item={item}
-              isPrinted={isPrinted}
-              onTogglePrint={() => onTogglePrintStatus(item)}
-              onShowSticker={(folder) => onShowSticker(null, folder)}
-              onPrintSticker={(folder) => onPrintSticker(null, folder)}
-              onOpenProctorDialog={onOpenProctorDialog}
-              onShowProctorFile={onShowProctorFile}
-              onPrintProctorFile={onPrintProctorFile}
-              proctorFile={item.isFolder ? findProctorFileInItems(folderChildren[item.id]) : undefined}
-              breadcrumbs={breadcrumbs}
-              open={menuId === item.id}
-              onToggle={() => onMenuToggle(item.id)}
-              onClose={onMenuClose}
-              onPreview={() => onOpenItem(item)}
-              onRename={() => onRename(item)}
-              onMove={() => onMove(item)}
-              onDelete={() => onDelete(item)}
-              demo={demoActive}
-            />
+            {(() => {
+              const regCategory = item.isFolder
+                ? getFolderRegisterCategory({
+                    folder: item,
+                    breadcrumbs,
+                    depth,
+                    isCurrentFolder: false,
+                  })
+                : null;
+              const regFile = regCategory ? findRegisterFileInItems(regCategory, folderChildren[item.id]) : undefined;
+              return (
+                <ItemMenu
+                  item={item}
+                  isPrinted={isPrinted}
+                  onTogglePrint={() => onTogglePrintStatus(item)}
+                  onShowSticker={(folder) => onShowSticker(null, folder)}
+                  onPrintSticker={(folder) => onPrintSticker(null, folder)}
+                  onOpenProctorDialog={onOpenProctorDialog}
+                  onShowProctorFile={onShowProctorFile}
+                  onPrintProctorFile={onPrintProctorFile}
+                  proctorFile={regFile}
+                  registerFile={regFile}
+                  registerCategory={regCategory}
+                  breadcrumbs={breadcrumbs}
+                  open={menuId === item.id}
+                  onToggle={() => onMenuToggle(item.id)}
+                  onClose={onMenuClose}
+                  onPreview={() => onOpenItem(item)}
+                  onRename={() => onRename(item)}
+                  onMove={() => onMove(item)}
+                  onDelete={() => onDelete(item)}
+                  demo={demoActive}
+                />
+              );
+            })()}
           </div>
         </td>
       </tr>

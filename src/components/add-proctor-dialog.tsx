@@ -16,9 +16,11 @@ import {
 import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
 import { toast } from "sonner";
+import { cn } from "@/lib/cn";
 import { generateProctorRegisterPdf } from "@/lib/stickers/proctor-register-pdf";
 import { generateControlRegisterPdf } from "@/lib/stickers/control-register-pdf";
 import { generateStudentRegisterPdf } from "@/lib/stickers/student-register-pdf";
+import { getRegisterTheme } from "@/lib/stickers/register-utils";
 import type { DriveItem } from "@/lib/types";
 
 interface AddProctorDialogProps {
@@ -57,8 +59,9 @@ export function AddProctorDialog({
 
   const isControl = registerType === "control";
   const isStudent = registerType === "student";
-  const registerLabelAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
-  const registerLabelEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+  const theme = getRegisterTheme(registerType);
+  const registerLabelAr = theme.nameAr;
+  const registerLabelEn = theme.nameEn;
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -263,17 +266,17 @@ export function AddProctorDialog({
       <div className="space-y-4 py-2">
         {/* Existing File Notice if present */}
         {currentProctorFile && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 space-y-2">
+          <div className={cn("rounded-xl border p-3.5 space-y-2", theme.chipBorderClass, theme.chipBgClass)}>
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                <Check className="size-4 text-emerald-600" />
+              <span className={cn("flex items-center gap-1.5 text-xs font-bold", theme.textClass)}>
+                <Check className="size-4" />
                 <span>
                   {locale === "ar"
                     ? `يوجد ${registerLabelAr} مسجل حالياً`
                     : `${registerLabelEn} Already Attached`}
                 </span>
               </span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full">
+              <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", theme.chipBorderClass, theme.textClass)}>
                 PDF
               </span>
             </div>
@@ -290,9 +293,9 @@ export function AddProctorDialog({
                     onPreviewFile(currentProctorFile);
                     onClose();
                   }}
-                  className="flex items-center gap-1.5 text-xs cursor-pointer py-1 px-2.5"
+                  className={cn("flex items-center gap-1.5 text-xs cursor-pointer py-1 px-2.5", theme.hoverBgClass)}
                 >
-                  <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <Eye className={cn("size-3.5", theme.iconColorClass)} />
                   <span>{locale === "ar" ? "معاينة وعرض" : "Preview (Show)"}</span>
                 </Button>
               )}
@@ -304,9 +307,9 @@ export function AddProctorDialog({
                     onPrintFile(currentProctorFile);
                     onClose();
                   }}
-                  className="flex items-center gap-1.5 text-xs cursor-pointer py-1 px-2.5"
+                  className={cn("flex items-center gap-1.5 text-xs cursor-pointer py-1 px-2.5", theme.hoverBgClass)}
                 >
-                  <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <Printer className={cn("size-3.5", theme.iconColorClass)} />
                   <span>{locale === "ar" ? "طباعة مباشرة" : "Direct Print"}</span>
                 </Button>
               )}
@@ -325,8 +328,8 @@ export function AddProctorDialog({
                   : `Option 1: Auto-Generate Official ${registerLabelEn} PDF`}
               </span>
             </span>
-            <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded">
-              EST Official
+            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded border", theme.chipBorderClass, theme.chipBgClass, theme.textClass)}>
+              {locale === "ar" ? `المسؤول: ${theme.ownerAr}` : `Owner: ${theme.ownerEn}`}
             </span>
           </div>
 
