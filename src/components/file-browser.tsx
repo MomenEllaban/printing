@@ -522,6 +522,48 @@ export function FileBrowser({
     [printingStickerId, locale],
   );
 
+  const [seedConfirmOpen, setSeedConfirmOpen] = useState(false);
+  const [seedingEst, setSeedingEst] = useState(false);
+
+  const handleSeedEst = useCallback(async () => {
+    setSeedingEst(true);
+    setSeedConfirmOpen(false);
+    const toastId = toast.loading(
+      locale === "ar"
+        ? "جاري إنشاء هيكل مجلدات EST كاملاً في Google Drive..."
+        : "Creating full EST folder hierarchy in Google Drive...",
+    );
+    try {
+      const res = await fetch("/api/est/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleName: "December 2026", examName: "EST 1" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || (locale === "ar" ? "فشل إنشاء المجلدات" : "Failed to create folders"));
+      }
+      toast.success(
+        locale === "ar"
+          ? `تم بنجاح إنشاء هيكل EST (${data.totalCreated} مجلد) تحت December 2026 / EST 1`
+          : `Successfully created EST structure (${data.totalCreated} folders) under December 2026 / EST 1`,
+        { id: toastId },
+      );
+      setRefreshKey((v) => v + 1);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : locale === "ar"
+          ? "حدث خطأ أثناء إنشاء هيكل EST"
+          : "Error creating EST structure",
+        { id: toastId },
+      );
+    } finally {
+      setSeedingEst(false);
+    }
+  }, [locale]);
+
   const handleDragStartItem = useCallback(
     (e: React.DragEvent, item: DriveItem) => {
       if (demoActive) return;
@@ -1389,6 +1431,26 @@ export function FileBrowser({
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             {t("common.refresh")}
           </Button>
+          {!demoActive && (
+            <Button
+              variant="secondary"
+              onClick={() => setSeedConfirmOpen(true)}
+              disabled={seedingEst}
+              className="border-indigo-500/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 cursor-pointer hidden md:inline-flex"
+              title={
+                locale === "ar"
+                  ? "إنشاء هيكل مجلدات EST (December 2026 / EST 1) تلقائياً"
+                  : "Auto-create EST folder structure (December 2026 / EST 1)"
+              }
+            >
+              {seedingEst ? (
+                <Loader2 className="size-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+              ) : (
+                <FolderTree className="size-4 text-indigo-600 dark:text-indigo-400" />
+              )}
+              <span>{locale === "ar" ? "إنشاء هيكل EST" : "Create EST Tree"}</span>
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => setNewFolderOpen(true)} disabled={demoActive}>
             <FolderPlus className="size-4" />
             {t("common.newFolder")}
@@ -2073,6 +2135,20 @@ export function FileBrowser({
         description={`${deleteTarget?.name ?? ""} — ${t("common.deleteConfirm")}`}
         confirmLabel={t("common.delete")}
         loading={deleting}
+      />
+
+      <ConfirmDialog
+        open={seedConfirmOpen}
+        onClose={() => setSeedConfirmOpen(false)}
+        onConfirm={() => void handleSeedEst()}
+        title={locale === "ar" ? "إنشاء هيكل مجلدات اختبارات EST" : "Create EST Folder Structure"}
+        description={
+          locale === "ar"
+            ? "سيتم إنشاء هيكل مجلدات كامل للاختبارات (جميع المحافظات، السناتر، المباني، الأدوار، والقاعات) تلقائياً داخل: File Manager App / December 2026 / EST 1. هل تريد المتابعة؟"
+            : "This will automatically create the complete EST folder structure (Governorates, Test Centers, Buildings, Floors, and Rooms) inside: File Manager App / December 2026 / EST 1. Continue?"
+        }
+        confirmLabel={locale === "ar" ? "بدء الإنشاء" : "Create Structure"}
+        loading={seedingEst}
       />
 
       {/* Floating Batch Action Bar */}

@@ -1,5 +1,4 @@
 import type { drive_v3 } from "googleapis";
-import { createFolder, searchFolders } from "@/lib/drive";
 
 export interface EstReferenceRow {
   governorate: string;
@@ -284,6 +283,7 @@ async function getOrCreateSubFolder(
 
   let folderId = listRes.data.files?.[0]?.id;
   if (!folderId) {
+    const { createFolder } = await import("../drive");
     const created = await createFolder(drive, name.trim(), parentId);
     folderId = created.id!;
   }
@@ -294,18 +294,30 @@ async function getOrCreateSubFolder(
 
 /**
  * Seeds the complete EST hierarchy in Google Drive according to the reference data:
- * EST 1 -> Governorate -> Test Center -> Building -> Floor -> Room
+ * Root -> December 2026 -> EST 1 -> Governorate -> Test Center -> Building -> Floor -> Room
  */
 export async function seedEstFolderStructure(
   drive: drive_v3.Drive,
   rootParentId: string,
-  examName = "EST 1",
+  options?: { scheduleName?: string; examName?: string } | string,
   onProgress?: (msg: string) => void,
-): Promise<{ totalCreated: number; estRootId: string }> {
+): Promise<{ totalCreated: number; estRootId: string; scheduleFolderId?: string }> {
   const cache = new Map<string, string>();
+  const scheduleName = (typeof options === "object" ? options?.scheduleName : undefined) ?? "December 2026";
+  const examName = (typeof options === "string" ? options : options?.examName) ?? "EST 1";
 
+  // Step 1: Create or find schedule folder (e.g. "December 2026") under rootParentId
+  let parentForExam = rootParentId;
+  let scheduleFolderId: string | undefined;
+  if (scheduleName) {
+    onProgress?.(`Creating or finding schedule folder "${scheduleName}"...`);
+    scheduleFolderId = await getOrCreateSubFolder(drive, rootParentId, scheduleName, cache);
+    parentForExam = scheduleFolderId;
+  }
+
+  // Step 2: Create or find exam root (e.g. "EST 1") inside the schedule folder
   onProgress?.(`Creating or finding root folder "${examName}"...`);
-  const estRootId = await getOrCreateSubFolder(drive, rootParentId, examName, cache);
+  const estRootId = await getOrCreateSubFolder(drive, parentForExam, examName, cache);
 
   let count = 1;
   const processed = new Set<string>();
@@ -327,6 +339,6 @@ export async function seedEstFolderStructure(
     }
   }
 
-  return { totalCreated: cache.size, estRootId };
+  return { totalCreated: cache.size, estRootId, scheduleFolderId };
 }
 

@@ -21,15 +21,17 @@ export async function POST(request: Request) {
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const body = await request.json().catch(() => ({}));
+    const scheduleName = typeof body.scheduleName === "string" ? body.scheduleName.trim() : "December 2026";
     const examName = typeof body.examName === "string" && body.examName.trim() ? body.examName.trim() : "EST 1";
 
-    const result = await seedEstFolderStructure(drive, rootFolderId, examName);
+    const result = await seedEstFolderStructure(drive, rootFolderId, { scheduleName, examName });
 
     return NextResponse.json({
       success: true,
-      message: `Successfully created EST folder structure (${result.totalCreated} folders)`,
+      message: `Successfully created EST folder structure (${result.totalCreated} folders) under ${scheduleName} / ${examName}`,
       totalCreated: result.totalCreated,
       estRootId: result.estRootId,
+      scheduleFolderId: result.scheduleFolderId,
     });
   } catch (err) {
     return jsonError(err);

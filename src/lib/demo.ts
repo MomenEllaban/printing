@@ -1,5 +1,6 @@
 import type { Breadcrumb, DriveItem, DriveStats, FileCategory } from "./types";
 import { MIME, categoryFor, extensionOf } from "./file-utils";
+import { EST_REFERENCE_DATA } from "./stickers/est-reference-data";
 
 interface DemoRecord {
   id: string;
@@ -12,6 +13,126 @@ interface DemoRecord {
 }
 
 const DEMO_ROOT = "demo-root";
+
+function buildEstDemoRecords(): DemoRecord[] {
+  const records: DemoRecord[] = [
+    {
+      id: "demo-folder-december-2026",
+      name: "December 2026",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: DEMO_ROOT,
+      modifiedOffsetDays: 1,
+    },
+    {
+      id: "demo-folder-est-1",
+      name: "EST 1",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-folder-december-2026",
+      modifiedOffsetDays: 1,
+    },
+  ];
+
+  const addedIds = new Set<string>(["demo-folder-december-2026", "demo-folder-est-1"]);
+
+  const makeId = (prefix: string, str: string) =>
+    `${prefix}-${str.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-")}`;
+
+  for (const row of EST_REFERENCE_DATA) {
+    // Governorate
+    const govId = makeId("demo-gov", row.governorate);
+    if (!addedIds.has(govId)) {
+      addedIds.add(govId);
+      records.push({
+        id: govId,
+        name: row.governorate,
+        mimeType: MIME.folder,
+        size: 0,
+        parentId: "demo-folder-est-1",
+        modifiedOffsetDays: 2,
+      });
+    }
+
+    // Test Center
+    const centerId = makeId(govId, row.testCenter);
+    if (!addedIds.has(centerId)) {
+      addedIds.add(centerId);
+      records.push({
+        id: centerId,
+        name: row.testCenter,
+        mimeType: MIME.folder,
+        size: 0,
+        parentId: govId,
+        modifiedOffsetDays: 2,
+      });
+    }
+
+    // Building
+    const bldId = makeId(centerId, row.building);
+    if (!addedIds.has(bldId)) {
+      addedIds.add(bldId);
+      records.push({
+        id: bldId,
+        name: row.building,
+        mimeType: MIME.folder,
+        size: 0,
+        parentId: centerId,
+        modifiedOffsetDays: 2,
+      });
+    }
+
+    // Floor
+    const flrId = makeId(bldId, row.floor);
+    if (!addedIds.has(flrId)) {
+      addedIds.add(flrId);
+      records.push({
+        id: flrId,
+        name: row.floor,
+        mimeType: MIME.folder,
+        size: 0,
+        parentId: bldId,
+        modifiedOffsetDays: 2,
+      });
+    }
+
+    // Room
+    const rmId = makeId(flrId, row.room);
+    if (!addedIds.has(rmId)) {
+      addedIds.add(rmId);
+      records.push({
+        id: rmId,
+        name: row.room,
+        mimeType: MIME.folder,
+        size: 0,
+        parentId: flrId,
+        modifiedOffsetDays: 2,
+      });
+
+      // Sample exam PDFs inside each room
+      records.push({
+        id: `${rmId}-student-register`,
+        name: `Student_Register_${row.room}.pdf`,
+        mimeType: MIME.pdf,
+        size: 154_200,
+        parentId: rmId,
+        modifiedOffsetDays: 1,
+        content: "pdf",
+      });
+      records.push({
+        id: `${rmId}-proctor-register`,
+        name: `Proctor_Register_${row.room}.pdf`,
+        mimeType: MIME.pdf,
+        size: 98_400,
+        parentId: rmId,
+        modifiedOffsetDays: 1,
+        content: "pdf",
+      });
+    }
+  }
+
+  return records;
+}
 
 const RECORDS: DemoRecord[] = [
   { id: "demo-folder-work", name: "مستندات العمل", mimeType: MIME.folder, size: 0, parentId: DEMO_ROOT, modifiedOffsetDays: 1 },
@@ -77,6 +198,7 @@ const RECORDS: DemoRecord[] = [
     parentId: DEMO_ROOT,
     modifiedOffsetDays: 30,
   },
+  ...buildEstDemoRecords(),
 ];
 
 export function isDemoEnabled(): boolean {

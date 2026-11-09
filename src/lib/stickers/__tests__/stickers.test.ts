@@ -154,5 +154,23 @@ describe("generateStickerPdf", () => {
     expect(size.width).toBeCloseTo(595.28, 0);
     expect(size.height).toBeCloseTo(841.89, 0);
   });
+
+  it("Builds sticker correctly from nested December 2026 / EST 1 path", async () => {
+    const { getDemoBreadcrumbs } = await import("../../demo");
+    // Find room 204 in demo data
+    const { breadcrumbs } = getDemoBreadcrumbs("demo-gov-alexandria-abu-qir-pharmacy-2nd-floor-204");
+    expect(breadcrumbs.length).toBeGreaterThan(0);
+
+    const sticker = buildStickerContent(breadcrumbs);
+    expect(sticker.level).toBe("room");
+    expect(sticker.lines).toEqual([
+      "EST",
+      "Alexandria",
+      "Abu Qir",
+      "Pharmacy",
+      "2nd Floor",
+      "204",
+    ]);
+  });
 });
 
