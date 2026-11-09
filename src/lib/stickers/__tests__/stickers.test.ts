@@ -3,10 +3,12 @@ import { buildStickerContent } from "../sticker-content";
 import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
 import { generateProctorRegisterPdf } from "../proctor-register-pdf";
 import { generateControlRegisterPdf } from "../control-register-pdf";
+import { generateStudentRegisterPdf } from "../student-register-pdf";
 import {
   getFolderRegisterCategory,
   isControlRegisterFile,
   isProctorRegisterFile,
+  isStudentRegisterFile,
 } from "../register-utils";
 import { PROFILES } from "../../profiles";
 import { PDFDocument } from "pdf-lib";
@@ -344,6 +346,26 @@ describe("generateStickerPdf", () => {
     expect(size.height).toBeCloseTo(595.28, 0);
   });
 
+  it("Generates official EST Student Attendance Register PDF (A4 Landscape)", async () => {
+    const pdfBytes = await generateStudentRegisterPdf({
+      examName: "EST 1",
+      governorate: "Alexandria",
+      center: "Abu Qir",
+      building: "Pharmacy",
+      floor: "2nd Floor",
+      room: "204",
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(1);
+
+    const page = pdfDoc.getPage(0);
+    const size = page.getSize();
+    expect(size.width).toBeCloseTo(841.89, 0);
+    expect(size.height).toBeCloseTo(595.28, 0);
+  });
+
   describe("Register Eligibility & Routing Rules", () => {
     const breadcrumbs = [
       { id: "root", name: "Root" },
@@ -352,8 +374,36 @@ describe("generateStickerPdf", () => {
       { id: "center", name: "Abu Qir" },
       { id: "building", name: "Pharmacy" },
       { id: "floor", name: "2nd Floor" },
+      { id: "room", name: "204" },
     ];
     const insidePharmacyCrumbs = breadcrumbs.slice(0, 5); // up to Pharmacy
+    const insideFloorCrumbs = breadcrumbs.slice(0, 6); // up to 2nd Floor
+
+    it("Rooms have Student Register button", () => {
+      // By name
+      expect(getFolderRegisterCategory({ folder: { id: "r1", name: "204" } })).toBe("student");
+      expect(getFolderRegisterCategory({ folder: { id: "r2", name: "Room 12" } })).toBe("student");
+      expect(getFolderRegisterCategory({ folder: { id: "r3", name: "قاعة 5" } })).toBe("student");
+      expect(getFolderRegisterCategory({ folder: { id: "r4", name: "لجنة 3" } })).toBe("student");
+
+      // Inside Floor folder (depth 4), child folders are Rooms (student)
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "r1", name: "204" },
+          breadcrumbs: insideFloorCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("student");
+
+      // When currently inside Room folder itself
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "r1", name: "204" },
+          breadcrumbs,
+          isCurrentFolder: true,
+        }),
+      ).toBe("student");
+    });
 
     it("Floors have Proctor Register button", () => {
       // By name
@@ -366,6 +416,15 @@ describe("generateStickerPdf", () => {
           folder: { id: "f1", name: "Floor 2" },
           breadcrumbs: insidePharmacyCrumbs,
           isCurrentFolder: false,
+        }),
+      ).toBe("proctor");
+
+      // When currently inside Floor folder itself
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "f1", name: "2nd Floor" },
+          breadcrumbs: insideFloorCrumbs,
+          isCurrentFolder: true,
         }),
       ).toBe("proctor");
     });
@@ -395,21 +454,7 @@ describe("generateStickerPdf", () => {
       ).toBe("control");
     });
 
-    it("Rooms, City, Center, and Root have NO register buttons", () => {
-      // Room
-      expect(getFolderRegisterCategory({ folder: { id: "r1", name: "204" } })).toBeNull();
-      expect(getFolderRegisterCategory({ folder: { id: "r2", name: "Room 12" } })).toBeNull();
-      expect(getFolderRegisterCategory({ folder: { id: "r3", name: "قاعة 5" } })).toBeNull();
-
-      // Inside Floor folder (depth 4), child folders are Rooms -> null
-      expect(
-        getFolderRegisterCategory({
-          folder: { id: "r1", name: "204" },
-          breadcrumbs,
-          isCurrentFolder: false,
-        }),
-      ).toBeNull();
-
+    it("City, Center, and Root have NO register buttons", () => {
       // Center
       expect(getFolderRegisterCategory({ folder: { id: "c1", name: "Abu Qir Center" } })).toBeNull();
       const insideAlexCrumbs = breadcrumbs.slice(0, 3); // up to Alexandria
@@ -429,11 +474,13 @@ describe("generateStickerPdf", () => {
       expect(getFolderRegisterCategory({ folder: { id: "root", name: "EST 1" }, isCurrentFolder: true })).toBeNull();
     });
 
-    it("Detects Control Register and Proctor Register files correctly", () => {
+    it("Detects Control Register, Proctor Register, and Student Register files correctly", () => {
       expect(isControlRegisterFile({ id: "1", name: "Control_Register_Pharmacy.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isControlRegisterFile({ id: "2", name: "كشف كنترول مبنى صيدلة.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isProctorRegisterFile({ id: "3", name: "Proctor_Register_2nd_Floor.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isProctorRegisterFile({ id: "4", name: "كشف مراقبين الدور الثاني.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isStudentRegisterFile({ id: "5", name: "Student_Register_204.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isStudentRegisterFile({ id: "6", name: "كشف لجان وقاعات الطلاب.pdf", mimeType: "application/pdf" })).toBe(true);
     });
   });
 

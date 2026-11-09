@@ -18,13 +18,14 @@ import { useI18n } from "./locale-provider";
 import { toast } from "sonner";
 import { generateProctorRegisterPdf } from "@/lib/stickers/proctor-register-pdf";
 import { generateControlRegisterPdf } from "@/lib/stickers/control-register-pdf";
+import { generateStudentRegisterPdf } from "@/lib/stickers/student-register-pdf";
 import type { DriveItem } from "@/lib/types";
 
 interface AddProctorDialogProps {
   open: boolean;
   onClose: () => void;
   folder: { id: string; name: string } | null;
-  registerType?: "proctor" | "control";
+  registerType?: "proctor" | "control" | "student";
   currentProctorFile?: DriveItem | null;
   hierarchyInfo?: {
     examName?: string;
@@ -55,8 +56,9 @@ export function AddProctorDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isControl = registerType === "control";
-  const registerLabelAr = isControl ? "كشف الكنترول" : "كشف المراقبين";
-  const registerLabelEn = isControl ? "Control Register" : "Proctor Register";
+  const isStudent = registerType === "student";
+  const registerLabelAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
+  const registerLabelEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -124,9 +126,10 @@ export function AddProctorDialog({
         "examMetadata",
         JSON.stringify({
           enabled: true,
-          registerType: isControl ? "control" : "proctor",
+          registerType: isControl ? "control" : isStudent ? "student" : "proctor",
           institution: hierarchyInfo?.center,
           floor: hierarchyInfo?.floor,
+          room: isStudent ? folder.name : undefined,
         }),
       );
 
@@ -189,6 +192,16 @@ export function AddProctorDialog({
           floors: hierarchyInfo?.floors,
         });
         outFileName = `Control_Register_${sanitizedName}.pdf`;
+      } else if (isStudent) {
+        pdfBytes = await generateStudentRegisterPdf({
+          examName: hierarchyInfo?.examName || "EST 1",
+          governorate: hierarchyInfo?.governorate,
+          center: hierarchyInfo?.center,
+          building: hierarchyInfo?.building,
+          floor: hierarchyInfo?.floor,
+          room: folder.name,
+        });
+        outFileName = `Student_Register_${sanitizedName}.pdf`;
       } else {
         pdfBytes = await generateProctorRegisterPdf({
           examName: hierarchyInfo?.examName || "EST 1",
@@ -236,9 +249,13 @@ export function AddProctorDialog({
         locale === "ar"
           ? isControl
             ? "إدارة ورفع كشف أعضاء الكنترول واللوجستيات للمبنى كملف PDF معتمد."
+            : isStudent
+            ? "إدارة ورفع كشف حضور وتوقيع الطلاب وتوزيع أرقام الجلوس للقاعة كملف PDF معتمد."
             : "إدارة ورفع كشف حضور وتوزيع السادة المراقبين والملاحظين للدور كملف PDF معتمد."
           : isControl
           ? "Manage and upload the official Control & Building Supervision Register PDF for this building."
+          : isStudent
+          ? "Manage and upload the official Student Attendance & Seating Register PDF for this room."
           : "Manage and upload the official Proctor Attendance & Assignment Register PDF for this floor."
       }
       size="md"
@@ -317,9 +334,13 @@ export function AddProctorDialog({
             {locale === "ar"
               ? isControl
                 ? "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول أعضاء الكنترول وتوزيع المهام وخانات التوقيعات معتمد باسم السنتر والمبنى."
+                : isStudent
+                ? "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على كشف أسماء الطلاب وأرقام الجلوس وخانات الحضور/الغياب والتوقيعات معتمد باسم السنتر والمبنى والدور والروم."
                 : "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول الحضور وتوزيع القاعات وخانات التوقيعات معتمد باسم السنتر والمبنى والدور."
               : isControl
               ? "Generates an official EST A4 Landscape building control roster with logo, center, building details, control members table, and sign-offs."
+              : isStudent
+              ? "Generates an official EST A4 Landscape student attendance sheet with logo, seat numbers, attendance status, signatures, and proctor sign-off."
               : "Generates an official EST A4 Landscape attendance sheet with logo, center, building, floor details, signature blocks, and proctor table."}
           </p>
 

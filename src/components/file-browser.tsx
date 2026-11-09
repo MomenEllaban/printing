@@ -55,8 +55,10 @@ import type { Breadcrumb, DriveItem, DriveListResult, FileCategory, Locale } fro
 import {
   isProctorRegisterFile,
   isControlRegisterFile,
+  isStudentRegisterFile,
   findProctorFileInItems,
   findControlFileInItems,
+  findStudentFileInItems,
   findRegisterFileInItems,
   getFolderRegisterCategory,
   type RegisterCategory,
@@ -509,10 +511,10 @@ export function FileBrowser({
   // Register Dialog & Actions (Floor Proctor Register / Building Control Register)
   const [proctorDialogOpen, setProctorDialogOpen] = useState(false);
   const [proctorDialogFolder, setProctorDialogFolder] = useState<{ id: string; name: string } | null>(null);
-  const [proctorDialogType, setProctorDialogType] = useState<"proctor" | "control">("proctor");
+  const [proctorDialogType, setProctorDialogType] = useState<"proctor" | "control" | "student">("proctor");
 
   const handleOpenRegisterDialog = useCallback(
-    (folder: { id: string; name: string }, type: "proctor" | "control" = "proctor") => {
+    (folder: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
       setProctorDialogFolder({ id: folder.id, name: folder.name });
       setProctorDialogType(type);
       setProctorDialogOpen(true);
@@ -536,25 +538,31 @@ export function FileBrowser({
   );
 
   const handleShowRegisterFile = useCallback(
-    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" = "proctor") => {
+    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
       const isControl = type === "control";
-      const registerLabel = isControl ? "Control Register" : "Proctor Register";
+      const isStudent = type === "student";
+      const registerLabel = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+      const registerLabelAr = isControl ? "معاينة كشف الكنترول" : isStudent ? "معاينة كشف الطلاب" : "معاينة كشف المراقبين";
+      const descAr = isControl
+        ? "معاينة مباشرة لكشف أعضاء الكنترول والإشراف بالمبنى قبل الطباعة."
+        : isStudent
+        ? "معاينة مباشرة لكشف حضور وتوزيع الطلاب بالقاعة قبل الطباعة."
+        : "معاينة مباشرة لكشف حضور وتوزيع السادة المراقبين والملاحظين قبل الطباعة.";
+      const descEn = isControl
+        ? "Live preview of Building Control & Supervision Register before printing."
+        : isStudent
+        ? "Live preview of Student Attendance & Seating Register before printing."
+        : "Live preview of Proctor Attendance & Assignment Register before printing.";
+
       setPreviewPdfState({
         open: true,
         url: `/api/drive/files/${file.id}/content`,
         title: folder ? `${registerLabel} - ${folder.name}` : file.name,
         customTitle:
           locale === "ar"
-            ? `${isControl ? "معاينة كشف الكنترول" : "معاينة كشف المراقبين"}: ${folder?.name || file.name}`
+            ? `${registerLabelAr}: ${folder?.name || file.name}`
             : `${registerLabel}: ${folder?.name || file.name}`,
-        customDescription:
-          locale === "ar"
-            ? isControl
-              ? "معاينة مباشرة لكشف أعضاء الكنترول والإشراف بالمبنى قبل الطباعة."
-              : "معاينة مباشرة لكشف حضور وتوزيع السادة المراقبين والملاحظين قبل الطباعة."
-            : isControl
-            ? "Live preview of Building Control & Supervision Register before printing."
-            : "Live preview of Proctor Attendance & Assignment Register before printing.",
+        customDescription: locale === "ar" ? descAr : descEn,
       });
     },
     [locale],
@@ -562,21 +570,25 @@ export function FileBrowser({
 
   const handleShowProctorFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }) => {
-      const isControl =
-        isControlRegisterFile(file) ||
-        (folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) === "control" : false);
-      handleShowRegisterFile(file, folder, isControl ? "control" : "proctor");
+      const folderCat = folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) : null;
+      const type: "proctor" | "control" | "student" =
+        folderCat ||
+        (isControlRegisterFile(file) ? "control" : isStudentRegisterFile(file) ? "student" : "proctor");
+      handleShowRegisterFile(file, folder, type);
     },
     [handleShowRegisterFile, breadcrumbs],
   );
 
   const handlePrintRegisterFile = useCallback(
-    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" = "proctor") => {
+    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
       const isControl = type === "control";
+      const isStudent = type === "student";
+      const typeNameAr = isControl ? "كشف كنترول" : isStudent ? "كشف طلاب" : "كشف مراقبين";
+      const typeNameEn = isControl ? "control" : isStudent ? "student" : "proctor";
       const toastId = toast.loading(
         locale === "ar"
-          ? `جاري تجهيز ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${folder?.name || file.name}" للطباعة...`
-          : `Preparing ${isControl ? "control" : "proctor"} register for print...`,
+          ? `جاري تجهيز ${typeNameAr} "${folder?.name || file.name}" للطباعة...`
+          : `Preparing ${typeNameEn} register for print...`,
       );
       try {
         const iframe = document.createElement("iframe");
@@ -598,8 +610,8 @@ export function FileBrowser({
         };
         toast.success(
           locale === "ar"
-            ? `تم إرسال ${isControl ? "كشف الكنترول" : "كشف المراقبين"} للطباعة بنجاح`
-            : `${isControl ? "Control" : "Proctor"} register sent to printer`,
+            ? `تم إرسال ${typeNameAr} للطباعة بنجاح`
+            : `${isControl ? "Control" : isStudent ? "Student" : "Proctor"} register sent to printer`,
           { id: toastId },
         );
       } catch {
@@ -612,10 +624,11 @@ export function FileBrowser({
 
   const handlePrintProctorFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }) => {
-      const isControl =
-        isControlRegisterFile(file) ||
-        (folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) === "control" : false);
-      handlePrintRegisterFile(file, folder, isControl ? "control" : "proctor");
+      const folderCat = folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) : null;
+      const type: "proctor" | "control" | "student" =
+        folderCat ||
+        (isControlRegisterFile(file) ? "control" : isStudentRegisterFile(file) ? "student" : "proctor");
+      handlePrintRegisterFile(file, folder, type);
     },
     [handlePrintRegisterFile, breadcrumbs],
   );
@@ -1825,13 +1838,20 @@ export function FileBrowser({
             if (!regCategory) return null;
 
             const isControl = regCategory === "control";
+            const isStudent = regCategory === "student";
             const currentRegFile = findRegisterFileInItems(regCategory, items);
             const labelShort = isControl
               ? (locale === "ar" ? "كشف كنترول" : "Control Reg")
+              : isStudent
+              ? (locale === "ar" ? "كشف طلاب" : "Student Reg")
               : (locale === "ar" ? "كشف مراقبين" : "Proctor Reg");
             const labelAdd = isControl
               ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg")
+              : isStudent
+              ? (locale === "ar" ? "+ كشف طلاب" : "+ Student Reg")
               : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg");
+            const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
+            const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
 
             if (currentRegFile) {
               return (
@@ -1842,8 +1862,8 @@ export function FileBrowser({
                     className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
                     title={
                       locale === "ar"
-                        ? `${isControl ? "كشف الكنترول" : "كشف المراقبين"}: "${currentRegFile.name}" (اضغط للإدارة)`
-                        : `${isControl ? "Control Register" : "Proctor Register"}: "${currentRegFile.name}" (Click to manage)`
+                        ? `${regNameAr}: "${currentRegFile.name}" (اضغط للإدارة)`
+                        : `${regNameEn}: "${currentRegFile.name}" (Click to manage)`
                     }
                   >
                     <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1856,8 +1876,8 @@ export function FileBrowser({
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
                     title={
                       locale === "ar"
-                        ? `معاينة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${currentFolder.name}" (عرض)`
-                        : `Preview ${isControl ? "control" : "proctor"} register for "${currentFolder.name}" (Show)`
+                        ? `معاينة ${regNameAr} "${currentFolder.name}" (عرض)`
+                        : `Preview ${regNameEn.toLowerCase()} for "${currentFolder.name}" (Show)`
                     }
                   >
                     <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1870,8 +1890,8 @@ export function FileBrowser({
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
                     title={
                       locale === "ar"
-                        ? `طباعة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${currentFolder.name}" مباشرة`
-                        : `Print ${isControl ? "control" : "proctor"} register for "${currentFolder.name}" directly`
+                        ? `طباعة ${regNameAr} "${currentFolder.name}" مباشرة`
+                        : `Print ${regNameEn.toLowerCase()} for "${currentFolder.name}" directly`
                     }
                   >
                     <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1888,8 +1908,8 @@ export function FileBrowser({
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all shadow-xs"
                 title={
                   locale === "ar"
-                    ? `إضافة ${isControl ? "كشف كنترول" : "كشف مراقبين"} (PDF) لـ "${currentFolder.name}"`
-                    : `Add ${isControl ? "Control" : "Proctor"} Register for "${currentFolder.name}"`
+                    ? `إضافة ${regNameAr} (PDF) لـ "${currentFolder.name}"`
+                    : `Add ${regNameEn} for "${currentFolder.name}"`
                 }
               >
                 <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -2377,7 +2397,20 @@ export function FileBrowser({
                         if (!regCategory) return null;
 
                         const isControl = regCategory === "control";
+                        const isStudent = regCategory === "student";
                         const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
+                        const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
+                        const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+                        const chipLabel = isControl
+                          ? (locale === "ar" ? "كنترول" : "Control")
+                          : isStudent
+                          ? (locale === "ar" ? "طلاب" : "Student")
+                          : (locale === "ar" ? "مراقبين" : "Proctor");
+                        const chipAddLabel = isControl
+                          ? (locale === "ar" ? "+ كنترول" : "+ Control")
+                          : isStudent
+                          ? (locale === "ar" ? "+ طلاب" : "+ Student")
+                          : (locale === "ar" ? "+ مراقبين" : "+ Proctor");
 
                         if (regFile) {
                           return (
@@ -2391,12 +2424,12 @@ export function FileBrowser({
                                 className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
                                 title={
                                   locale === "ar"
-                                    ? `${isControl ? "كشف الكنترول" : "كشف المراقبين"}: "${regFile.name}" (اضغط للإدارة)`
-                                    : `${isControl ? "Control Register" : "Proctor Register"}: "${regFile.name}" (Click to manage)`
+                                    ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة)`
+                                    : `${regNameEn}: "${regFile.name}" (Click to manage)`
                                 }
                               >
                                 <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                                <span>{isControl ? (locale === "ar" ? "كنترول" : "Control") : (locale === "ar" ? "مراقبين" : "Proctor")}</span>
+                                <span>{chipLabel}</span>
                               </button>
 
                               <button
@@ -2408,8 +2441,8 @@ export function FileBrowser({
                                 className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
                                 title={
                                   locale === "ar"
-                                    ? `معاينة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" (عرض)`
-                                    : `Preview ${isControl ? "control" : "proctor"} register for "${item.name}" (Show)`
+                                    ? `معاينة ${regNameAr} "${item.name}" (عرض)`
+                                    : `Preview ${regNameEn.toLowerCase()} for "${item.name}" (Show)`
                                 }
                               >
                                 <Eye className="size-3 text-emerald-600 dark:text-emerald-400" />
@@ -2424,8 +2457,8 @@ export function FileBrowser({
                                 className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
                                 title={
                                   locale === "ar"
-                                    ? `طباعة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" مباشرة`
-                                    : `Print ${isControl ? "control" : "proctor"} register for "${item.name}" directly`
+                                    ? `طباعة ${regNameAr} "${item.name}" مباشرة`
+                                    : `Print ${regNameEn.toLowerCase()} for "${item.name}" directly`
                                 }
                               >
                                 <Printer className="size-3 text-emerald-600 dark:text-emerald-400" />
@@ -2444,12 +2477,12 @@ export function FileBrowser({
                             className="chip border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 flex items-center gap-1 cursor-pointer font-bold text-xs"
                             title={
                               locale === "ar"
-                                ? `إضافة ${isControl ? "كشف كنترول" : "كشف مراقبين"} (PDF) داخل "${item.name}"`
-                                : `Add ${isControl ? "Control" : "Proctor"} Register (PDF) into "${item.name}"`
+                                ? `إضافة ${regNameAr} (PDF) داخل "${item.name}"`
+                                : `Add ${regNameEn} (PDF) into "${item.name}"`
                             }
                           >
                             <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                            <span>{isControl ? (locale === "ar" ? "+ كنترول" : "+ Control") : (locale === "ar" ? "+ مراقبين" : "+ Proctor")}</span>
+                            <span>{chipAddLabel}</span>
                           </button>
                         );
                       })()}
@@ -3150,19 +3183,14 @@ function ItemMenu({
               });
               if (!regCategory) return null;
               const isControl = regCategory === "control";
+              const isStudent = regCategory === "student";
               const targetRegFile = proctorFile;
-              const labelShow = isControl
-                ? (locale === "ar" ? "معاينة كشف الكنترول (عرض)" : "Preview Control Register (Show)")
-                : (locale === "ar" ? "معاينة كشف المراقبين (عرض)" : "Preview Proctor Register (Show)");
-              const labelPrint = isControl
-                ? (locale === "ar" ? "طباعة كشف الكنترول" : "Print Control Register")
-                : (locale === "ar" ? "طباعة كشف المراقبين" : "Print Proctor Register");
-              const labelManage = isControl
-                ? (locale === "ar" ? "إدارة / استبدال كشف الكنترول" : "Manage / Replace Control Register")
-                : (locale === "ar" ? "إدارة / استبدال كشف المراقبين" : "Manage / Replace Proctor Register");
-              const labelAdd = isControl
-                ? (locale === "ar" ? "إضافة كشف كنترول (PDF)" : "Add Control Register (PDF)")
-                : (locale === "ar" ? "إضافة كشف مراقبين (PDF)" : "Add Proctor Register (PDF)");
+              const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
+              const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+              const labelShow = locale === "ar" ? `معاينة ${regNameAr} (عرض)` : `Preview ${regNameEn} (Show)`;
+              const labelPrint = locale === "ar" ? `طباعة ${regNameAr}` : `Print ${regNameEn}`;
+              const labelManage = locale === "ar" ? `إدارة / استبدال ${regNameAr}` : `Manage / Replace ${regNameEn}`;
+              const labelAdd = locale === "ar" ? `إضافة ${regNameAr} (PDF)` : `Add ${regNameEn} (PDF)`;
 
               if (targetRegFile) {
                 return (
@@ -3651,7 +3679,20 @@ function TreeRow({
                   if (!regCategory) return null;
 
                   const isControl = regCategory === "control";
+                  const isStudent = regCategory === "student";
                   const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
+                  const regNameAr = isControl ? "كشف الكنترول" : isStudent ? "كشف الطلاب" : "كشف المراقبين";
+                  const regNameEn = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
+                  const chipLabel = isControl
+                    ? (locale === "ar" ? "كنترول" : "Control")
+                    : isStudent
+                    ? (locale === "ar" ? "طلاب" : "Student")
+                    : (locale === "ar" ? "مراقبين" : "Proctor");
+                  const chipAddLabel = isControl
+                    ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg")
+                    : isStudent
+                    ? (locale === "ar" ? "+ كشف طلاب" : "+ Student Reg")
+                    : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg");
 
                   if (regFile) {
                     return (
@@ -3665,14 +3706,12 @@ function TreeRow({
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
                           title={
                             locale === "ar"
-                              ? `${isControl ? "كشف الكنترول" : "كشف المراقبين"}: "${regFile.name}" (اضغط للإدارة)`
-                              : `${isControl ? "Control Register" : "Proctor Register"}: "${regFile.name}" (Click to manage)`
+                              ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة)`
+                              : `${regNameEn}: "${regFile.name}" (Click to manage)`
                           }
                         >
                           <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                          <span className="hidden sm:inline">
-                            {isControl ? (locale === "ar" ? "كنترول" : "Control") : (locale === "ar" ? "مراقبين" : "Proctor")}
-                          </span>
+                          <span className="hidden sm:inline">{chipLabel}</span>
                         </button>
 
                         <button
@@ -3684,10 +3723,10 @@ function TreeRow({
                           className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
                           title={
                             locale === "ar"
-                              ? `معاينة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" (عرض)`
-                              : `Preview ${isControl ? "control" : "proctor"} register for "${item.name}" (Show)`
+                              ? `معاينة ${regNameAr} "${item.name}" (عرض)`
+                              : `Preview ${regNameEn.toLowerCase()} for "${item.name}" (Show)`
                           }
-                          aria-label={isControl ? "Preview Control Register" : "Preview Proctor Register"}
+                          aria-label={`Preview ${regNameEn}`}
                         >
                           <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                         </button>
@@ -3701,10 +3740,10 @@ function TreeRow({
                           className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
                           title={
                             locale === "ar"
-                              ? `طباعة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" مباشرة`
-                              : `Print ${isControl ? "control" : "proctor"} register for "${item.name}" directly`
+                              ? `طباعة ${regNameAr} "${item.name}" مباشرة`
+                              : `Print ${regNameEn.toLowerCase()} for "${item.name}" directly`
                           }
-                          aria-label={isControl ? "Print Control Register" : "Print Proctor Register"}
+                          aria-label={`Print ${regNameEn}`}
                         >
                           <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                         </button>
@@ -3722,14 +3761,12 @@ function TreeRow({
                       className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
                       title={
                         locale === "ar"
-                          ? `إضافة ${isControl ? "كشف كنترول" : "كشف مراقبين"} (PDF) داخل "${item.name}"`
-                          : `Add ${isControl ? "Control" : "Proctor"} Register (PDF) into "${item.name}"`
+                          ? `إضافة ${regNameAr} (PDF) داخل "${item.name}"`
+                          : `Add ${regNameEn} (PDF) into "${item.name}"`
                       }
                     >
                       <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                      <span className="hidden sm:inline">
-                        {isControl ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg") : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg")}
-                      </span>
+                      <span className="hidden sm:inline">{chipAddLabel}</span>
                     </button>
                   );
                 })()}
