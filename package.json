@@ -15,6 +15,7 @@
     "db:generate": "prisma generate"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@prisma/client": "^6.19.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
@@ -23,6 +24,7 @@
     "lucide-react": "^1.67.0",
     "mammoth": "^1.13.0",
     "next": "16.4.4",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "react": "19.3.0",
     "react-dom": "19.3.0",

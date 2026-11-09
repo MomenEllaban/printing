@@ -41,6 +41,9 @@ export const SETTINGS_DEFINITIONS = [
   { key: "printing.orientation", category: "printing", schema: z.enum(["portrait", "landscape"]), defaultValue: "portrait" },
   { key: "printing.scale", category: "printing", schema: z.number().int().min(50).max(100), defaultValue: 100 },
   { key: "printing.margins", category: "printing", schema: z.enum(["default", "none", "minimum"]), defaultValue: "default" },
+  { key: "printing.stickerWidthMm", category: "printing", schema: z.number().min(30).max(300), defaultValue: 100 },
+  { key: "printing.stickerHeightMm", category: "printing", schema: z.number().min(20).max(200), defaultValue: 50 },
+  { key: "printing.stickerPaperMode", category: "printing", schema: z.enum(["custom", "a4"]), defaultValue: "custom" },
 
   { key: "storage.rootFolderId", category: "storage", schema: z.string().max(200), defaultValue: "" },
   { key: "storage.organizeByType", category: "storage", schema: z.boolean(), defaultValue: false },

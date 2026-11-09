@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Search,
   Star,
+  Tag,
   Trash2,
   UploadCloud,
   X,
@@ -455,6 +456,70 @@ export function FileBrowser({
       setUploadOpen(true);
     },
     [requireWritable],
+  );
+
+  const [printingStickerId, setPrintingStickerId] = useState<string | null>(null);
+
+  const handlePrintSticker = useCallback(
+    async (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+    ) => {
+      if (e) e.stopPropagation();
+      if (!target.id || printingStickerId) return;
+
+      setPrintingStickerId(target.id);
+      const toastId = toast.loading(
+        locale === "ar"
+          ? `جاري تجهيز استيكر "${target.name || "EST"}"...`
+          : `Preparing sticker for "${target.name || "EST"}"...`,
+      );
+
+      try {
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(
+            errorData.message ||
+              (locale === "ar" ? "فشل إنشاء ملف الاستيكر" : "Failed to generate sticker PDF"),
+          );
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+
+        const newTab = window.open(objectUrl, "_blank");
+        if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+          const link = document.createElement("a");
+          link.href = objectUrl;
+          link.download = `Sticker-${(target.name || "EST").replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        toast.success(
+          locale === "ar"
+            ? "تم إنشاء الاستيكر بنجاح وجاهز للطباعة"
+            : "Sticker generated successfully and ready for printing",
+          { id: toastId },
+        );
+      } catch (err) {
+        console.error("[sticker] Failed:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : locale === "ar"
+            ? "حدث خطأ أثناء إنشاء الاستيكر"
+            : "Error generating sticker",
+          { id: toastId },
+        );
+      } finally {
+        setPrintingStickerId(null);
+      }
+    },
+    [printingStickerId, locale],
   );
 
   const handleDragStartItem = useCallback(
@@ -1300,6 +1365,26 @@ export function FileBrowser({
               {t("common.back")}
             </Button>
           )}
+          {currentFolder && (
+            <Button
+              variant="secondary"
+              onClick={(e) => handlePrintSticker(e, currentFolder)}
+              disabled={printingStickerId === currentFolder.id}
+              className="text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10 cursor-pointer"
+              title={
+                locale === "ar"
+                  ? `طباعة استيكر "${currentFolder.name}"`
+                  : `Print sticker for "${currentFolder.name}"`
+              }
+            >
+              {printingStickerId === currentFolder.id ? (
+                <Loader2 className="size-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+              ) : (
+                <Tag className="size-4 text-indigo-600 dark:text-indigo-400" />
+              )}
+              <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
+            </Button>
+          )}
           <Button variant="secondary" onClick={refresh} disabled={loading}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             {t("common.refresh")}
@@ -1621,6 +1706,7 @@ export function FileBrowser({
                       item={item}
                       isPrinted={isPrinted}
                       onTogglePrint={() => void togglePrintStatus(item)}
+                      onPrintSticker={(folder) => handlePrintSticker(null, folder)}
                       open={menuId === item.id}
                       onToggle={() => setMenuId(menuId === item.id ? null : item.id)}
                       onClose={() => setMenuId(null)}
@@ -1710,6 +1796,24 @@ export function FileBrowser({
                       >
                         <CloudUpload className="size-3 text-emerald-600 dark:text-emerald-400" />
                         <span>{locale === "ar" ? "+ ملف" : "+ File"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handlePrintSticker(e, item)}
+                        disabled={printingStickerId === item.id}
+                        className="chip border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 flex items-center gap-1 cursor-pointer font-medium"
+                        title={
+                          locale === "ar"
+                            ? `طباعة استيكر "${item.name}"`
+                            : `Print sticker for "${item.name}"`
+                        }
+                      >
+                        {printingStickerId === item.id ? (
+                          <Loader2 className="size-3 animate-spin text-indigo-600 dark:text-indigo-400" />
+                        ) : (
+                          <Tag className="size-3 text-indigo-600 dark:text-indigo-400" />
+                        )}
+                        <span>{locale === "ar" ? "استيكر" : "Sticker"}</span>
                       </button>
                     </>
                   )}
@@ -1804,6 +1908,8 @@ export function FileBrowser({
                     }}
                     onNewSubFolder={handleOpenNewSubFolder}
                     onUploadToFolder={handleOpenUploadForFolder}
+                    onPrintSticker={handlePrintSticker}
+                    printingStickerId={printingStickerId}
                     draggedItem={draggedItem}
                     dragOverFolderId={dragOverFolderId}
                     onDragStartItem={handleDragStartItem}
@@ -2077,6 +2183,7 @@ function ItemMenu({
   onDelete,
   isPrinted,
   onTogglePrint,
+  onPrintSticker,
   demo,
 }: {
   item: DriveItem;
@@ -2089,6 +2196,7 @@ function ItemMenu({
   onDelete: () => void;
   isPrinted?: boolean;
   onTogglePrint?: () => void;
+  onPrintSticker?: (folder: DriveItem) => void;
   demo: boolean;
 }) {
   const { t, locale } = useI18n();
@@ -2235,6 +2343,20 @@ function ItemMenu({
               <Eye className="size-4 text-accent" />
               <span>{item.isFolder ? t("common.open") : t("common.preview")}</span>
             </button>
+            {item.isFolder && onPrintSticker && (
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item cursor-pointer text-indigo-600 dark:text-indigo-400 font-semibold"
+                onClick={() => {
+                  onPrintSticker(item);
+                  onClose();
+                }}
+              >
+                <Tag className="size-4" />
+                <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
@@ -2370,6 +2492,8 @@ interface TreeRowProps {
   onDelete: (item: DriveItem) => void;
   onNewSubFolder: (folder: DriveItem) => void;
   onUploadToFolder: (folder: DriveItem) => void;
+  onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  printingStickerId: string | null;
   draggedItem: DriveItem | null;
   dragOverFolderId: string | null;
   onDragStartItem: (e: React.DragEvent, item: DriveItem) => void;
@@ -2403,6 +2527,8 @@ function TreeRow({
   onDelete,
   onNewSubFolder,
   onUploadToFolder,
+  onPrintSticker,
+  printingStickerId,
   draggedItem,
   dragOverFolderId,
   onDragStartItem,
@@ -2592,6 +2718,25 @@ function TreeRow({
                   <CloudUpload className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span className="hidden sm:inline">{locale === "ar" ? "+ ملف" : "+ File"}</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => onPrintSticker(e, item)}
+                  disabled={printingStickerId === item.id}
+                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/5 px-2 py-1 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:text-indigo-600 hover:border-indigo-500 hover:bg-indigo-500/15 transition-all cursor-pointer shadow-2xs"
+                  title={
+                    locale === "ar"
+                      ? `طباعة استيكر "${item.name}"`
+                      : `Print sticker for "${item.name}"`
+                  }
+                >
+                  {printingStickerId === item.id ? (
+                    <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                  ) : (
+                    <Tag className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                  )}
+                  <span className="hidden sm:inline">{locale === "ar" ? "استيكر" : "Sticker"}</span>
+                </button>
               </div>
             )}
             <button
@@ -2626,6 +2771,7 @@ function TreeRow({
               item={item}
               isPrinted={isPrinted}
               onTogglePrint={() => onTogglePrintStatus(item)}
+              onPrintSticker={(folder) => onPrintSticker(null, folder)}
               open={menuId === item.id}
               onToggle={() => onMenuToggle(item.id)}
               onClose={onMenuClose}
@@ -2691,6 +2837,8 @@ function TreeRow({
               onDelete={onDelete}
               onNewSubFolder={onNewSubFolder}
               onUploadToFolder={onUploadToFolder}
+              onPrintSticker={onPrintSticker}
+              printingStickerId={printingStickerId}
               draggedItem={draggedItem}
               dragOverFolderId={dragOverFolderId}
               onDragStartItem={onDragStartItem}

@@ -84,6 +84,9 @@ export interface PrintingSettings {
   orientation: "portrait" | "landscape";
   scale: number;
   margins: "default" | "none" | "minimum";
+  stickerWidthMm?: number;
+  stickerHeightMm?: number;
+  stickerPaperMode?: "custom" | "a4";
 }
 
 export interface StorageSettings {
