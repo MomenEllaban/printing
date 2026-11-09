@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const examMetadataSchema = z.object({
   enabled: z.boolean().optional(),
-  registerType: z.enum(["student", "proctor"]).optional(),
+  registerType: z.enum(["student", "proctor", "control"]).optional(),
   institution: z.string().max(150).optional(),
   examType: z.enum(["EST 1", "EST 2"]).optional(),
   floor: z.string().max(50).optional(),

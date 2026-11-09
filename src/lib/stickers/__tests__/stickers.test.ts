@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import { buildStickerContent } from "../sticker-content";
 import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
 import { generateProctorRegisterPdf } from "../proctor-register-pdf";
+import { generateControlRegisterPdf } from "../control-register-pdf";
+import {
+  getFolderRegisterCategory,
+  isControlRegisterFile,
+  isProctorRegisterFile,
+} from "../register-utils";
 import { PROFILES } from "../../profiles";
 import { PDFDocument } from "pdf-lib";
 
@@ -317,6 +323,118 @@ describe("generateStickerPdf", () => {
     const size = page.getSize();
     expect(size.width).toBeCloseTo(841.89, 0);
     expect(size.height).toBeCloseTo(595.28, 0);
+  });
+
+  it("Generates official EST Building Control Register PDF (A4 Landscape)", async () => {
+    const pdfBytes = await generateControlRegisterPdf({
+      examName: "EST 1",
+      governorate: "Alexandria",
+      center: "Abu Qir",
+      building: "Pharmacy",
+      floors: ["2nd Floor", "3rd Floor", "4th Floor", "5th Floor"],
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    expect(pdfDoc.getPageCount()).toBe(1);
+
+    const page = pdfDoc.getPage(0);
+    const size = page.getSize();
+    expect(size.width).toBeCloseTo(841.89, 0);
+    expect(size.height).toBeCloseTo(595.28, 0);
+  });
+
+  describe("Register Eligibility & Routing Rules", () => {
+    const breadcrumbs = [
+      { id: "root", name: "Root" },
+      { id: "est", name: "EST 1" },
+      { id: "gov", name: "Alexandria" },
+      { id: "center", name: "Abu Qir" },
+      { id: "building", name: "Pharmacy" },
+      { id: "floor", name: "2nd Floor" },
+    ];
+    const insidePharmacyCrumbs = breadcrumbs.slice(0, 5); // up to Pharmacy
+
+    it("Floors have Proctor Register button", () => {
+      // By name
+      expect(getFolderRegisterCategory({ folder: { id: "f1", name: "2nd Floor" } })).toBe("proctor");
+      expect(getFolderRegisterCategory({ folder: { id: "f2", name: "الدور الثالث" } })).toBe("proctor");
+
+      // Inside Building folder (depth 3), child folders are Floors (proctor)
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "f1", name: "Floor 2" },
+          breadcrumbs: insidePharmacyCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("proctor");
+    });
+
+    it("Buildings have Control Register button", () => {
+      // By name
+      expect(getFolderRegisterCategory({ folder: { id: "b1", name: "Pharmacy Building" } })).toBe("control");
+      expect(getFolderRegisterCategory({ folder: { id: "b2", name: "مبنى الصيدلة" } })).toBe("control");
+
+      // Inside Test Center folder (depth 2), child folders are Buildings (control)
+      const insideAbuQirCrumbs = breadcrumbs.slice(0, 4); // up to Abu Qir
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "b1", name: "Pharmacy" },
+          breadcrumbs: insideAbuQirCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("control");
+
+      // When currently inside Building folder itself
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "b1", name: "Pharmacy" },
+          breadcrumbs: insidePharmacyCrumbs,
+          isCurrentFolder: true,
+        }),
+      ).toBe("control");
+    });
+
+    it("Rooms, City, Center, and Root have NO register buttons", () => {
+      // Room
+      expect(getFolderRegisterCategory({ folder: { id: "r1", name: "204" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "r2", name: "Room 12" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "r3", name: "قاعة 5" } })).toBeNull();
+
+      // Inside Floor folder (depth 4), child folders are Rooms -> null
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "r1", name: "204" },
+          breadcrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBeNull();
+
+      // Center
+      expect(getFolderRegisterCategory({ folder: { id: "c1", name: "Abu Qir Center" } })).toBeNull();
+      const insideAlexCrumbs = breadcrumbs.slice(0, 3); // up to Alexandria
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "c1", name: "Abu Qir" },
+          breadcrumbs: insideAlexCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBeNull();
+
+      // City / Governorate
+      expect(getFolderRegisterCategory({ folder: { id: "g1", name: "Alexandria" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "g2", name: "Cairo" } })).toBeNull();
+
+      // Root
+      expect(getFolderRegisterCategory({ folder: { id: "root", name: "EST 1" }, isCurrentFolder: true })).toBeNull();
+    });
+
+    it("Detects Control Register and Proctor Register files correctly", () => {
+      expect(isControlRegisterFile({ id: "1", name: "Control_Register_Pharmacy.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isControlRegisterFile({ id: "2", name: "كشف كنترول مبنى صيدلة.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isProctorRegisterFile({ id: "3", name: "Proctor_Register_2nd_Floor.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isProctorRegisterFile({ id: "4", name: "كشف مراقبين الدور الثاني.pdf", mimeType: "application/pdf" })).toBe(true);
+    });
   });
 
   it("Ensures Dina and Nabil have full delete permissions (canDelete: true)", () => {

@@ -52,46 +52,15 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { parseExamInfoFromFileName } from "@/lib/exam-utils";
 import type { Breadcrumb, DriveItem, DriveListResult, FileCategory, Locale } from "@/lib/types";
 
-function isProctorRegisterFile(item: DriveItem): boolean {
-  if (item.isFolder) return false;
-  const isPdf = item.mimeType === "application/pdf" || item.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) return false;
-  return (
-    /proctor\s*register|كشف\s*مراقبين|كشف\s*المراقبين|ملاحظين/i.test(item.name) ||
-    item.name.toLowerCase().includes("proctor")
-  );
-}
-
-function findProctorFileInItems(items?: DriveItem[]): DriveItem | undefined {
-  if (!items || !items.length) return undefined;
-  return items.find(isProctorRegisterFile);
-}
-
-function isEligibleProctorFolder(
-  folder: { id: string; name: string; isFolder?: boolean },
-  crumbs?: Breadcrumb[],
-  depth?: number,
-  proctorFile?: DriveItem,
-): boolean {
-  if (folder.isFolder === false) return false;
-  if (proctorFile) return true;
-  const name = folder.name.trim();
-  if (/floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b/i.test(name)) return true;
-  if (/building|مبنى|قسم/i.test(name)) return true;
-  if (typeof depth === "number") {
-    if (depth === 3 || depth === 4) return true;
-  }
-  if (crumbs && crumbs.length > 0) {
-    const isEst = (n?: string | null) =>
-      /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s]+))?$/i.test((n || "").trim());
-    const estIdx = crumbs.findIndex((b) => isEst(b.name));
-    if (estIdx >= 0) {
-      const currentDepth = crumbs.length - 1 - estIdx;
-      if (currentDepth === 2 || currentDepth === 3) return true;
-    }
-  }
-  return false;
-}
+import {
+  isProctorRegisterFile,
+  isControlRegisterFile,
+  findProctorFileInItems,
+  findControlFileInItems,
+  findRegisterFileInItems,
+  getFolderRegisterCategory,
+  type RegisterCategory,
+} from "@/lib/stickers/register-utils";
 
 export type BrowserMode = "all" | "category" | "recent" | "favorites";
 
@@ -178,6 +147,11 @@ function ExamBadges({ name }: { name: string }) {
       {info.registerType === "proctor" && (
         <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
           📋 {locale === "ar" ? "كشف مراقبين" : "Proctor Register"}
+        </span>
+      )}
+      {info.registerType === "control" && (
+        <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+          🏢 {locale === "ar" ? "كشف كنترول" : "Control Register"}
         </span>
       )}
       {info.registerType === "student" && (
@@ -446,11 +420,15 @@ export function FileBrowser({
     }
   }, [refreshKey, fetchFolderChildren]);
 
-  // Prefetch direct children for eligible proctor folders so proctor file existence is detected immediately
+  // Prefetch direct children for eligible register folders so register file existence is detected immediately
   useEffect(() => {
     if (items.length > 0) {
       items
-        .filter((i) => i.isFolder && isEligibleProctorFolder(i, breadcrumbs))
+        .filter(
+          (i) =>
+            i.isFolder &&
+            getFolderRegisterCategory({ folder: i, breadcrumbs, isCurrentFolder: false }) !== null,
+        )
         .forEach((f) => {
           if (!folderChildren[f.id] && !loadingFolderIds.has(f.id)) {
             void fetchFolderChildren(f.id);
@@ -528,13 +506,15 @@ export function FileBrowser({
   const previewStickerState = previewPdfState;
   const setPreviewStickerState = setPreviewPdfState;
 
-  // Proctor Register Dialog & Actions
+  // Register Dialog & Actions (Floor Proctor Register / Building Control Register)
   const [proctorDialogOpen, setProctorDialogOpen] = useState(false);
   const [proctorDialogFolder, setProctorDialogFolder] = useState<{ id: string; name: string } | null>(null);
+  const [proctorDialogType, setProctorDialogType] = useState<"proctor" | "control">("proctor");
 
-  const handleOpenProctorDialog = useCallback(
-    (folder: { id: string; name: string }) => {
+  const handleOpenRegisterDialog = useCallback(
+    (folder: { id: string; name: string }, type: "proctor" | "control" = "proctor") => {
       setProctorDialogFolder({ id: folder.id, name: folder.name });
+      setProctorDialogType(type);
       setProctorDialogOpen(true);
       if (!folderChildren[folder.id]) {
         void fetchFolderChildren(folder.id);
@@ -543,31 +523,60 @@ export function FileBrowser({
     [folderChildren, fetchFolderChildren],
   );
 
-  const handleShowProctorFile = useCallback(
-    (file: DriveItem, folder?: { id: string; name: string }) => {
+  const handleOpenProctorDialog = useCallback(
+    (folder: { id: string; name: string }) => {
+      const cat = getFolderRegisterCategory({
+        folder,
+        breadcrumbs,
+        isCurrentFolder: false,
+      });
+      handleOpenRegisterDialog(folder, cat || "proctor");
+    },
+    [handleOpenRegisterDialog, breadcrumbs],
+  );
+
+  const handleShowRegisterFile = useCallback(
+    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" = "proctor") => {
+      const isControl = type === "control";
+      const registerLabel = isControl ? "Control Register" : "Proctor Register";
       setPreviewPdfState({
         open: true,
         url: `/api/drive/files/${file.id}/content`,
-        title: folder ? `Proctor Register - ${folder.name}` : file.name,
+        title: folder ? `${registerLabel} - ${folder.name}` : file.name,
         customTitle:
           locale === "ar"
-            ? `معاينة كشف المراقبين: ${folder?.name || file.name}`
-            : `Proctor Register: ${folder?.name || file.name}`,
+            ? `${isControl ? "معاينة كشف الكنترول" : "معاينة كشف المراقبين"}: ${folder?.name || file.name}`
+            : `${registerLabel}: ${folder?.name || file.name}`,
         customDescription:
           locale === "ar"
-            ? "معاينة مباشرة لكشف حضور وتوزيع السادة المراقبين والملاحظين قبل الطباعة."
+            ? isControl
+              ? "معاينة مباشرة لكشف أعضاء الكنترول والإشراف بالمبنى قبل الطباعة."
+              : "معاينة مباشرة لكشف حضور وتوزيع السادة المراقبين والملاحظين قبل الطباعة."
+            : isControl
+            ? "Live preview of Building Control & Supervision Register before printing."
             : "Live preview of Proctor Attendance & Assignment Register before printing.",
       });
     },
     [locale],
   );
 
-  const handlePrintProctorFile = useCallback(
+  const handleShowProctorFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }) => {
+      const isControl =
+        isControlRegisterFile(file) ||
+        (folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) === "control" : false);
+      handleShowRegisterFile(file, folder, isControl ? "control" : "proctor");
+    },
+    [handleShowRegisterFile, breadcrumbs],
+  );
+
+  const handlePrintRegisterFile = useCallback(
+    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" = "proctor") => {
+      const isControl = type === "control";
       const toastId = toast.loading(
         locale === "ar"
-          ? `جاري تجهيز كشف مراقبين "${folder?.name || file.name}" للطباعة...`
-          : `Preparing proctor register for print...`,
+          ? `جاري تجهيز ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${folder?.name || file.name}" للطباعة...`
+          : `Preparing ${isControl ? "control" : "proctor"} register for print...`,
       );
       try {
         const iframe = document.createElement("iframe");
@@ -588,7 +597,9 @@ export function FileBrowser({
           }
         };
         toast.success(
-          locale === "ar" ? "تم إرسال كشف المراقبين للطباعة بنجاح" : "Proctor register sent to printer",
+          locale === "ar"
+            ? `تم إرسال ${isControl ? "كشف الكنترول" : "كشف المراقبين"} للطباعة بنجاح`
+            : `${isControl ? "Control" : "Proctor"} register sent to printer`,
           { id: toastId },
         );
       } catch {
@@ -597,6 +608,16 @@ export function FileBrowser({
       }
     },
     [locale],
+  );
+
+  const handlePrintProctorFile = useCallback(
+    (file: DriveItem, folder?: { id: string; name: string }) => {
+      const isControl =
+        isControlRegisterFile(file) ||
+        (folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) === "control" : false);
+      handlePrintRegisterFile(file, folder, isControl ? "control" : "proctor");
+    },
+    [handlePrintRegisterFile, breadcrumbs],
   );
 
   const handleProctorUploaded = useCallback(
@@ -637,8 +658,11 @@ export function FileBrowser({
       const rooms = children
         .filter((c) => c.isFolder || /room|قاعة|\d+/i.test(c.name))
         .map((c) => c.name);
+      const floors = children
+        .filter((c) => c.isFolder && /floor|دور/i.test(c.name))
+        .map((c) => c.name);
 
-      return { examName, governorate, center, building, floor, rooms };
+      return { examName, governorate, center, building, floor, rooms, floors };
     },
     [breadcrumbs, folderChildren],
   );
@@ -1793,32 +1817,48 @@ export function FileBrowser({
             </div>
           )}
           {currentFolder && (() => {
-            const currentProctorFile = findProctorFileInItems(items);
-            const isEligible = isEligibleProctorFolder(currentFolder, breadcrumbs, undefined, currentProctorFile);
-            if (!isEligible) return null;
+            const regCategory = getFolderRegisterCategory({
+              folder: currentFolder,
+              breadcrumbs,
+              isCurrentFolder: true,
+            });
+            if (!regCategory) return null;
 
-            if (currentProctorFile) {
+            const isControl = regCategory === "control";
+            const currentRegFile = findRegisterFileInItems(regCategory, items);
+            const labelShort = isControl
+              ? (locale === "ar" ? "كشف كنترول" : "Control Reg")
+              : (locale === "ar" ? "كشف مراقبين" : "Proctor Reg");
+            const labelAdd = isControl
+              ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg")
+              : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg");
+
+            if (currentRegFile) {
               return (
                 <div className="inline-flex items-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-0.5 shadow-xs">
                   <button
                     type="button"
-                    onClick={() => handleOpenProctorDialog(currentFolder)}
+                    onClick={() => handleOpenRegisterDialog(currentFolder, regCategory)}
                     className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
                     title={
                       locale === "ar"
-                        ? `كشف المراقبين: "${currentProctorFile.name}" (اضغط للإدارة)`
-                        : `Proctor Register: "${currentProctorFile.name}" (Click to manage)`
+                        ? `${isControl ? "كشف الكنترول" : "كشف المراقبين"}: "${currentRegFile.name}" (اضغط للإدارة)`
+                        : `${isControl ? "Control Register" : "Proctor Register"}: "${currentRegFile.name}" (Click to manage)`
                     }
                   >
                     <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span className="hidden sm:inline">{locale === "ar" ? "كشف مراقبين" : "Proctor Reg"}</span>
+                    <span className="hidden sm:inline">{labelShort}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleShowProctorFile(currentProctorFile, currentFolder)}
+                    onClick={() => handleShowRegisterFile(currentRegFile, currentFolder, regCategory)}
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
-                    title={locale === "ar" ? `معاينة كشف مراقبين "${currentFolder.name}" (عرض)` : `Preview proctor register for "${currentFolder.name}" (Show)`}
+                    title={
+                      locale === "ar"
+                        ? `معاينة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${currentFolder.name}" (عرض)`
+                        : `Preview ${isControl ? "control" : "proctor"} register for "${currentFolder.name}" (Show)`
+                    }
                   >
                     <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>{locale === "ar" ? "معاينة" : "Show"}</span>
@@ -1826,9 +1866,13 @@ export function FileBrowser({
 
                   <button
                     type="button"
-                    onClick={() => handlePrintProctorFile(currentProctorFile, currentFolder)}
+                    onClick={() => handlePrintRegisterFile(currentRegFile, currentFolder, regCategory)}
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all"
-                    title={locale === "ar" ? `طباعة كشف مراقبين "${currentFolder.name}" مباشرة` : `Print proctor register for "${currentFolder.name}" directly`}
+                    title={
+                      locale === "ar"
+                        ? `طباعة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${currentFolder.name}" مباشرة`
+                        : `Print ${isControl ? "control" : "proctor"} register for "${currentFolder.name}" directly`
+                    }
                   >
                     <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>{locale === "ar" ? "طباعة" : "Print"}</span>
@@ -1840,12 +1884,16 @@ export function FileBrowser({
             return (
               <button
                 type="button"
-                onClick={() => handleOpenProctorDialog(currentFolder)}
+                onClick={() => handleOpenRegisterDialog(currentFolder, regCategory)}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer transition-all shadow-xs"
-                title={locale === "ar" ? `إضافة كشف مراقبين (PDF) لـ "${currentFolder.name}"` : `Add Proctor Register for "${currentFolder.name}"`}
+                title={
+                  locale === "ar"
+                    ? `إضافة ${isControl ? "كشف كنترول" : "كشف مراقبين"} (PDF) لـ "${currentFolder.name}"`
+                    : `Add ${isControl ? "Control" : "Proctor"} Register for "${currentFolder.name}"`
+                }
               >
                 <FileText className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>{locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg"}</span>
+                <span>{labelAdd}</span>
               </button>
             );
           })()}
@@ -2321,41 +2369,47 @@ export function FileBrowser({
                       </div>
 
                       {(() => {
-                        const proctorFile = findProctorFileInItems(folderChildren[item.id]);
-                        const isEligible = isEligibleProctorFolder(item, breadcrumbs, undefined, proctorFile);
-                        if (!isEligible) return null;
+                        const regCategory = getFolderRegisterCategory({
+                          folder: item,
+                          breadcrumbs,
+                          isCurrentFolder: false,
+                        });
+                        if (!regCategory) return null;
 
-                        if (proctorFile) {
+                        const isControl = regCategory === "control";
+                        const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
+
+                        if (regFile) {
                           return (
                             <div className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-0.5 text-xs shadow-2xs">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleOpenProctorDialog(item);
+                                  handleOpenRegisterDialog(item, regCategory);
                                 }}
                                 className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
                                 title={
                                   locale === "ar"
-                                    ? `كشف المراقبين: "${proctorFile.name}" (اضغط للإدارة)`
-                                    : `Proctor Register: "${proctorFile.name}" (Click to manage)`
+                                    ? `${isControl ? "كشف الكنترول" : "كشف المراقبين"}: "${regFile.name}" (اضغط للإدارة)`
+                                    : `${isControl ? "Control Register" : "Proctor Register"}: "${regFile.name}" (Click to manage)`
                                 }
                               >
                                 <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                                <span>{locale === "ar" ? "كشف" : "Proctor"}</span>
+                                <span>{isControl ? (locale === "ar" ? "كنترول" : "Control") : (locale === "ar" ? "مراقبين" : "Proctor")}</span>
                               </button>
 
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleShowProctorFile(proctorFile, item);
+                                  handleShowRegisterFile(regFile, item, regCategory);
                                 }}
                                 className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
                                 title={
                                   locale === "ar"
-                                    ? `معاينة كشف مراقبين "${item.name}" (عرض)`
-                                    : `Preview proctor register for "${item.name}" (Show)`
+                                    ? `معاينة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" (عرض)`
+                                    : `Preview ${isControl ? "control" : "proctor"} register for "${item.name}" (Show)`
                                 }
                               >
                                 <Eye className="size-3 text-emerald-600 dark:text-emerald-400" />
@@ -2365,13 +2419,13 @@ export function FileBrowser({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handlePrintProctorFile(proctorFile, item);
+                                  handlePrintRegisterFile(regFile, item, regCategory);
                                 }}
                                 className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
                                 title={
                                   locale === "ar"
-                                    ? `طباعة كشف مراقبين "${item.name}" مباشرة`
-                                    : `Print proctor register for "${item.name}" directly`
+                                    ? `طباعة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" مباشرة`
+                                    : `Print ${isControl ? "control" : "proctor"} register for "${item.name}" directly`
                                 }
                               >
                                 <Printer className="size-3 text-emerald-600 dark:text-emerald-400" />
@@ -2385,17 +2439,17 @@ export function FileBrowser({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleOpenProctorDialog(item);
+                              handleOpenRegisterDialog(item, regCategory);
                             }}
                             className="chip border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 flex items-center gap-1 cursor-pointer font-bold text-xs"
                             title={
                               locale === "ar"
-                                ? `إضافة كشف مراقبين (PDF) داخل "${item.name}"`
-                                : `Add Proctor Register (PDF) into "${item.name}"`
+                                ? `إضافة ${isControl ? "كشف كنترول" : "كشف مراقبين"} (PDF) داخل "${item.name}"`
+                                : `Add ${isControl ? "Control" : "Proctor"} Register (PDF) into "${item.name}"`
                             }
                           >
                             <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                            <span>{locale === "ar" ? "+ كشف" : "+ Proctor"}</span>
+                            <span>{isControl ? (locale === "ar" ? "+ كنترول" : "+ Control") : (locale === "ar" ? "+ مراقبين" : "+ Proctor")}</span>
                           </button>
                         );
                       })()}
@@ -2853,7 +2907,7 @@ export function FileBrowser({
         customDescription={previewPdfState.customDescription}
       />
 
-      {/* Add / Manage Proctor Register Dialog */}
+      {/* Add / Manage Register Dialog (Floor Proctor / Building Control) */}
       <AddProctorDialog
         open={proctorDialogOpen}
         onClose={() => {
@@ -2861,16 +2915,17 @@ export function FileBrowser({
           setProctorDialogFolder(null);
         }}
         folder={proctorDialogFolder}
+        registerType={proctorDialogType}
         currentProctorFile={
           proctorDialogFolder
-            ? findProctorFileInItems(folderChildren[proctorDialogFolder.id]) ||
-              (currentFolder?.id === proctorDialogFolder.id ? findProctorFileInItems(items) : undefined)
+            ? findRegisterFileInItems(proctorDialogType, folderChildren[proctorDialogFolder.id]) ||
+              (currentFolder?.id === proctorDialogFolder.id ? findRegisterFileInItems(proctorDialogType, items) : undefined)
             : undefined
         }
         hierarchyInfo={proctorDialogFolder ? getHierarchyInfoForFolder(proctorDialogFolder) : undefined}
         onSuccess={handleProctorUploaded}
-        onPreviewFile={(file) => handleShowProctorFile(file, proctorDialogFolder || undefined)}
-        onPrintFile={(file) => handlePrintProctorFile(file, proctorDialogFolder || undefined)}
+        onPreviewFile={(file) => handleShowRegisterFile(file, proctorDialogFolder || undefined, proctorDialogType)}
+        onPrintFile={(file) => handlePrintRegisterFile(file, proctorDialogFolder || undefined, proctorDialogType)}
       />
     </div>
   );
@@ -3087,33 +3142,54 @@ function ItemMenu({
                 <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
               </button>
             )}
-            {item.isFolder && onOpenProctorDialog && isEligibleProctorFolder(item, breadcrumbs, undefined, proctorFile) && (
-              <>
-                {proctorFile ? (
+            {item.isFolder && onOpenProctorDialog && (() => {
+              const regCategory = getFolderRegisterCategory({
+                folder: item,
+                breadcrumbs,
+                isCurrentFolder: false,
+              });
+              if (!regCategory) return null;
+              const isControl = regCategory === "control";
+              const targetRegFile = proctorFile;
+              const labelShow = isControl
+                ? (locale === "ar" ? "معاينة كشف الكنترول (عرض)" : "Preview Control Register (Show)")
+                : (locale === "ar" ? "معاينة كشف المراقبين (عرض)" : "Preview Proctor Register (Show)");
+              const labelPrint = isControl
+                ? (locale === "ar" ? "طباعة كشف الكنترول" : "Print Control Register")
+                : (locale === "ar" ? "طباعة كشف المراقبين" : "Print Proctor Register");
+              const labelManage = isControl
+                ? (locale === "ar" ? "إدارة / استبدال كشف الكنترول" : "Manage / Replace Control Register")
+                : (locale === "ar" ? "إدارة / استبدال كشف المراقبين" : "Manage / Replace Proctor Register");
+              const labelAdd = isControl
+                ? (locale === "ar" ? "إضافة كشف كنترول (PDF)" : "Add Control Register (PDF)")
+                : (locale === "ar" ? "إضافة كشف مراقبين (PDF)" : "Add Proctor Register (PDF)");
+
+              if (targetRegFile) {
+                return (
                   <>
                     <button
                       type="button"
                       role="menuitem"
                       className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
                       onClick={() => {
-                        onShowProctorFile?.(proctorFile, item);
+                        onShowProctorFile?.(targetRegFile, item);
                         onClose();
                       }}
                     >
                       <Eye className="size-4" />
-                      <span>{locale === "ar" ? "معاينة كشف المراقبين (عرض)" : "Preview Proctor Register (Show)"}</span>
+                      <span>{labelShow}</span>
                     </button>
                     <button
                       type="button"
                       role="menuitem"
                       className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
                       onClick={() => {
-                        onPrintProctorFile?.(proctorFile, item);
+                        onPrintProctorFile?.(targetRegFile, item);
                         onClose();
                       }}
                     >
                       <Printer className="size-4" />
-                      <span>{locale === "ar" ? "طباعة كشف المراقبين" : "Print Proctor Register"}</span>
+                      <span>{labelPrint}</span>
                     </button>
                     <button
                       type="button"
@@ -3125,25 +3201,27 @@ function ItemMenu({
                       }}
                     >
                       <FileText className="size-4" />
-                      <span>{locale === "ar" ? "إدارة / استبدال كشف المراقبين" : "Manage / Replace Proctor Register"}</span>
+                      <span>{labelManage}</span>
                     </button>
                   </>
-                ) : (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
-                    onClick={() => {
-                      onOpenProctorDialog(item);
-                      onClose();
-                    }}
-                  >
-                    <FileText className="size-4" />
-                    <span>{locale === "ar" ? "إضافة كشف مراقبين (PDF)" : "Add Proctor Register (PDF)"}</span>
-                  </button>
-                )}
-              </>
-            )}
+                );
+              }
+
+              return (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-emerald-600 dark:text-emerald-400 font-semibold"
+                  onClick={() => {
+                    onOpenProctorDialog(item);
+                    onClose();
+                  }}
+                >
+                  <FileText className="size-4" />
+                  <span>{labelAdd}</span>
+                </button>
+              );
+            })()}
             <button
               type="button"
               role="menuitem"
@@ -3564,11 +3642,18 @@ function TreeRow({
                 </div>
 
                 {(() => {
-                  const proctorFile = findProctorFileInItems(folderChildren[item.id]);
-                  const isEligible = isEligibleProctorFolder(item, breadcrumbs, depth, proctorFile);
-                  if (!isEligible) return null;
+                  const regCategory = getFolderRegisterCategory({
+                    folder: item,
+                    breadcrumbs,
+                    depth,
+                    isCurrentFolder: false,
+                  });
+                  if (!regCategory) return null;
 
-                  if (proctorFile) {
+                  const isControl = regCategory === "control";
+                  const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
+
+                  if (regFile) {
                     return (
                       <div className="inline-flex items-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-0.5 shadow-2xs">
                         <button
@@ -3580,27 +3665,29 @@ function TreeRow({
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-e border-emerald-500/20 hover:bg-emerald-500/20 rounded-s cursor-pointer select-none"
                           title={
                             locale === "ar"
-                              ? `كشف المراقبين: "${proctorFile.name}" (اضغط للإدارة)`
-                              : `Proctor Register: "${proctorFile.name}" (Click to manage)`
+                              ? `${isControl ? "كشف الكنترول" : "كشف المراقبين"}: "${regFile.name}" (اضغط للإدارة)`
+                              : `${isControl ? "Control Register" : "Proctor Register"}: "${regFile.name}" (Click to manage)`
                           }
                         >
                           <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                          <span className="hidden sm:inline">{locale === "ar" ? "كشف مراقبين" : "Proctor"}</span>
+                          <span className="hidden sm:inline">
+                            {isControl ? (locale === "ar" ? "كنترول" : "Control") : (locale === "ar" ? "مراقبين" : "Proctor")}
+                          </span>
                         </button>
 
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onShowProctorFile?.(proctorFile, item);
+                            onShowProctorFile?.(regFile, item);
                           }}
                           className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
                           title={
                             locale === "ar"
-                              ? `معاينة كشف مراقبين "${item.name}" (عرض)`
-                              : `Preview proctor register for "${item.name}" (Show)`
+                              ? `معاينة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" (عرض)`
+                              : `Preview ${isControl ? "control" : "proctor"} register for "${item.name}" (Show)`
                           }
-                          aria-label="Preview Proctor Register"
+                          aria-label={isControl ? "Preview Control Register" : "Preview Proctor Register"}
                         >
                           <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                         </button>
@@ -3609,15 +3696,15 @@ function TreeRow({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onPrintProctorFile?.(proctorFile, item);
+                            onPrintProctorFile?.(regFile, item);
                           }}
                           className="inline-flex items-center justify-center size-6 rounded hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer"
                           title={
                             locale === "ar"
-                              ? `طباعة كشف مراقبين "${item.name}" مباشرة`
-                              : `Print proctor register for "${item.name}" directly`
+                              ? `طباعة ${isControl ? "كشف كنترول" : "كشف مراقبين"} "${item.name}" مباشرة`
+                              : `Print ${isControl ? "control" : "proctor"} register for "${item.name}" directly`
                           }
-                          aria-label="Print Proctor Register"
+                          aria-label={isControl ? "Print Control Register" : "Print Proctor Register"}
                         >
                           <Printer className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                         </button>
@@ -3635,12 +3722,14 @@ function TreeRow({
                       className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-all cursor-pointer shadow-2xs"
                       title={
                         locale === "ar"
-                          ? `إضافة كشف مراقبين (PDF) داخل "${item.name}"`
-                          : `Add Proctor Register (PDF) into "${item.name}"`
+                          ? `إضافة ${isControl ? "كشف كنترول" : "كشف مراقبين"} (PDF) داخل "${item.name}"`
+                          : `Add ${isControl ? "Control" : "Proctor"} Register (PDF) into "${item.name}"`
                       }
                     >
                       <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                      <span className="hidden sm:inline">{locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg"}</span>
+                      <span className="hidden sm:inline">
+                        {isControl ? (locale === "ar" ? "+ كشف كنترول" : "+ Control Reg") : (locale === "ar" ? "+ كشف مراقبين" : "+ Proctor Reg")}
+                      </span>
                     </button>
                   );
                 })()}

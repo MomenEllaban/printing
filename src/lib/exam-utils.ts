@@ -1,4 +1,4 @@
-export type ExamRegisterType = "student" | "proctor";
+export type ExamRegisterType = "student" | "proctor" | "control";
 export type ExamLevel = "EST 1" | "EST 2";
 
 export interface ExamUploadMeta {
@@ -53,6 +53,8 @@ export function buildExamFileName(originalName: string, meta?: ExamUploadMeta): 
 
   if (meta.registerType === "proctor") {
     parts.push("Proctor Register");
+  } else if (meta.registerType === "control") {
+    parts.push("Control Register");
   } else if (meta.registerType === "student") {
     parts.push("Student Register");
   }
@@ -71,9 +73,10 @@ export function parseExamInfoFromFileName(name: string): {
   const isEst1 = /\[EST\s*1\]/i.test(name);
   const isEst2 = /\[EST\s*2\]/i.test(name);
   const isProctor = /proctor\s*register|كشف\s*مراقبين|ملاحظين/i.test(name);
+  const isControl = /control\s*register|كشف\s*كنترول|كنترول/i.test(name);
   const isStudent = /student\s*register|كشف\s*طلاب|كشف\s*لجان/i.test(name);
 
-  if (!isEst1 && !isEst2 && !isProctor && !isStudent) {
+  if (!isEst1 && !isEst2 && !isProctor && !isControl && !isStudent) {
     return null;
   }
 
@@ -82,7 +85,7 @@ export function parseExamInfoFromFileName(name: string): {
 
   return {
     examType: isEst1 ? "EST 1" : isEst2 ? "EST 2" : undefined,
-    registerType: isProctor ? "proctor" : isStudent ? "student" : undefined,
+    registerType: isProctor ? "proctor" : isControl ? "control" : isStudent ? "student" : undefined,
     floor: floorMatch ? floorMatch[1] : undefined,
     room: roomMatch ? roomMatch[1] : undefined,
   };

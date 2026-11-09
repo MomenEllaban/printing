@@ -17,12 +17,14 @@ import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
 import { toast } from "sonner";
 import { generateProctorRegisterPdf } from "@/lib/stickers/proctor-register-pdf";
+import { generateControlRegisterPdf } from "@/lib/stickers/control-register-pdf";
 import type { DriveItem } from "@/lib/types";
 
 interface AddProctorDialogProps {
   open: boolean;
   onClose: () => void;
   folder: { id: string; name: string } | null;
+  registerType?: "proctor" | "control";
   currentProctorFile?: DriveItem | null;
   hierarchyInfo?: {
     examName?: string;
@@ -31,6 +33,7 @@ interface AddProctorDialogProps {
     building?: string;
     floor?: string;
     rooms?: string[];
+    floors?: string[];
   };
   onSuccess: (uploadedFile: DriveItem) => void;
   onPreviewFile?: (file: DriveItem) => void;
@@ -41,6 +44,7 @@ export function AddProctorDialog({
   open,
   onClose,
   folder,
+  registerType = "proctor",
   currentProctorFile,
   hierarchyInfo,
   onSuccess,
@@ -49,6 +53,10 @@ export function AddProctorDialog({
 }: AddProctorDialogProps) {
   const { locale } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isControl = registerType === "control";
+  const registerLabelAr = isControl ? "كشف الكنترول" : "كشف المراقبين";
+  const registerLabelEn = isControl ? "Control Register" : "Proctor Register";
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -75,8 +83,8 @@ export function AddProctorDialog({
       if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
         toast.error(
           locale === "ar"
-            ? "يجب اختيار ملف PDF فقط لكشف المراقبين"
-            : "Only PDF files are supported for Proctor Register",
+            ? `يجب اختيار ملف PDF فقط لـ ${registerLabelAr}`
+            : `Only PDF files are supported for ${registerLabelEn}`,
         );
         return;
       }
@@ -92,8 +100,8 @@ export function AddProctorDialog({
       if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
         toast.error(
           locale === "ar"
-            ? "يجب اختيار ملف PDF فقط لكشف المراقبين"
-            : "Only PDF files are supported for Proctor Register",
+            ? `يجب اختيار ملف PDF فقط لـ ${registerLabelAr}`
+            : `Only PDF files are supported for ${registerLabelEn}`,
         );
         return;
       }
@@ -105,7 +113,7 @@ export function AddProctorDialog({
     if (!folder) return;
     setUploading(true);
     const toastId = toast.loading(
-      locale === "ar" ? "جاري رفع وتوثيق كشف المراقبين..." : "Uploading proctor register...",
+      locale === "ar" ? `جاري رفع وتوثيق ${registerLabelAr}...` : `Uploading ${registerLabelEn.toLowerCase()}...`,
     );
 
     try {
@@ -116,7 +124,7 @@ export function AddProctorDialog({
         "examMetadata",
         JSON.stringify({
           enabled: true,
-          registerType: "proctor",
+          registerType: isControl ? "control" : "proctor",
           institution: hierarchyInfo?.center,
           floor: hierarchyInfo?.floor,
         }),
@@ -132,14 +140,14 @@ export function AddProctorDialog({
       if (!res.ok) {
         throw new Error(
           data.message ||
-            (locale === "ar" ? "فشل رفع كشف المراقبين" : "Failed to upload proctor register"),
+            (locale === "ar" ? `فشل رفع ${registerLabelAr}` : `Failed to upload ${registerLabelEn.toLowerCase()}`),
         );
       }
 
       toast.success(
         locale === "ar"
-          ? `تمت إضافة كشف المراقبين بنجاح داخل "${folder.name}"`
-          : `Proctor register uploaded successfully to "${folder.name}"`,
+          ? `تمت إضافة ${registerLabelAr} بنجاح داخل "${folder.name}"`
+          : `${registerLabelEn} uploaded successfully to "${folder.name}"`,
         { id: toastId },
       );
 
@@ -163,27 +171,38 @@ export function AddProctorDialog({
     setGenerating(true);
     const toastId = toast.loading(
       locale === "ar"
-        ? "جاري إنشاء وتوليد كشف المراقبين الرسمي المعتمد..."
-        : "Generating official EST proctor register PDF...",
+        ? `جاري إنشاء وتوليد ${registerLabelAr} الرسمي المعتمد...`
+        : `Generating official EST ${registerLabelEn.toLowerCase()} PDF...`,
     );
 
     try {
-      const pdfBytes = await generateProctorRegisterPdf({
-        examName: hierarchyInfo?.examName || "EST 1",
-        governorate: hierarchyInfo?.governorate,
-        center: hierarchyInfo?.center,
-        building: hierarchyInfo?.building || folder.name,
-        floor: hierarchyInfo?.floor || folder.name,
-        rooms: hierarchyInfo?.rooms,
-      });
+      let pdfBytes: Uint8Array;
+      const sanitizedName = folder.name.replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, "_");
+      let outFileName: string;
+
+      if (isControl) {
+        pdfBytes = await generateControlRegisterPdf({
+          examName: hierarchyInfo?.examName || "EST 1",
+          governorate: hierarchyInfo?.governorate,
+          center: hierarchyInfo?.center,
+          building: hierarchyInfo?.building || folder.name,
+          floors: hierarchyInfo?.floors,
+        });
+        outFileName = `Control_Register_${sanitizedName}.pdf`;
+      } else {
+        pdfBytes = await generateProctorRegisterPdf({
+          examName: hierarchyInfo?.examName || "EST 1",
+          governorate: hierarchyInfo?.governorate,
+          center: hierarchyInfo?.center,
+          building: hierarchyInfo?.building || folder.name,
+          floor: hierarchyInfo?.floor || folder.name,
+          rooms: hierarchyInfo?.rooms,
+        });
+        outFileName = `Proctor_Register_${sanitizedName}.pdf`;
+      }
 
       const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
-      const sanitizedName = folder.name.replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, "_");
-      const generatedFile = new File(
-        [blob],
-        `Proctor_Register_${sanitizedName}.pdf`,
-        { type: "application/pdf" },
-      );
+      const generatedFile = new File([blob], outFileName, { type: "application/pdf" });
 
       toast.loading(
         locale === "ar"
@@ -195,7 +214,7 @@ export function AddProctorDialog({
       await uploadFileToServer(generatedFile);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to generate proctor register PDF",
+        err instanceof Error ? err.message : `Failed to generate ${registerLabelEn.toLowerCase()} PDF`,
         { id: toastId },
       );
       setGenerating(false);
@@ -210,13 +229,17 @@ export function AddProctorDialog({
       onClose={handleClose}
       title={
         locale === "ar"
-          ? `كشف المراقبين (Proctor Register) — ${folder.name}`
-          : `Proctor Register — ${folder.name}`
+          ? `${registerLabelAr} (${registerLabelEn}) — ${folder.name}`
+          : `${registerLabelEn} — ${folder.name}`
       }
       description={
         locale === "ar"
-          ? "إدارة ورفع كشف حضور وتوزيع السادة المراقبين والملاحظين للدور أو المبنى كملف PDF معتمد."
-          : "Manage and upload the official Proctor Attendance & Assignment Register PDF for this floor/building."
+          ? isControl
+            ? "إدارة ورفع كشف أعضاء الكنترول واللوجستيات للمبنى كملف PDF معتمد."
+            : "إدارة ورفع كشف حضور وتوزيع السادة المراقبين والملاحظين للدور كملف PDF معتمد."
+          : isControl
+          ? "Manage and upload the official Control & Building Supervision Register PDF for this building."
+          : "Manage and upload the official Proctor Attendance & Assignment Register PDF for this floor."
       }
       size="md"
     >
@@ -227,7 +250,11 @@ export function AddProctorDialog({
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
                 <Check className="size-4 text-emerald-600" />
-                <span>{locale === "ar" ? "يوجد كشف مراقبين مسجل حالياً" : "Proctor Register Already Attached"}</span>
+                <span>
+                  {locale === "ar"
+                    ? `يوجد ${registerLabelAr} مسجل حالياً`
+                    : `${registerLabelEn} Already Attached`}
+                </span>
               </span>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full">
                 PDF
@@ -277,8 +304,8 @@ export function AddProctorDialog({
               <Sparkles className="size-4 text-amber-600 dark:text-amber-400" />
               <span>
                 {locale === "ar"
-                  ? "الخيار 1: إنشاء وتوليد كشف مراقبين رسمي تلقائياً"
-                  : "Option 1: Auto-Generate Official Register PDF"}
+                  ? `الخيار 1: إنشاء وتوليد ${registerLabelAr} رسمي تلقائياً`
+                  : `Option 1: Auto-Generate Official ${registerLabelEn} PDF`}
               </span>
             </span>
             <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded">
@@ -288,7 +315,11 @@ export function AddProctorDialog({
 
           <p className="text-[11px] text-muted leading-relaxed">
             {locale === "ar"
-              ? "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول الحضور وتوزيع القاعات وخانات التوقيعات معتمد باسم السنتر والمبنى والدور."
+              ? isControl
+                ? "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول أعضاء الكنترول وتوزيع المهام وخانات التوقيعات معتمد باسم السنتر والمبنى."
+                : "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول الحضور وتوزيع القاعات وخانات التوقيعات معتمد باسم السنتر والمبنى والدور."
+              : isControl
+              ? "Generates an official EST A4 Landscape building control roster with logo, center, building details, control members table, and sign-offs."
               : "Generates an official EST A4 Landscape attendance sheet with logo, center, building, floor details, signature blocks, and proctor table."}
           </p>
 
@@ -399,7 +430,7 @@ export function AddProctorDialog({
               ) : (
                 <>
                   <Upload className="size-3.5" />
-                  <span>{locale === "ar" ? "رفع كشف المراقبين" : "Upload Proctor Register"}</span>
+                  <span>{locale === "ar" ? `رفع ${registerLabelAr}` : `Upload ${registerLabelEn}`}</span>
                 </>
               )}
             </Button>
