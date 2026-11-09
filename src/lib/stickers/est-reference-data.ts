@@ -342,6 +342,13 @@ export async function seedEstFolderStructure(
   return { totalCreated: cache.size, estRootId, scheduleFolderId };
 }
 
+export interface SubfolderInfoResult {
+  childCount: number;
+  childLabel: string;
+  childNames: string[];
+  totalRooms?: number;
+}
+
 /**
  * Resolves child subfolder information (e.g. floors inside a building, or rooms inside a floor)
  * based on the reference EST dataset.
@@ -352,7 +359,7 @@ export function getReferenceSubfolderInfo(params: {
   center?: string;
   building?: string;
   floor?: string;
-}): { childCount: number; childLabel: string; childLabelAr: string; childNames: string[] } {
+}): SubfolderInfoResult {
   const norm = (s?: string) => s?.trim().toLowerCase() || "";
   const gov = norm(params.governorate);
   const center = norm(params.center);
@@ -367,11 +374,12 @@ export function getReferenceSubfolderInfo(params: {
       return matchB && matchC && matchG;
     });
     const uniqueFloors = Array.from(new Set(matching.map((r) => r.floor))).filter(Boolean);
+    const uniqueRooms = Array.from(new Set(matching.map((r) => r.room))).filter(Boolean);
     return {
       childCount: uniqueFloors.length,
       childLabel: "Floors",
-      childLabelAr: "الأدوار",
       childNames: uniqueFloors,
+      totalRooms: uniqueRooms.length,
     };
   }
 
@@ -387,8 +395,8 @@ export function getReferenceSubfolderInfo(params: {
     return {
       childCount: uniqueRooms.length,
       childLabel: "Rooms",
-      childLabelAr: "القاعات",
       childNames: uniqueRooms,
+      totalRooms: uniqueRooms.length,
     };
   }
 
@@ -399,30 +407,32 @@ export function getReferenceSubfolderInfo(params: {
       return matchC && matchG;
     });
     const uniqueBuildings = Array.from(new Set(matching.map((r) => r.building))).filter(Boolean);
+    const uniqueRooms = Array.from(new Set(matching.map((r) => r.room))).filter(Boolean);
     return {
       childCount: uniqueBuildings.length,
       childLabel: "Buildings",
-      childLabelAr: "المباني",
       childNames: uniqueBuildings,
+      totalRooms: uniqueRooms.length,
     };
   }
 
   if (params.level === "governorate" && gov) {
     const matching = EST_REFERENCE_DATA.filter((r) => norm(r.governorate) === gov);
     const uniqueCenters = Array.from(new Set(matching.map((r) => r.testCenter))).filter(Boolean);
+    const uniqueRooms = Array.from(new Set(matching.map((r) => r.room))).filter(Boolean);
     return {
       childCount: uniqueCenters.length,
       childLabel: "Centers",
-      childLabelAr: "السناتر",
       childNames: uniqueCenters,
+      totalRooms: uniqueRooms.length,
     };
   }
 
   return {
     childCount: 0,
     childLabel: "",
-    childLabelAr: "",
     childNames: [],
+    totalRooms: 0,
   };
 }
 

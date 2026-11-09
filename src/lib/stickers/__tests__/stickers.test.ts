@@ -242,6 +242,15 @@ describe("generateStickerPdf", () => {
     }
   });
 
+  it("Computes subfolder buildings count for Center sticker (Abu Qir)", () => {
+    const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir"]);
+    expect(sticker.level).toBe("center");
+    expect(sticker.childLabel).toBe("Buildings");
+    expect(sticker.childCount).toBe(1);
+    expect(sticker.childNames).toEqual(["Pharmacy"]);
+    expect(sticker.totalRooms).toBe(13);
+  });
+
   it("Computes subfolder floors count for Building sticker", () => {
     const sticker = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy"]);
     expect(sticker.level).toBe("building");

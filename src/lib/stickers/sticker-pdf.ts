@@ -34,54 +34,32 @@ const COLOR_LIGHT_BG = rgb(0.97, 0.97, 0.97);
 const COLOR_BORDER = rgb(0.84, 0.84, 0.84);
 const COLOR_WHITE = rgb(1, 1, 1);
 
+// Static decoded logo bytes in memory - zero filesystem dependency
+const LOGO_JPEG_BYTES: Uint8Array = new Uint8Array(Buffer.from(EST_LOGO_BASE64, "base64"));
+
 /**
- * Loads the official EST Logo (JPEG).
- * Checked against file paths first, with a 100% guaranteed inlined Base64 fallback
- * so that the logo is ALWAYS loaded in every environment and never replaced with plain text.
+ * Loads the official EST Logo (JPEG) directly from memory.
+ * Guaranteed to succeed 100% of the time in all environments.
  */
 async function loadLogoImage(pdfDoc: PDFDocument): Promise<any> {
-  const logoPaths = [
-    path.join(process.cwd(), "src", "assets", "images", "est-logo.jpg"),
-    path.join(process.cwd(), "public", "est-logo.jpg"),
-  ];
-
-  let logoBytes: Uint8Array | null = null;
-  for (const p of logoPaths) {
-    if (fs.existsSync(p)) {
-      try {
-        logoBytes = fs.readFileSync(p);
-        break;
-      } catch {
-        // continue
-      }
-    }
-  }
-
-  if (!logoBytes || logoBytes.length === 0) {
-    try {
-      logoBytes = Buffer.from(EST_LOGO_BASE64, "base64");
-    } catch {
-      logoBytes = null;
-    }
-  }
-
-  if (!logoBytes) return null;
-
   try {
-    return await pdfDoc.embedJpg(logoBytes);
+    return await pdfDoc.embedJpg(LOGO_JPEG_BYTES);
   } catch (err) {
-    console.error("[sticker-pdf] Error embedding JPG logo, trying direct base64:", err);
+    console.error("[sticker-pdf] Error embedding logo from memory:", err);
+    // Try from public path fallback if ever needed
     try {
-      const fallbackBytes = Buffer.from(EST_LOGO_BASE64, "base64");
-      return await pdfDoc.embedJpg(fallbackBytes);
-    } catch {
-      return null;
-    }
+      const publicPath = path.join(process.cwd(), "public", "est-logo.jpg");
+      if (fs.existsSync(publicPath)) {
+        const fileBytes = fs.readFileSync(publicPath);
+        return await pdfDoc.embedJpg(fileBytes);
+      }
+    } catch {}
+    return null;
   }
 }
 
 /**
- * Loads the Unicode font supporting English and Arabic.
+ * Loads the font.
  */
 async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
   const fontPaths = [
@@ -94,9 +72,7 @@ async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
       try {
         const fontBytes = fs.readFileSync(fp);
         return await pdfDoc.embedFont(fontBytes, { subset: true });
-      } catch {
-        // continue
-      }
+      } catch {}
     }
   }
 
@@ -168,8 +144,11 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
 }
 
 /**
- * Draws a full-page A4 Exam Placard with the EST Logo, labeled fields, dynamic subfolder statistics,
- * and for Rooms: a manual verification checklist box for room file contents.
+ * Draws a full-page A4 Exam Placard:
+ * - Features the official EST Logo (JPEG) at the top of every sticker.
+ * - 100% International English labels (no Arabic text on placards to avoid text reversal/rendering issues).
+ * - Full hierarchy statistics (Governorate -> Centers, Center -> Buildings, Building -> Floors, Floor -> Rooms).
+ * - Room Level: Features a dedicated manual verification checklist box with 5 empty square check-boxes.
  */
 function drawA4PlacardPage(params: {
   pdfDoc: PDFDocument;
@@ -225,19 +204,6 @@ function drawA4PlacardPage(params: {
       height: logoHeight,
     });
     headerBottomY = logoY - 8;
-  } else {
-    // Guaranteed fallback if image cannot be embedded
-    const estText = "EST";
-    const estSize = isLandscape ? 36 : 42;
-    const estWidth = font.widthOfTextAtSize(estText, estSize);
-    page.drawText(estText, {
-      x: (pageWidth - estWidth) / 2,
-      y: pageHeight - margin - 45,
-      size: estSize,
-      font,
-      color: COLOR_GOLD,
-    });
-    headerBottomY = pageHeight - margin - 60;
   }
 
   // Exam Subtitle Badge
@@ -277,23 +243,23 @@ function drawA4PlacardPage(params: {
   const isRoot = content.level === "root";
 
   if (isRoom) {
-    // --- ROOM LEVEL ---
-    // Includes:
-    // 1. Top row of 4 location summary cards (Governorate, Center, Building, Floor)
-    // 2. Large Room Hero box
-    // 3. Room File Contents Checklist Box (with 5 checkboxes for manual pen check)
+    // ========================================================
+    // 1. ROOM LEVEL
+    // Top: 4 location summary cards (Governorate, Center, Building, Floor)
+    // Bottom: Left = Room Hero card, Right = Room File Contents Checklist
+    // ========================================================
     const summaryCardHeight = isLandscape ? 56 : 52;
     const summaryY = bodyTop - summaryCardHeight;
 
     const cards = [
-      { label: "Governorate", labelAr: "المحافظة", value: content.governorate || "—" },
-      { label: "Center", labelAr: "السنتر", value: content.center || "—" },
-      { label: "Building", labelAr: "المبنى", value: content.building || "—" },
-      { label: "Floor", labelAr: "الدور", value: content.floor || "—" },
+      { label: "Governorate", value: content.governorate || "—" },
+      { label: "Center", value: content.center || "—" },
+      { label: "Building", value: content.building || "—" },
+      { label: "Floor", value: content.floor || "—" },
     ];
 
     if (isLandscape) {
-      // 4 horizontal cards in one sleek row
+      // 4 horizontal summary cards
       const colWidth = (bodyWidth - 36) / 4;
       for (let i = 0; i < 4; i++) {
         renderSummaryCard({
@@ -304,12 +270,11 @@ function drawA4PlacardPage(params: {
           width: colWidth,
           height: summaryCardHeight,
           label: cards[i].label,
-          labelAr: cards[i].labelAr,
           value: cards[i].value,
         });
       }
 
-      // Bottom Area: Left = Room Hero (40% width), Right = File Contents Checklist (60% width)
+      // Bottom Area: Left = Room Hero (40%), Right = Room Checklist Box (60%)
       const bottomAreaTop = summaryY - 14;
       const bottomAreaHeight = bottomAreaTop - bodyBottom;
       const leftColWidth = (bodyWidth - 16) * 0.40;
@@ -324,7 +289,6 @@ function drawA4PlacardPage(params: {
         width: leftColWidth,
         height: bottomAreaHeight,
         badgeText: "ROOM",
-        badgeTextAr: "القاعة / الغرفة",
         valueText: content.room || "",
         accentColor: COLOR_GOLD,
       });
@@ -338,7 +302,7 @@ function drawA4PlacardPage(params: {
         height: bottomAreaHeight,
       });
     } else {
-      // Portrait Layout: 2x2 summary grid, Hero box, then Checklist box stacked
+      // Portrait layout
       const rowHeight = 48;
       const colWidth = (bodyWidth - 12) / 2;
       for (let i = 0; i < 4; i++) {
@@ -354,7 +318,6 @@ function drawA4PlacardPage(params: {
           width: colWidth,
           height: rowHeight,
           label: cards[i].label,
-          labelAr: cards[i].labelAr,
           value: cards[i].value,
         });
       }
@@ -372,7 +335,6 @@ function drawA4PlacardPage(params: {
         width: bodyWidth,
         height: heroHeight,
         badgeText: "ROOM",
-        badgeTextAr: "القاعة / الغرفة",
         valueText: content.room || "",
         accentColor: COLOR_GOLD,
       });
@@ -387,23 +349,23 @@ function drawA4PlacardPage(params: {
       });
     }
   } else if (isFloor) {
-    // --- FLOOR LEVEL ---
-    // Displays how many rooms are inside this floor (Total Rooms: X)
+    // ========================================================
+    // 2. FLOOR LEVEL
+    // Displays total rooms inside this floor and lists them all
+    // ========================================================
     const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
-    const roomsText = childRoomsCount > 0 ? `${childRoomsCount} Rooms` : "Rooms Included";
 
-    const heroBoxHeight = Math.min(230, availBodyHeight * 0.58);
+    const heroBoxHeight = Math.min(240, availBodyHeight * 0.60);
     const summaryHeight = availBodyHeight - heroBoxHeight - 16;
     const summaryY = bodyTop - summaryHeight;
 
     const cards = [
-      { label: "Governorate", labelAr: "المحافظة", value: content.governorate || "—" },
-      { label: "Center", labelAr: "السنتر", value: content.center || "—" },
-      { label: "Building", labelAr: "المبنى", value: content.building || "—" },
+      { label: "Governorate", value: content.governorate || "—" },
+      { label: "Center", value: content.center || "—" },
+      { label: "Building", value: content.building || "—" },
       {
         label: "Total Rooms",
-        labelAr: "إجمالي القاعات",
-        value: childRoomsCount > 0 ? `${childRoomsCount} Rooms (${childRoomsCount} قاعات)` : "Included Rooms",
+        value: childRoomsCount > 0 ? `${childRoomsCount} Rooms` : "Rooms Included",
       },
     ];
 
@@ -422,7 +384,6 @@ function drawA4PlacardPage(params: {
         width: cardW,
         height: cardH,
         label: cards[i].label,
-        labelAr: cards[i].labelAr,
         value: cards[i].value,
       });
     }
@@ -442,14 +403,15 @@ function drawA4PlacardPage(params: {
       width: bodyWidth,
       height: heroBoxHeight,
       badgeText: "FLOOR",
-      badgeTextAr: "الدور",
       valueText: content.floor || "",
       subText,
       accentColor: COLOR_GOLD,
     });
   } else if (isBuilding) {
-    // --- BUILDING LEVEL ---
-    // Displays how many floors are inside this building (Total Floors: X)
+    // ========================================================
+    // 3. BUILDING LEVEL
+    // Displays total floors inside this building and lists them all
+    // ========================================================
     const childFloorsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
 
     const heroBoxHeight = Math.min(240, availBodyHeight * 0.60);
@@ -457,21 +419,27 @@ function drawA4PlacardPage(params: {
     const summaryY = bodyTop - summaryHeight;
 
     const cards = [
-      { label: "Governorate", labelAr: "المحافظة", value: content.governorate || "—" },
-      { label: "Center", labelAr: "السنتر", value: content.center || "—" },
+      { label: "Governorate", value: content.governorate || "—" },
+      { label: "Center", value: content.center || "—" },
       {
         label: "Total Floors",
-        labelAr: "إجمالي الأدوار",
-        value: childFloorsCount > 0 ? `${childFloorsCount} Floors (${childFloorsCount} أدوار)` : "Included Floors",
+        value: childFloorsCount > 0 ? `${childFloorsCount} Floors` : "Floors Included",
       },
     ];
 
-    const colWidth = (bodyWidth - 24) / 3;
-    for (let i = 0; i < 3; i++) {
+    if (content.totalRooms && content.totalRooms > 0) {
+      cards.push({
+        label: "Total Rooms",
+        value: `${content.totalRooms} Rooms`,
+      });
+    }
+
+    const colWidth = (bodyWidth - (cards.length - 1) * 12) / cards.length;
+    for (let i = 0; i < cards.length; i++) {
       const cardX = isLandscape ? bodyStartX + i * (colWidth + 12) : bodyStartX;
-      const cardY = isLandscape ? summaryY : summaryY + (2 - i) * ((summaryHeight - 16) / 3 + 8);
+      const cardY = isLandscape ? summaryY : summaryY + (cards.length - 1 - i) * ((summaryHeight - 16) / cards.length + 8);
       const cardW = isLandscape ? colWidth : bodyWidth;
-      const cardH = isLandscape ? summaryHeight : (summaryHeight - 16) / 3;
+      const cardH = isLandscape ? summaryHeight : (summaryHeight - 16) / cards.length;
 
       renderSummaryCard({
         page,
@@ -481,7 +449,6 @@ function drawA4PlacardPage(params: {
         width: cardW,
         height: cardH,
         label: cards[i].label,
-        labelAr: cards[i].labelAr,
         value: cards[i].value,
       });
     }
@@ -501,12 +468,81 @@ function drawA4PlacardPage(params: {
       width: bodyWidth,
       height: heroBoxHeight,
       badgeText: "BUILDING",
-      badgeTextAr: "المبنى",
       valueText: content.building || "",
       subText,
       accentColor: COLOR_GOLD,
     });
   } else if (isCenter) {
+    // ========================================================
+    // 4. TEST CENTER LEVEL (e.g. Abu Qir)
+    // Displays total buildings inside this center and lists them all
+    // ========================================================
+    const childBuildingsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+
+    const heroBoxHeight = Math.min(240, availBodyHeight * 0.60);
+    const summaryHeight = availBodyHeight - heroBoxHeight - 16;
+    const summaryY = bodyTop - summaryHeight;
+
+    const cards = [
+      { label: "Governorate", value: content.governorate || "—" },
+      {
+        label: "Total Buildings",
+        value: childBuildingsCount > 0 ? `${childBuildingsCount} Buildings` : "Buildings Included",
+      },
+    ];
+
+    if (content.totalRooms && content.totalRooms > 0) {
+      cards.push({
+        label: "Total Rooms",
+        value: `${content.totalRooms} Rooms`,
+      });
+    }
+
+    const colWidth = (bodyWidth - (cards.length - 1) * 12) / cards.length;
+    for (let i = 0; i < cards.length; i++) {
+      const cardX = isLandscape ? bodyStartX + i * (colWidth + 12) : bodyStartX;
+      const cardY = isLandscape ? summaryY : summaryY + (cards.length - 1 - i) * ((summaryHeight - 16) / cards.length + 8);
+      const cardW = isLandscape ? colWidth : bodyWidth;
+      const cardH = isLandscape ? summaryHeight : (summaryHeight - 16) / cards.length;
+
+      renderSummaryCard({
+        page,
+        font,
+        x: cardX,
+        y: cardY,
+        width: cardW,
+        height: cardH,
+        label: cards[i].label,
+        value: cards[i].value,
+      });
+    }
+
+    const subText =
+      content.childNames && content.childNames.length > 0
+        ? `INCLUDED BUILDINGS (${childBuildingsCount}) : ${content.childNames.join("  •  ")}`
+        : childBuildingsCount > 0
+        ? `TOTAL INCLUDED BUILDINGS : ${childBuildingsCount} BUILDINGS IN THIS CENTER`
+        : undefined;
+
+    renderHeroCard({
+      page,
+      font,
+      x: bodyStartX,
+      y: bodyBottom,
+      width: bodyWidth,
+      height: heroBoxHeight,
+      badgeText: "TEST CENTER",
+      valueText: content.center || "",
+      subText,
+      accentColor: COLOR_GOLD,
+    });
+  } else if (isGov) {
+    // ========================================================
+    // 5. GOVERNORATE LEVEL (e.g. Alexandria)
+    // Displays total centers inside this governorate and lists them
+    // ========================================================
+    const childCentersCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+
     const heroBoxHeight = Math.min(250, availBodyHeight * 0.65);
     const summaryHeight = availBodyHeight - heroBoxHeight - 16;
     const summaryY = bodyTop - summaryHeight;
@@ -518,10 +554,14 @@ function drawA4PlacardPage(params: {
       y: summaryY,
       width: bodyWidth,
       height: summaryHeight,
-      label: "Governorate",
-      labelAr: "المحافظة",
-      value: content.governorate || "—",
+      label: "Total Centers",
+      value: childCentersCount > 0 ? `${childCentersCount} Examination Centers` : "Centers Included",
     });
+
+    const subText =
+      content.childNames && content.childNames.length > 0
+        ? `INCLUDED CENTERS (${childCentersCount}) : ${content.childNames.join("  •  ")}`
+        : undefined;
 
     renderHeroCard({
       page,
@@ -530,22 +570,9 @@ function drawA4PlacardPage(params: {
       y: bodyBottom,
       width: bodyWidth,
       height: heroBoxHeight,
-      badgeText: "TEST CENTER",
-      badgeTextAr: "السنتر / مركز الاختبار",
-      valueText: content.center || "",
-      accentColor: COLOR_GOLD,
-    });
-  } else if (isGov) {
-    renderHeroCard({
-      page,
-      font,
-      x: bodyStartX,
-      y: bodyBottom + 20,
-      width: bodyWidth,
-      height: availBodyHeight - 40,
       badgeText: "GOVERNORATE",
-      badgeTextAr: "المحافظة",
       valueText: content.governorate || "",
+      subText,
       accentColor: COLOR_GOLD,
     });
   } else if (isRoot) {
@@ -557,15 +584,14 @@ function drawA4PlacardPage(params: {
       width: bodyWidth,
       height: availBodyHeight - 40,
       badgeText: "EXAMINATION",
-      badgeTextAr: "الاختبار الرسمي",
       valueText: content.examName || "EST 1",
       accentColor: COLOR_GOLD,
     });
   } else {
     // Custom fallback
-    const items = content.fields.map((f) => ({ label: f.label, labelAr: f.labelAr, value: f.value }));
+    const items = content.fields.map((f) => ({ label: f.label, value: f.value }));
     if (items.length === 0) {
-      items.push({ label: "Location", labelAr: "الموقع", value: content.examName || "EST" });
+      items.push({ label: "Location", value: content.examName || "EST" });
     }
 
     const rowH = Math.min(70, (availBodyHeight - (items.length - 1) * 12) / items.length);
@@ -579,7 +605,6 @@ function drawA4PlacardPage(params: {
         width: bodyWidth,
         height: rowH,
         label: items[i].label,
-        labelAr: items[i].labelAr,
         value: items[i].value,
       });
     }
@@ -597,7 +622,6 @@ function renderSummaryCard(params: {
   width: number;
   height: number;
   label: string;
-  labelAr: string;
   value: string;
 }) {
   const { page, font, x, y, width, height, label, value } = params;
@@ -615,7 +639,7 @@ function renderSummaryCard(params: {
 
   // Label
   const labelText = `${label.toUpperCase()} :`;
-  const labelSize = Math.max(9, Math.min(11.5, height * 0.22));
+  const labelSize = Math.max(9, Math.min(11, height * 0.22));
   page.drawText(labelText, {
     x: x + 10,
     y: y + height - labelSize - 8,
@@ -626,7 +650,7 @@ function renderSummaryCard(params: {
 
   // Value - Auto-scale
   const availValWidth = width - 20;
-  let valSize = Math.max(11, Math.min(18, height * 0.40));
+  let valSize = Math.max(11, Math.min(18, height * 0.38));
   let valWidth = font.widthOfTextAtSize(value, valSize);
   if (valWidth > availValWidth) {
     valSize = Math.max(8.5, (availValWidth / valWidth) * valSize);
@@ -653,7 +677,6 @@ function renderHeroCard(params: {
   width: number;
   height: number;
   badgeText: string;
-  badgeTextAr: string;
   valueText: string;
   subText?: string;
   accentColor: any;
@@ -702,7 +725,7 @@ function renderHeroCard(params: {
     color: accentColor,
   });
 
-  // Bottom Sub-Text banner (e.g. Included Floors or Rooms) if present
+  // Bottom Sub-Text banner (e.g. Included Floors, Rooms, or Buildings) if present
   const subBarHeight = subText ? Math.max(26, Math.min(34, height * 0.16)) : 0;
   if (subText) {
     const subBarY = y + 2;
@@ -758,11 +781,11 @@ function renderHeroCard(params: {
 /**
  * Renders the official Room File Contents Checklist Box.
  * Designed with 5 clean empty square checkboxes for proctors/staff to manually check off with a pen:
- * 1. Student Register (كشف حضور الطلاب - ريجستر ستيدينت)
- * 2. Proctor Report (تقرير المراقب - ريبورت بروكتور)
- * 3. Seating Numbers (أرقام الجلوس والمقاعد - أرقام)
- * 4. Mobile Collection Forms (نماذج تسليم الهواتف المحمولة - فايلات الموبايل)
- * 5. Student Misconduct Forms (محاضر إثبات الحالة وسوء السلوك - ميس كوندكات للطالب)
+ * 1. Student Register
+ * 2. Proctor Report
+ * 3. Seating Numbers
+ * 4. Mobile Collection Forms
+ * 5. Student Misconduct Forms
  */
 function renderRoomChecklistBox(params: {
   page: any;
@@ -805,7 +828,7 @@ function renderRoomChecklistBox(params: {
   });
 
   // Header Text
-  const headerText = "ROOM FILE CONTENTS / فحص محتويات ملف القاعة";
+  const headerText = "ROOM FILE CONTENTS CHECKLIST";
   const headerSize = Math.max(10, Math.min(13, bannerHeight * 0.44));
   const hWidth = font.widthOfTextAtSize(headerText, headerSize);
   page.drawText(headerText, {
@@ -816,13 +839,13 @@ function renderRoomChecklistBox(params: {
     color: COLOR_GOLD,
   });
 
-  // Checklist items
+  // 5 Checklist items in clear, professional English
   const items = [
-    { en: "Student Register", ar: "كشف حضور وتسجيل الطلاب" },
-    { en: "Proctor Report", ar: "تقرير ومحضر المراقب" },
-    { en: "Seating / Seat Numbers", ar: "أرقام جلوس وتوزيع المقاعد" },
-    { en: "Mobile Collection Forms", ar: "نماذج واستمارات جمع الهواتف" },
-    { en: "Student Misconduct Forms", ar: "محاضر إثبات الحالة وسوء السلوك" },
+    "1. Student Register",
+    "2. Proctor Report",
+    "3. Seating Numbers / Room List",
+    "4. Mobile Collection Forms",
+    "5. Student Misconduct Forms",
   ];
 
   const availContentHeight = bannerY - y;
@@ -831,11 +854,11 @@ function renderRoomChecklistBox(params: {
   const itemRowHeight = itemsAreaHeight / items.length;
 
   for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+    const itemText = items[i];
     const rowY = bannerY - 6 - (i + 1) * itemRowHeight;
 
     // Checkbox Square (empty square for pen checking)
-    const boxSize = Math.max(12, Math.min(14, itemRowHeight * 0.42));
+    const boxSize = Math.max(12, Math.min(15, itemRowHeight * 0.42));
     const boxX = x + 16;
     const boxY = rowY + (itemRowHeight - boxSize) / 2;
 
@@ -849,17 +872,16 @@ function renderRoomChecklistBox(params: {
       borderWidth: 1.5,
     });
 
-    // Item Text: English + Arabic
+    // Item Text
     const labelX = boxX + boxSize + 12;
-    const fullText = `${item.en}  —  ${item.ar}`;
-    let textSize = Math.max(9, Math.min(11.5, itemRowHeight * 0.38));
-    let tWidth = font.widthOfTextAtSize(fullText, textSize);
+    let textSize = Math.max(9.5, Math.min(12, itemRowHeight * 0.38));
+    let tWidth = font.widthOfTextAtSize(itemText, textSize);
 
     if (tWidth > width - 50) {
-      textSize = Math.max(8, ((width - 50) / tWidth) * textSize);
+      textSize = Math.max(8.5, ((width - 50) / tWidth) * textSize);
     }
 
-    page.drawText(fullText, {
+    page.drawText(itemText, {
       x: labelX,
       y: boxY + 2,
       size: textSize,
@@ -887,7 +909,7 @@ function renderRoomChecklistBox(params: {
     color: COLOR_GOLD,
   });
 
-  const signText = "Proctor Signature / توقيع المراقب: __________________   Date: ___/___/2026";
+  const signText = "Proctor Signature: _______________________    Date: _____ / _____ / 2026";
   const signSize = Math.max(8.5, Math.min(10, footerHeight * 0.32));
   page.drawText(signText, {
     x: x + 14,
@@ -944,15 +966,6 @@ function drawCustomLabelPage(params: {
     });
 
     currentY -= logoHeight + 6;
-  } else {
-    page.drawText(content.examName || "EST", {
-      x: paddingX,
-      y: currentY - 16,
-      size: 16,
-      font,
-      color: COLOR_GOLD,
-    });
-    currentY -= 22;
   }
 
   // Divider
@@ -970,13 +983,15 @@ function drawCustomLabelPage(params: {
     displayItems.push(content.examName || "EST");
   }
 
-  // Include dynamic count
-  if (content.level === "building" && content.childCount) {
+  // Include dynamic count in English
+  if (content.level === "center" && content.childCount) {
+    displayItems.push(`Total Buildings : ${content.childCount}`);
+  } else if (content.level === "building" && content.childCount) {
     displayItems.push(`Total Floors : ${content.childCount}`);
   } else if (content.level === "floor" && content.childCount) {
     displayItems.push(`Total Rooms : ${content.childCount}`);
   } else if (content.level === "room") {
-    displayItems.push("[ ] Reg  [ ] Proc  [ ] Seat  [ ] Mob  [ ] Mis");
+    displayItems.push("[ ] Register  [ ] Proctor  [ ] Seating  [ ] Mobile  [ ] Misconduct");
   }
 
   const remainingHeight = currentY - paddingY;

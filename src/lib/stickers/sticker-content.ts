@@ -12,8 +12,8 @@ export interface StickerFieldItem {
 export interface StickerSubfolderInfo {
   childCount?: number;
   childLabel?: string;
-  childLabelAr?: string;
   childNames?: string[];
+  totalRooms?: number;
 }
 
 export interface StickerContent {
@@ -31,8 +31,8 @@ export interface StickerContent {
   // Dynamic subfolder counts
   childCount?: number;
   childLabel?: string;
-  childLabelAr?: string;
   childNames?: string[];
+  totalRooms?: number;
 }
 
 /**
@@ -152,8 +152,8 @@ export function buildStickerContent(
 
   const childCount = subfolderInfo?.childCount ?? refInfo.childCount;
   const childLabel = subfolderInfo?.childLabel ?? refInfo.childLabel;
-  const childLabelAr = subfolderInfo?.childLabelAr ?? refInfo.childLabelAr;
   const childNames = subfolderInfo?.childNames ?? refInfo.childNames;
+  const totalRooms = subfolderInfo?.totalRooms ?? refInfo.totalRooms;
 
   return {
     level,
@@ -169,7 +169,7 @@ export function buildStickerContent(
     fields,
     childCount,
     childLabel,
-    childLabelAr,
     childNames,
+    totalRooms,
   };
 }

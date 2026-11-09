@@ -41,6 +41,7 @@ import { FolderPicker } from "./folder-picker";
 import { FileIcon } from "./file-icon";
 import { BatchPrintDialog } from "./batch-print-dialog";
 import { BatchStickersDialog } from "./batch-stickers-dialog";
+import { StickerPreviewModal } from "./sticker-preview-modal";
 import { useI18n } from "./locale-provider";
 import { useActiveProfile } from "./profile-provider";
 import { cn } from "@/lib/cn";
@@ -461,6 +462,11 @@ export function FileBrowser({
 
   const [busyStickerId, setBusyStickerId] = useState<string | null>(null);
   const [stickerAction, setStickerAction] = useState<"show" | "print" | null>(null);
+  const [previewStickerState, setPreviewStickerState] = useState<{
+    open: boolean;
+    url: string | null;
+    title?: string;
+  }>({ open: false, url: null });
 
   const handleStickerAction = useCallback(
     async (
@@ -498,17 +504,13 @@ export function FileBrowser({
         const objectUrl = URL.createObjectURL(pdfBlob);
 
         if (action === "show") {
-          const newTab = window.open(objectUrl, "_blank");
-          if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
-            const link = document.createElement("a");
-            link.href = objectUrl;
-            link.download = `Sticker-${(target.name || "EST").replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
+          setPreviewStickerState({
+            open: true,
+            url: objectUrl,
+            title: target.name || "EST",
+          });
           toast.success(
-            locale === "ar" ? "تم فتح الاستيكر للمعاينة بنجاح" : "Sticker preview opened",
+            locale === "ar" ? "تم فتح نافذة المعاينة بنجاح" : "Sticker preview opened",
             { id: toastId },
           );
         } else {
@@ -1097,18 +1099,17 @@ export function FileBrowser({
         const objectUrl = URL.createObjectURL(pdfBlob);
 
         if (action === "show") {
-          const newTab = window.open(objectUrl, "_blank");
-          if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
-            const link = document.createElement("a");
-            link.href = objectUrl;
-            link.download = `EST-Stickers-Batch.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
+          setPreviewStickerState({
+            open: true,
+            url: objectUrl,
+            title:
+              locale === "ar"
+                ? `استيكرات مجمعة (${targetFolders.length} مجلد)`
+                : `Batch Stickers (${targetFolders.length} Folders)`,
+          });
           toast.success(
             locale === "ar"
-              ? "تم فتح جميع الاستيكرات للمعاينة بنجاح"
+              ? "تم فتح جميع الاستيكرات في نافذة المعاينة بنجاح"
               : "Stickers preview opened",
             { id: toastId },
           );
@@ -2519,6 +2520,14 @@ export function FileBrowser({
         currentFolder={currentFolder}
         loading={busyBatchStickers}
         onExecute={handleBatchStickersAction}
+      />
+
+      {/* In-app Sticker Preview Modal */}
+      <StickerPreviewModal
+        open={previewStickerState.open}
+        onClose={() => setPreviewStickerState({ open: false, url: null })}
+        pdfUrl={previewStickerState.url}
+        title={previewStickerState.title}
       />
     </div>
   );
