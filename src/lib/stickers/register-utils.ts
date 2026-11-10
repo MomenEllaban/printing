@@ -1,9 +1,9 @@
 import type { DriveItem, Breadcrumb } from "@/lib/types";
 
-export type RegisterCategory = "proctor" | "control" | "student" | null;
+export type RegisterCategory = "building_excel" | "student" | "control" | "proctor" | null;
 
 export interface RegisterTheme {
-  category: "control" | "proctor" | "student";
+  category: "building_excel" | "control" | "proctor" | "student";
   nameAr: string;
   nameEn: string;
   shortAr: string;
@@ -24,44 +24,45 @@ export interface RegisterTheme {
 
 /**
  * Checks whether a user profile is authorized to upload/add a specific register category:
- * - "printing": Full admin, can add control, proctor, and student registers.
- * - "dina": Can add control (buildings) and proctor (floors).
- * - "nabil": Can add student (rooms).
+ * - "printing": Full admin, can add building excel and student registers.
+ * - "dina": Can add building excel (and legacy control/proctor).
+ * - "nabil": Can add student register (rooms).
  */
 export function canProfileAddRegister(profileId: string | undefined | null, category: RegisterCategory): boolean {
   if (!category) return false;
   if (!profileId || profileId === "printing") return true;
-  if (profileId === "dina") return category === "control" || category === "proctor";
+  if (profileId === "dina") return category === "building_excel" || category === "control" || category === "proctor";
   if (profileId === "nabil") return category === "student";
   return false;
 }
 
 /**
  * Returns distinct visual styling and labels for each register category:
- * - control: Sky Blue (Buildings / دينا + طباعة)
- * - proctor: Emerald Green (Floors / دينا + طباعة)
+ * - building_excel: Emerald / Green Excel theme (Buildings / دينا + طباعة)
  * - student: Purple / Violet (Rooms / نبيل + طباعة)
+ * - control: Sky Blue (Legacy Building Control)
+ * - proctor: Teal / Slate (Legacy Floor Proctor)
  */
-export function getRegisterTheme(category: "control" | "proctor" | "student"): RegisterTheme {
-  if (category === "control") {
+export function getRegisterTheme(category: "building_excel" | "control" | "proctor" | "student"): RegisterTheme {
+  if (category === "building_excel") {
     return {
-      category: "control",
-      nameAr: "كشف الكنترول",
-      nameEn: "Control Register",
-      shortAr: "كنترول",
-      shortEn: "Control",
-      addLabelAr: "+ كشف كنترول",
-      addLabelEn: "+ Control Reg",
+      category: "building_excel",
+      nameAr: "شيت المبنى (Excel)",
+      nameEn: "Building Excel Sheet",
+      shortAr: "إكسيل المبنى",
+      shortEn: "Building Excel",
+      addLabelAr: "+ شيت المبنى (Excel)",
+      addLabelEn: "+ Building Excel",
       ownerAr: "دينا",
       ownerEn: "Dina",
-      textClass: "text-sky-700 dark:text-sky-300",
-      bgClass: "bg-sky-500/10 dark:bg-sky-500/20",
-      borderClass: "border-sky-500/35",
-      hoverBgClass: "hover:bg-sky-500/20",
-      chipBorderClass: "border-sky-500/30",
-      chipBgClass: "bg-sky-500/10",
-      chipHoverClass: "hover:bg-sky-500/20",
-      iconColorClass: "text-sky-600 dark:text-sky-400",
+      textClass: "text-emerald-700 dark:text-emerald-300",
+      bgClass: "bg-emerald-500/10 dark:bg-emerald-500/20",
+      borderClass: "border-emerald-500/35",
+      hoverBgClass: "hover:bg-emerald-500/20",
+      chipBorderClass: "border-emerald-500/30",
+      chipBgClass: "bg-emerald-500/10",
+      chipHoverClass: "hover:bg-emerald-500/20",
+      iconColorClass: "text-emerald-600 dark:text-emerald-400",
     };
   }
 
@@ -87,6 +88,28 @@ export function getRegisterTheme(category: "control" | "proctor" | "student"): R
     };
   }
 
+  if (category === "control") {
+    return {
+      category: "control",
+      nameAr: "كشف الكنترول",
+      nameEn: "Control Register",
+      shortAr: "كنترول",
+      shortEn: "Control",
+      addLabelAr: "+ كشف كنترول",
+      addLabelEn: "+ Control Reg",
+      ownerAr: "دينا",
+      ownerEn: "Dina",
+      textClass: "text-sky-700 dark:text-sky-300",
+      bgClass: "bg-sky-500/10 dark:bg-sky-500/20",
+      borderClass: "border-sky-500/35",
+      hoverBgClass: "hover:bg-sky-500/20",
+      chipBorderClass: "border-sky-500/30",
+      chipBgClass: "bg-sky-500/10",
+      chipHoverClass: "hover:bg-sky-500/20",
+      iconColorClass: "text-sky-600 dark:text-sky-400",
+    };
+  }
+
   // Default: proctor
   return {
     category: "proctor",
@@ -98,15 +121,29 @@ export function getRegisterTheme(category: "control" | "proctor" | "student"): R
     addLabelEn: "+ Proctor Reg",
     ownerAr: "دينا",
     ownerEn: "Dina",
-    textClass: "text-emerald-700 dark:text-emerald-300",
-    bgClass: "bg-emerald-500/10 dark:bg-emerald-500/20",
-    borderClass: "border-emerald-500/35",
-    hoverBgClass: "hover:bg-emerald-500/20",
-    chipBorderClass: "border-emerald-500/30",
-    chipBgClass: "bg-emerald-500/10",
-    chipHoverClass: "hover:bg-emerald-500/20",
-    iconColorClass: "text-emerald-600 dark:text-emerald-400",
+    textClass: "text-teal-700 dark:text-teal-300",
+    bgClass: "bg-teal-500/10 dark:bg-teal-500/20",
+    borderClass: "border-teal-500/35",
+    hoverBgClass: "hover:bg-teal-500/20",
+    chipBorderClass: "border-teal-500/30",
+    chipBgClass: "bg-teal-500/10",
+    chipHoverClass: "hover:bg-teal-500/20",
+    iconColorClass: "text-teal-600 dark:text-teal-400",
   };
+}
+
+/**
+ * Checks whether an item is a valid Building Excel file (.xlsx, .xls, .csv).
+ */
+export function isBuildingExcelFile(item: { id?: string; name: string; isFolder?: boolean; mimeType?: string }): boolean {
+  if (item.isFolder) return false;
+  const name = item.name.toLowerCase();
+  const isExcelExt = name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv");
+  const isExcelMime =
+    item.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    item.mimeType === "application/vnd.ms-excel" ||
+    item.mimeType === "text/csv";
+  return isExcelExt || isExcelMime;
 }
 
 /**
@@ -148,6 +185,18 @@ export function isStudentRegisterFile(item: { id?: string; name: string; isFolde
   );
 }
 
+export function findBuildingExcelFileInItems(items?: DriveItem[]): DriveItem | undefined {
+  if (!items || !items.length) return undefined;
+  // Prioritize spreadsheets with keywords in their name
+  const prioritized = items.find(
+    (item) =>
+      isBuildingExcelFile(item) &&
+      /building|control|details|excel|مبنى|كنترول|تفاصيل|شيت/i.test(item.name),
+  );
+  if (prioritized) return prioritized;
+  return items.find(isBuildingExcelFile);
+}
+
 export function findProctorFileInItems(items?: DriveItem[]): DriveItem | undefined {
   if (!items || !items.length) return undefined;
   return items.find(isProctorRegisterFile);
@@ -165,17 +214,18 @@ export function findStudentFileInItems(items?: DriveItem[]): DriveItem | undefin
 
 export function findRegisterFileInItems(category: RegisterCategory, items?: DriveItem[]): DriveItem | undefined {
   if (!category || !items || !items.length) return undefined;
-  if (category === "proctor") return findProctorFileInItems(items);
-  if (category === "control") return findControlFileInItems(items);
+  if (category === "building_excel") return findBuildingExcelFileInItems(items);
   if (category === "student") return findStudentFileInItems(items);
+  if (category === "control") return findControlFileInItems(items) || findBuildingExcelFileInItems(items);
+  if (category === "proctor") return findProctorFileInItems(items);
   return undefined;
 }
 
 /**
  * Determines whether a folder qualifies for a register:
- * - "proctor" (for Floors only)
- * - "control" (for Buildings only)
- * - "student" (for Rooms only)
+ * - "building_excel" (for Buildings only: one unified Excel file with multiple tabs)
+ * - "student" (for Rooms only: Student Attendance & Seating Register PDF)
+ * - null (for Floors: no proctor register uploaded per floor)
  * - null (for City/Governorate, Test Centers, Roots)
  */
 export function getFolderRegisterCategory(params: {
@@ -197,14 +247,14 @@ export function getFolderRegisterCategory(params: {
     return "student";
   }
 
-  // Explicit Floor detection by name
+  // Explicit Floor detection by name -> NO register upload for floors!
   if (/floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b/i.test(folderName)) {
-    return "proctor";
+    return null;
   }
 
-  // Explicit Building detection by name
+  // Explicit Building detection by name -> Building Excel!
   if (/building|مبنى|قسم/i.test(folderName)) {
-    return "control";
+    return "building_excel";
   }
 
   // Analyze EST breadcrumb hierarchy if present
@@ -222,19 +272,19 @@ export function getFolderRegisterCategory(params: {
         // 0: EST (Root) -> null
         // 1: Governorate / City -> null
         // 2: Test Center -> null
-        // 3: Building -> "control"
-        // 4: Floor -> "proctor"
+        // 3: Building -> "building_excel"
+        // 4: Floor -> null (no proctor register upload per floor)
         // 5+: Room -> "student"
-        if (currentFolderEstDepth === 3) return "control";
-        if (currentFolderEstDepth === 4) return "proctor";
+        if (currentFolderEstDepth === 3) return "building_excel";
+        if (currentFolderEstDepth === 4) return null;
         if (currentFolderEstDepth >= 5) return "student";
         return null;
       } else {
         // We are inspecting an item INSIDE currentFolder (row in table or grid)
         // If currentFolder is depth 2 (Test Center, e.g. Abu Qir): child folders are Buildings!
-        if (currentFolderEstDepth === 2) return "control";
-        // If currentFolder is depth 3 (Building, e.g. Pharmacy): child folders are Floors!
-        if (currentFolderEstDepth === 3) return "proctor";
+        if (currentFolderEstDepth === 2) return "building_excel";
+        // If currentFolder is depth 3 (Building, e.g. Pharmacy): child folders are Floors -> null!
+        if (currentFolderEstDepth === 3) return null;
         // If currentFolder is depth 4 (Floor, e.g. 2nd Floor): child folders are Rooms!
         if (currentFolderEstDepth === 4) return "student";
         // If currentFolder is depth 0 (EST) -> items are Governorates -> null
@@ -246,8 +296,8 @@ export function getFolderRegisterCategory(params: {
 
   // If depth is explicitly passed from a recursive tree view
   if (typeof depth === "number") {
-    if (depth === 3) return "control";
-    if (depth === 4) return "proctor";
+    if (depth === 3) return "building_excel";
+    if (depth === 4) return null;
     if (depth >= 5) return "student";
     return null;
   }

@@ -6,6 +6,7 @@ import {
   CloudUpload,
   Download,
   Eye,
+  FileSpreadsheet,
   FileText,
   Loader2,
   Printer,
@@ -20,14 +21,15 @@ import { cn } from "@/lib/cn";
 import { generateProctorRegisterPdf } from "@/lib/stickers/proctor-register-pdf";
 import { generateControlRegisterPdf } from "@/lib/stickers/control-register-pdf";
 import { generateStudentRegisterPdf } from "@/lib/stickers/student-register-pdf";
-import { getRegisterTheme } from "@/lib/stickers/register-utils";
+import { generateBuildingExcelWorkbook } from "@/lib/stickers/building-excel";
+import { getRegisterTheme, type RegisterCategory } from "@/lib/stickers/register-utils";
 import type { DriveItem } from "@/lib/types";
 
 interface AddProctorDialogProps {
   open: boolean;
   onClose: () => void;
   folder: { id: string; name: string } | null;
-  registerType?: "proctor" | "control" | "student";
+  registerType?: "building_excel" | "student" | "proctor" | "control";
   currentProctorFile?: DriveItem | null;
   hierarchyInfo?: {
     examName?: string;
@@ -47,7 +49,7 @@ export function AddProctorDialog({
   open,
   onClose,
   folder,
-  registerType = "proctor",
+  registerType = "building_excel",
   currentProctorFile,
   hierarchyInfo,
   onSuccess,
@@ -57,6 +59,7 @@ export function AddProctorDialog({
   const { locale } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isExcel = registerType === "building_excel";
   const isControl = registerType === "control";
   const isStudent = registerType === "student";
   const theme = getRegisterTheme(registerType);
@@ -82,13 +85,30 @@ export function AddProctorDialog({
     onClose();
   };
 
+  const isFileValid = (file: File) => {
+    if (isExcel) {
+      const lower = file.name.toLowerCase();
+      const validExt = lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".csv");
+      const validMime =
+        file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        file.type === "application/vnd.ms-excel" ||
+        file.type === "text/csv";
+      return validExt || validMime;
+    }
+    return file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      if (!isFileValid(file)) {
         toast.error(
           locale === "ar"
-            ? `يجب اختيار ملف PDF فقط لـ ${registerLabelAr}`
+            ? isExcel
+              ? "يجب اختيار ملف إكسيل (.xlsx أو .xls أو .csv)"
+              : `يجب اختيار ملف PDF فقط لـ ${registerLabelAr}`
+            : isExcel
+            ? "Only Excel spreadsheets (.xlsx, .xls, .csv) are supported"
             : `Only PDF files are supported for ${registerLabelEn}`,
         );
         return;
@@ -102,10 +122,14 @@ export function AddProctorDialog({
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      if (!isFileValid(file)) {
         toast.error(
           locale === "ar"
-            ? `يجب اختيار ملف PDF فقط لـ ${registerLabelAr}`
+            ? isExcel
+              ? "يجب اختيار ملف إكسيل (.xlsx أو .xls أو .csv)"
+              : `يجب اختيار ملف PDF فقط لـ ${registerLabelAr}`
+            : isExcel
+            ? "Only Excel spreadsheets (.xlsx, .xls, .csv) are supported"
             : `Only PDF files are supported for ${registerLabelEn}`,
         );
         return;
@@ -129,8 +153,9 @@ export function AddProctorDialog({
         "examMetadata",
         JSON.stringify({
           enabled: true,
-          registerType: isControl ? "control" : isStudent ? "student" : "proctor",
+          registerType: isExcel ? "building_excel" : isControl ? "control" : isStudent ? "student" : "proctor",
           institution: hierarchyInfo?.center,
+          building: hierarchyInfo?.building || folder.name,
           floor: hierarchyInfo?.floor,
           room: isStudent ? folder.name : undefined,
         }),
@@ -172,65 +197,95 @@ export function AddProctorDialog({
     await uploadFileToServer(selectedFile);
   };
 
-  const handleGenerateOfficialPdf = async () => {
+  const handleGenerateOfficialTemplate = async () => {
     if (!folder) return;
     setGenerating(true);
     const toastId = toast.loading(
       locale === "ar"
-        ? `جاري إنشاء وتوليد ${registerLabelAr} الرسمي المعتمد...`
-        : `Generating official EST ${registerLabelEn.toLowerCase()} PDF...`,
+        ? `جاري إنشاء وتوليد ${registerLabelAr} المعتمد...`
+        : `Generating official ${registerLabelEn.toLowerCase()}...`,
     );
 
     try {
-      let pdfBytes: Uint8Array;
       const sanitizedName = folder.name.replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, "_");
-      let outFileName: string;
 
-      if (isControl) {
-        pdfBytes = await generateControlRegisterPdf({
+      if (isExcel) {
+        // Generate official Building Excel Workbook
+        const excelBytes = generateBuildingExcelWorkbook({
+          buildingName: hierarchyInfo?.building || folder.name,
           examName: hierarchyInfo?.examName || "EST 1",
           governorate: hierarchyInfo?.governorate,
           center: hierarchyInfo?.center,
-          building: hierarchyInfo?.building || folder.name,
           floors: hierarchyInfo?.floors,
-        });
-        outFileName = `Control_Register_${sanitizedName}.pdf`;
-      } else if (isStudent) {
-        pdfBytes = await generateStudentRegisterPdf({
-          examName: hierarchyInfo?.examName || "EST 1",
-          governorate: hierarchyInfo?.governorate,
-          center: hierarchyInfo?.center,
-          building: hierarchyInfo?.building,
-          floor: hierarchyInfo?.floor,
-          room: folder.name,
-        });
-        outFileName = `Student_Register_${sanitizedName}.pdf`;
-      } else {
-        pdfBytes = await generateProctorRegisterPdf({
-          examName: hierarchyInfo?.examName || "EST 1",
-          governorate: hierarchyInfo?.governorate,
-          center: hierarchyInfo?.center,
-          building: hierarchyInfo?.building || folder.name,
-          floor: hierarchyInfo?.floor || folder.name,
           rooms: hierarchyInfo?.rooms,
         });
-        outFileName = `Proctor_Register_${sanitizedName}.pdf`;
+
+        const blob = new Blob([excelBytes.buffer as ArrayBuffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        const outFileName = `EST1_${sanitizedName}_Management.xlsx`;
+        const generatedFile = new File([blob], outFileName, {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+
+        toast.loading(
+          locale === "ar"
+            ? "تم توليد شيت الإكسيل بنجاح، جاري الحفظ داخل المجلد..."
+            : "Workbook generated, saving to building folder...",
+          { id: toastId },
+        );
+
+        await uploadFileToServer(generatedFile);
+      } else {
+        let pdfBytes: Uint8Array;
+        let outFileName: string;
+
+        if (isControl) {
+          pdfBytes = await generateControlRegisterPdf({
+            examName: hierarchyInfo?.examName || "EST 1",
+            governorate: hierarchyInfo?.governorate,
+            center: hierarchyInfo?.center,
+            building: hierarchyInfo?.building || folder.name,
+            floors: hierarchyInfo?.floors,
+          });
+          outFileName = `Control_Register_${sanitizedName}.pdf`;
+        } else if (isStudent) {
+          pdfBytes = await generateStudentRegisterPdf({
+            examName: hierarchyInfo?.examName || "EST 1",
+            governorate: hierarchyInfo?.governorate,
+            center: hierarchyInfo?.center,
+            building: hierarchyInfo?.building,
+            floor: hierarchyInfo?.floor,
+            room: folder.name,
+          });
+          outFileName = `Student_Register_${sanitizedName}.pdf`;
+        } else {
+          pdfBytes = await generateProctorRegisterPdf({
+            examName: hierarchyInfo?.examName || "EST 1",
+            governorate: hierarchyInfo?.governorate,
+            center: hierarchyInfo?.center,
+            building: hierarchyInfo?.building || folder.name,
+            floor: hierarchyInfo?.floor || folder.name,
+            rooms: hierarchyInfo?.rooms,
+          });
+          outFileName = `Proctor_Register_${sanitizedName}.pdf`;
+        }
+
+        const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
+        const generatedFile = new File([blob], outFileName, { type: "application/pdf" });
+
+        toast.loading(
+          locale === "ar"
+            ? "تم توليد الكشف بنجاح، جاري الحفظ داخل المجلد..."
+            : "PDF generated, saving to folder...",
+          { id: toastId },
+        );
+
+        await uploadFileToServer(generatedFile);
       }
-
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
-      const generatedFile = new File([blob], outFileName, { type: "application/pdf" });
-
-      toast.loading(
-        locale === "ar"
-          ? "تم توليد الكشف بنجاح، جاري الحفظ داخل المجلد..."
-          : "PDF generated, saving to folder...",
-        { id: toastId },
-      );
-
-      await uploadFileToServer(generatedFile);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : `Failed to generate ${registerLabelEn.toLowerCase()} PDF`,
+        err instanceof Error ? err.message : `Failed to generate ${registerLabelEn.toLowerCase()}`,
         { id: toastId },
       );
       setGenerating(false);
@@ -250,11 +305,15 @@ export function AddProctorDialog({
       }
       description={
         locale === "ar"
-          ? isControl
+          ? isExcel
+            ? "إدارة ورفع شيت إكسيل المبنى المعتمد بكافة التابات (توزيع المراقبين، الكنترول، وبيان القاعات)."
+            : isControl
             ? "إدارة ورفع كشف أعضاء الكنترول واللوجستيات للمبنى كملف PDF معتمد."
             : isStudent
             ? "إدارة ورفع كشف حضور وتوقيع الطلاب وتوزيع أرقام الجلوس للقاعة كملف PDF معتمد."
             : "إدارة ورفع كشف حضور وتوزيع السادة المراقبين والملاحظين للدور كملف PDF معتمد."
+          : isExcel
+          ? "Manage and upload the official Building Excel Workbook with all tabs (Proctors, Control Room, and Rooms)."
           : isControl
           ? "Manage and upload the official Control & Building Supervision Register PDF for this building."
           : isStudent
@@ -276,13 +335,13 @@ export function AddProctorDialog({
                     : `${registerLabelEn} Already Attached`}
                 </span>
               </span>
-              <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", theme.chipBorderClass, theme.textClass)}>
-                PDF
+              <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase", theme.chipBorderClass, theme.textClass)}>
+                {isExcel ? "XLSX" : "PDF"}
               </span>
             </div>
 
             <p className="text-xs font-medium text-foreground truncate dir-ltr">
-              📄 {currentProctorFile.name}
+              {isExcel ? "📊" : "📄"} {currentProctorFile.name}
             </p>
 
             <div className="flex items-center gap-2 pt-1">
@@ -317,7 +376,7 @@ export function AddProctorDialog({
           </div>
         )}
 
-        {/* Option 1: Generate Official Approved Register PDF */}
+        {/* Option 1: Generate Official Approved Register Template */}
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-4 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
@@ -325,7 +384,7 @@ export function AddProctorDialog({
               <span>
                 {locale === "ar"
                   ? `الخيار 1: إنشاء وتوليد ${registerLabelAr} رسمي تلقائياً`
-                  : `Option 1: Auto-Generate Official ${registerLabelEn} PDF`}
+                  : `Option 1: Auto-Generate Official ${registerLabelEn}`}
               </span>
             </span>
             <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded border", theme.chipBorderClass, theme.chipBgClass, theme.textClass)}>
@@ -335,11 +394,15 @@ export function AddProctorDialog({
 
           <p className="text-[11px] text-muted leading-relaxed">
             {locale === "ar"
-              ? isControl
+              ? isExcel
+                ? "يقوم بإنشاء ملف إكسيل (.xlsx) معتمد بتنسيق EST الرسمي يحتوي على تابات منفصلة لكل دور مع تاب غرفة الكنترول جاهز للمعاينة والطباعة المباشرة."
+                : isControl
                 ? "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول أعضاء الكنترول وتوزيع المهام وخانات التوقيعات معتمد باسم السنتر والمبنى."
                 : isStudent
                 ? "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على كشف أسماء الطلاب وأرقام الجلوس وخانات الحضور/الغياب والتوقيعات معتمد باسم السنتر والمبنى والدور والروم."
                 : "يقوم بإنشاء ملف PDF رسمي معتمد بشعار EST بالعرض (A4 Landscape) يحتوي على جدول الحضور وتوزيع القاعات وخانات التوقيعات معتمد باسم السنتر والمبنى والدور."
+              : isExcel
+              ? "Generates an official EST Excel workbook (.xlsx) with dedicated tabs for each floor plus Control Room, ready for tabbed printing."
               : isControl
               ? "Generates an official EST A4 Landscape building control roster with logo, center, building details, control members table, and sign-offs."
               : isStudent
@@ -349,19 +412,27 @@ export function AddProctorDialog({
 
           <Button
             variant="primary"
-            onClick={handleGenerateOfficialPdf}
+            onClick={handleGenerateOfficialTemplate}
             disabled={uploading || generating}
             className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer shadow-amber-500/20"
           >
             {generating ? (
               <>
                 <Loader2 className="size-3.5 animate-spin" />
-                <span>{locale === "ar" ? "جاري إنشاء الكشف وحفظه..." : "Generating & Saving PDF..."}</span>
+                <span>{locale === "ar" ? "جاري إنشاء الملف وحفظه..." : "Generating & Saving..."}</span>
               </>
             ) : (
               <>
                 <Sparkles className="size-3.5" />
-                <span>{locale === "ar" ? "⚡ توليد كشف رسمي معتمد (PDF)" : "⚡ Generate Official Register PDF"}</span>
+                <span>
+                  {locale === "ar"
+                    ? isExcel
+                      ? "⚡ توليد شيت إكسيل معتمد للمبنى (بكل التابات)"
+                      : "⚡ توليد كشف رسمي معتمد (PDF)"
+                    : isExcel
+                    ? "⚡ Generate Building Excel Workbook (All Tabs)"
+                    : "⚡ Generate Official Register PDF"}
+                </span>
               </>
             )}
           </Button>
@@ -376,12 +447,16 @@ export function AddProctorDialog({
           <div className="flex-grow border-t border-border/70" />
         </div>
 
-        {/* Option 2: Upload User's PDF file */}
+        {/* Option 2: Upload User's file */}
         <div className="space-y-3">
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,application/pdf"
+            accept={
+              isExcel
+                ? ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                : ".pdf,application/pdf"
+            }
             onChange={handleFileChange}
             className="hidden"
           />
@@ -403,18 +478,32 @@ export function AddProctorDialog({
             <CloudUpload className="size-7 mx-auto text-emerald-600 dark:text-emerald-400 mb-2" />
             <p className="text-xs font-semibold text-foreground">
               {locale === "ar"
-                ? "اضغط لاختيار ملف PDF من جهازك أو اسحبه هنا"
+                ? isExcel
+                  ? "اضغط لاختيار ملف إكسيل (.xlsx) من جهازك أو اسحبه هنا"
+                  : "اضغط لاختيار ملف PDF من جهازك أو اسحبه هنا"
+                : isExcel
+                ? "Click to choose an Excel workbook (.xlsx) from your device or drag here"
                 : "Click to choose a PDF from your device or drag here"}
             </p>
             <p className="text-[10px] text-muted mt-1">
-              {locale === "ar" ? "ملفات PDF فقط (الحد الأقصى 25 ميجابايت)" : "PDF files only (max 25MB)"}
+              {locale === "ar"
+                ? isExcel
+                  ? "ملفات إكسيل (.xlsx, .xls, .csv) بحد أقصى 25 ميجابايت"
+                  : "ملفات PDF فقط (الحد الأقصى 25 ميجابايت)"
+                : isExcel
+                ? "Excel workbooks (.xlsx, .xls, .csv) max 25MB"
+                : "PDF files only (max 25MB)"}
             </p>
           </div>
 
           {selectedFile && (
             <div className="flex items-center justify-between rounded-lg border border-border/60 bg-surface-soft px-3 py-2 text-xs">
               <div className="flex items-center gap-2 truncate">
-                <FileText className="size-4 text-emerald-600 shrink-0" />
+                {isExcel ? (
+                  <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <FileText className="size-4 text-emerald-600 shrink-0" />
+                )}
                 <span className="truncate font-medium">{selectedFile.name}</span>
                 <span className="text-[10px] text-muted shrink-0">
                   ({(selectedFile.size / 1024).toFixed(0)} KB)

@@ -28,7 +28,8 @@ export function PrintDocument({
 }) {
   const { t } = useI18n();
   const [html, setHtml] = useState<string | null>(null);
-  const [sheets, setSheets] = useState<{ name: string; rows: (string | number | boolean | null)[][] }[]>([]);
+  const [sheets, setSheets] = useState<{ name: string; html: string; rows: (string | number | boolean | null)[][] }[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string>("all");
   const [loading, setLoading] = useState(kind !== "unsupported" && kind !== "image");
   const [error, setError] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -61,15 +62,19 @@ export function PrintDocument({
             typeof source === "string"
               ? XLSX.read(source, { type: "string" })
               : XLSX.read(new Uint8Array(source), { type: "array" });
-          const output = workbook.SheetNames.map((name) => ({
-            name,
-            rows: XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(workbook.Sheets[name], {
-              header: 1,
-              defval: "",
-              raw: false,
-              blankrows: false,
-            }),
-          }));
+          const output = workbook.SheetNames.map((name) => {
+            const ws = workbook.Sheets[name];
+            return {
+              name,
+              html: XLSX.utils.sheet_to_html(ws),
+              rows: XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
+                header: 1,
+                defval: "",
+                raw: false,
+                blankrows: false,
+              }),
+            };
+          });
           if (!cancelled) setSheets(output);
         }
       } catch (cause) {
@@ -117,9 +122,24 @@ export function PrintDocument({
     return () => window.clearTimeout(handle);
   }, [kind, ready]);
 
+  const visibleSheets = selectedSheet === "all" ? sheets : sheets.filter((s) => s.name === selectedSheet);
+
   return (
     <div className="print-shell min-h-dvh bg-white text-black">
-      <style>{`@page { size: ${pageSize}; margin: ${margin}; }`}</style>
+      <style>{`
+        @page { size: ${pageSize}; margin: ${margin}; }
+        @media print {
+          .no-print { display: none !important; }
+          .break-after-page { page-break-after: always; break-after: page; }
+          table { width: 100% !important; border-collapse: collapse !important; margin: 0 auto !important; }
+          tr { page-break-inside: avoid !important; }
+          th, td { border: 1px solid #000 !important; padding: 5px 8px !important; font-size: 9.5pt !important; }
+          tr:first-child td, tr:nth-child(3) td, tr th { background-color: #f1f5f9 !important; font-weight: bold !important; }
+        }
+        .excel-table-container table { width: 100%; border-collapse: collapse; }
+        .excel-table-container th, .excel-table-container td { border: 1px solid #cbd5e1; padding: 6px 10px; font-size: 11px; text-align: start; }
+        .excel-table-container tr:first-child td, .excel-table-container tr:nth-child(3) td { background-color: #f8fafc; font-weight: 600; }
+      `}</style>
       <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold">{item.name}</p>
@@ -128,6 +148,35 @@ export function PrintDocument({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {kind === "excel" && sheets.length > 1 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pe-2 border-e border-slate-200">
+              <button
+                type="button"
+                onClick={() => setSelectedSheet("all")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  selectedSheet === "all"
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                All Tabs ({sheets.length})
+              </button>
+              {sheets.map((sh) => (
+                <button
+                  key={sh.name}
+                  type="button"
+                  onClick={() => setSelectedSheet(sh.name)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    selectedSheet === sh.name
+                      ? "bg-teal-600 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {sh.name}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -181,28 +230,41 @@ export function PrintDocument({
         )}
 
         {kind === "excel" &&
-          sheets.map((sheet) => (
-            <section key={sheet.name} className="mb-6 break-after-page">
-              <h2 className="mb-2 text-sm font-bold text-slate-700">{sheet.name}</h2>
-              <table className="w-full border-collapse text-[11px]">
-                <tbody>
-                  {sheet.rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {row.map((cell, cellIndex) =>
-                        rowIndex === 0 ? (
-                          <th key={cellIndex} className="border border-slate-300 bg-slate-100 px-1.5 py-1 text-start font-semibold">
-                            {String(cell ?? "")}
-                          </th>
-                        ) : (
-                          <td key={cellIndex} className="border border-slate-300 px-1.5 py-1 text-start">
-                            {String(cell ?? "")}
-                          </td>
-                        ),
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          visibleSheets.map((sheet, sIdx) => (
+            <section
+              key={sheet.name}
+              className={`mb-8 ${sIdx < visibleSheets.length - 1 ? "break-after-page" : ""}`}
+            >
+              <div className="mb-3 flex items-center justify-between border-b-2 border-slate-900 pb-1.5 font-bold text-slate-800">
+                <span className="text-base font-extrabold">{sheet.name}</span>
+                <span className="text-xs text-slate-500 font-normal">{item.name}</span>
+              </div>
+              {sheet.html ? (
+                <div
+                  className="excel-table-container overflow-x-auto"
+                  dangerouslySetInnerHTML={{ __html: sheet.html }}
+                />
+              ) : (
+                <table className="w-full border-collapse text-[11px]">
+                  <tbody>
+                    {sheet.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {row.map((cell, cellIndex) =>
+                          rowIndex === 0 ? (
+                            <th key={cellIndex} className="border border-slate-300 bg-slate-100 px-1.5 py-1 text-start font-semibold">
+                              {String(cell ?? "")}
+                            </th>
+                          ) : (
+                            <td key={cellIndex} className="border border-slate-300 px-1.5 py-1 text-start">
+                              {String(cell ?? "")}
+                            </td>
+                          ),
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </section>
           ))}
       </div>

@@ -117,16 +117,47 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
   const font = await loadStickerFont(pdfDoc);
   const logoImg = await loadLogoImage(pdfDoc);
 
-  for (const content of contents) {
-    if (paperMode === "a4") {
-      drawA4PlacardPage({
-        pdfDoc,
-        font,
-        logoImg,
-        content,
-        orientation,
-      });
-    } else {
+  if (paperMode === "a4") {
+    // In A4 mode:
+    // - Room stickers and Floor stickers are grouped into a 4-up 2x2 grid (4 quarters per A4 page).
+    // - Building, Center, Governorate, and Root stickers are printed as full-page A4 placards.
+    let pendingQuarterItems: StickerContent[] = [];
+
+    const flushQuarterItems = () => {
+      while (pendingQuarterItems.length > 0) {
+        const chunk = pendingQuarterItems.slice(0, 4);
+        pendingQuarterItems = pendingQuarterItems.slice(4);
+        drawA4FourUpPlacardPage({
+          pdfDoc,
+          font,
+          logoImg,
+          contents: chunk,
+        });
+      }
+    };
+
+    for (const content of contents) {
+      const isQuarter = content.level === "room" || content.level === "floor";
+      if (isQuarter) {
+        pendingQuarterItems.push(content);
+        if (pendingQuarterItems.length === 4) {
+          flushQuarterItems();
+        }
+      } else {
+        flushQuarterItems();
+        drawA4PlacardPage({
+          pdfDoc,
+          font,
+          logoImg,
+          content,
+          orientation,
+        });
+      }
+    }
+
+    flushQuarterItems();
+  } else {
+    for (const content of contents) {
       const widthMm = Math.max(30, Math.min(300, options.widthMm ?? DEFAULT_WIDTH_MM));
       const heightMm = Math.max(20, Math.min(200, options.heightMm ?? DEFAULT_HEIGHT_MM));
       drawCustomLabelPage({
@@ -1089,5 +1120,406 @@ function drawCustomLabelPage(params: {
       color: COLOR_CHARCOAL,
     });
     currentY -= size + lineSpacing;
+  }
+}
+
+/**
+ * Draws an A4 Landscape page (841.89 x 595.28 pt) divided into 4 quarters (2x2 grid).
+ * Used for Room stickers and Floor stickers.
+ * Each quarter contains a complete, official EST dossier placard with logo, hero, and checklist.
+ * Features dashed cut guides between the 4 quadrants.
+ */
+function drawA4FourUpPlacardPage(params: {
+  pdfDoc: PDFDocument;
+  font: any;
+  logoImg: any;
+  contents: StickerContent[];
+}) {
+  const { pdfDoc, font, logoImg, contents } = params;
+
+  // Standard A4 Landscape in points
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+
+  const page = pdfDoc.addPage([pageWidth, pageHeight]);
+
+  const midX = pageWidth / 2; // 420.945 pt
+  const midY = pageHeight / 2; // 297.64 pt
+
+  // Subtle cut lines dividing the sheet into 4 quadrants
+  const cutColor = rgb(0.72, 0.72, 0.72);
+  page.drawLine({
+    start: { x: midX, y: 0 },
+    end: { x: midX, y: pageHeight },
+    thickness: 0.75,
+    color: cutColor,
+    dashArray: [4, 4],
+  });
+  page.drawLine({
+    start: { x: 0, y: midY },
+    end: { x: pageWidth, y: midY },
+    thickness: 0.75,
+    color: cutColor,
+    dashArray: [4, 4],
+  });
+
+  // Center cross-marker for precise cutting
+  page.drawLine({ start: { x: midX - 8, y: midY }, end: { x: midX + 8, y: midY }, thickness: 1.2, color: cutColor });
+  page.drawLine({ start: { x: midX, y: midY - 8 }, end: { x: midX, y: midY + 8 }, thickness: 1.2, color: cutColor });
+
+  // 4 Quadrants in reading order:
+  // 0: Top-Left (x: 0, y: midY)
+  // 1: Top-Right (x: midX, y: midY)
+  // 2: Bottom-Left (x: 0, y: 0)
+  // 3: Bottom-Right (x: midX, y: 0)
+  const quadrants = [
+    { x: 0, y: midY, width: midX, height: midY },
+    { x: midX, y: midY, width: midX, height: midY },
+    { x: 0, y: 0, width: midX, height: midY },
+    { x: midX, y: 0, width: midX, height: midY },
+  ];
+
+  for (let i = 0; i < contents.length && i < 4; i++) {
+    const q = quadrants[i];
+    drawQuarterPlacard({
+      page,
+      font,
+      logoImg,
+      content: contents[i],
+      slotX: q.x,
+      slotY: q.y,
+      slotWidth: q.width,
+      slotHeight: q.height,
+    });
+  }
+}
+
+/**
+ * Draws a single dossier placard inside one quadrant (approx 421 x 298 pt).
+ */
+function drawQuarterPlacard(params: {
+  page: any;
+  font: any;
+  logoImg: any;
+  content: StickerContent;
+  slotX: number;
+  slotY: number;
+  slotWidth: number;
+  slotHeight: number;
+}) {
+  const { page, font, logoImg, content, slotX, slotY, slotWidth, slotHeight } = params;
+
+  const isRoom = content.level === "room";
+  const margin = 8;
+  const x = slotX + margin;
+  const y = slotY + margin;
+  const width = slotWidth - margin * 2;
+  const height = slotHeight - margin * 2;
+
+  // Outer framing card
+  page.drawRectangle({
+    x,
+    y,
+    width,
+    height,
+    color: COLOR_WHITE,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1.6,
+  });
+
+  // Inner gold border
+  page.drawRectangle({
+    x: x + 2.5,
+    y: y + 2.5,
+    width: width - 5,
+    height: height - 5,
+    borderColor: COLOR_GOLD,
+    borderWidth: 0.75,
+  });
+
+  // Header: Logo & Exam title
+  let headerBottom = y + height - 8;
+  const logoH = 22;
+  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
+  const logoX = x + 10;
+  const logoY = y + height - 8 - logoH;
+
+  if (logoImg) {
+    page.drawImage(logoImg, {
+      x: logoX,
+      y: logoY,
+      width: logoW,
+      height: logoH,
+    });
+  }
+
+  const textStartX = logoImg ? logoX + logoW + 8 : x + 10;
+  const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
+  page.drawText(examTitle, {
+    x: textStartX,
+    y: logoY + 11,
+    size: 9,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  page.drawText("EGYPTIAN SCHOLASTIC TEST", {
+    x: textStartX,
+    y: logoY + 2,
+    size: 6.5,
+    font,
+    color: COLOR_MUTED,
+  });
+
+  headerBottom = logoY - 4;
+
+  // Gold divider
+  page.drawLine({
+    start: { x: x + 6, y: headerBottom },
+    end: { x: x + width - 6, y: headerBottom },
+    thickness: 1,
+    color: COLOR_GOLD,
+  });
+
+  // Location ribbon
+  const ribbonH = 14;
+  const ribbonY = headerBottom - 3 - ribbonH;
+  page.drawRectangle({
+    x: x + 6,
+    y: ribbonY,
+    width: width - 12,
+    height: ribbonH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.5,
+  });
+
+  const locItems = [
+    content.governorate,
+    content.center,
+    content.building,
+    isRoom ? content.floor : undefined,
+  ].filter(Boolean);
+  const locText = locItems.join("  •  ");
+  let locSize = 7.2;
+  let locWidth = font.widthOfTextAtSize(locText, locSize);
+  if (locWidth > width - 24) {
+    locSize = Math.max(6, ((width - 24) / locWidth) * locSize);
+    locWidth = font.widthOfTextAtSize(locText, locSize);
+  }
+  page.drawText(locText, {
+    x: x + (width - locWidth) / 2,
+    y: ribbonY + (ribbonH - locSize) / 2 + 1,
+    size: locSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Body: Left Column (Hero) + Right Column (Checklist)
+  const bodyTop = ribbonY - 5;
+  const bodyBottom = y + 6;
+  const bodyH = bodyTop - bodyBottom;
+  const bodyW = width - 12;
+
+  const leftW = Math.round(bodyW * 0.38);
+  const gap = 6;
+  const rightW = bodyW - leftW - gap;
+  const leftX = x + 6;
+  const rightX = leftX + leftW + gap;
+
+  // 1. LEFT HERO CARD
+  page.drawRectangle({
+    x: leftX,
+    y: bodyBottom,
+    width: leftW,
+    height: bodyH,
+    color: COLOR_WHITE,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1.2,
+  });
+
+  // Hero top banner
+  const bannerH = 19;
+  const bannerY = bodyBottom + bodyH - bannerH;
+  page.drawRectangle({
+    x: leftX + 1,
+    y: bannerY,
+    width: leftW - 2,
+    height: bannerH - 1,
+    color: COLOR_CHARCOAL,
+  });
+
+  const badgeText = isRoom ? "ROOM" : "FLOOR";
+  const badgeSize = 8.5;
+  const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
+  page.drawText(badgeText, {
+    x: leftX + (leftW - badgeW) / 2,
+    y: bannerY + (bannerH - badgeSize) / 2,
+    size: badgeSize,
+    font,
+    color: COLOR_GOLD,
+  });
+
+  // Hero bottom sub-banner
+  const subH = 17;
+  const subY = bodyBottom + 2;
+  page.drawRectangle({
+    x: leftX + 2,
+    y: subY,
+    width: leftW - 4,
+    height: subH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.5,
+  });
+
+  const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+  const subText = isRoom
+    ? "PROCTOR DOSSIER"
+    : childRoomsCount > 0
+    ? `${childRoomsCount} ROOMS INCLUDED`
+    : "SENIOR DOSSIER";
+  let subSize = 6.5;
+  let subW = font.widthOfTextAtSize(subText, subSize);
+  if (subW > leftW - 8) {
+    subSize = Math.max(5.5, ((leftW - 8) / subW) * subSize);
+    subW = font.widthOfTextAtSize(subText, subSize);
+  }
+  page.drawText(subText, {
+    x: leftX + (leftW - subW) / 2,
+    y: subY + (subH - subSize) / 2 + 1,
+    size: subSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Giant hero value in center
+  const heroAvailH = bannerY - (subY + subH);
+  const heroValue = isRoom ? (content.room || "") : (content.floor || "");
+  const maxHeroSize = isRoom ? 34 : 20;
+  let heroSize = maxHeroSize;
+  let heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  if (heroW > leftW - 12) {
+    heroSize = Math.max(14, ((leftW - 12) / heroW) * heroSize);
+    heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  }
+  page.drawText(heroValue, {
+    x: leftX + (leftW - heroW) / 2,
+    y: subY + subH + (heroAvailH - heroSize) / 2 + 2,
+    size: heroSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // 2. RIGHT CHECKLIST BOX
+  page.drawRectangle({
+    x: rightX,
+    y: bodyBottom,
+    width: rightW,
+    height: bodyH,
+    color: COLOR_WHITE,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1.2,
+  });
+
+  // Checklist banner
+  page.drawRectangle({
+    x: rightX + 1,
+    y: bannerY,
+    width: rightW - 2,
+    height: bannerH - 1,
+    color: COLOR_CHARCOAL,
+  });
+
+  const chkTitle = isRoom ? "ROOM FILE CONTENTS CHECKLIST" : "FLOOR DOSSIER CHECKLIST (SENIOR)";
+  const chkTitleSize = 7.2;
+  const chkW = font.widthOfTextAtSize(chkTitle, chkTitleSize);
+  page.drawText(chkTitle, {
+    x: rightX + (rightW - chkW) / 2,
+    y: bannerY + (bannerH - chkTitleSize) / 2,
+    size: chkTitleSize,
+    font,
+    color: COLOR_GOLD,
+  });
+
+  // Checklist footer (signature)
+  const footerH = 17;
+  const footerY = bodyBottom + 2;
+  page.drawRectangle({
+    x: rightX + 2,
+    y: footerY,
+    width: rightW - 4,
+    height: footerH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.5,
+  });
+
+  const sigText = isRoom ? "Proctor Sig: __________________   Date: ___/___" : "Senior Sig: __________________   Date: ___/___";
+  const sigSize = 6.2;
+  const sigW = font.widthOfTextAtSize(sigText, sigSize);
+  page.drawText(sigText, {
+    x: rightX + (rightW - sigW) / 2,
+    y: footerY + (footerH - sigSize) / 2 + 1,
+    size: sigSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // 5 Checklist items
+  const items = isRoom
+    ? [
+        "1. Student Register",
+        "2. Proctor Report",
+        "3. Numbers & Mobile Collection Files",
+        "4. Student Misconduct Forms",
+        "5. Draft papers, pens, and IDs",
+      ]
+    : [
+        "1. Proctor Register",
+        "2. Senior Report",
+        "3. Numbers & Mobile Collection Files",
+        "4. Proctor Misconduct Forms",
+        "5. Draft papers, pens, and IDs",
+      ];
+
+  const availItemsH = bannerY - (footerY + footerH) - 4;
+  const rowH = availItemsH / 5;
+
+  for (let i = 0; i < items.length; i++) {
+    const itemY = bannerY - (i + 1) * rowH;
+    const boxSize = 9;
+    const boxX = rightX + 8;
+    const boxY = itemY + (rowH - boxSize) / 2;
+
+    page.drawRectangle({
+      x: boxX,
+      y: boxY,
+      width: boxSize,
+      height: boxSize,
+      color: COLOR_WHITE,
+      borderColor: COLOR_CHARCOAL,
+      borderWidth: 1,
+    });
+
+    const itemText = items[i];
+    const textSize = 7;
+    page.drawText(itemText, {
+      x: boxX + boxSize + 6,
+      y: boxY + 1.5,
+      size: textSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+
+    // Light row separator
+    if (i < 4) {
+      page.drawLine({
+        start: { x: rightX + 6, y: itemY },
+        end: { x: rightX + rightW - 6, y: itemY },
+        thickness: 0.4,
+        color: COLOR_BORDER,
+      });
+    }
   }
 }

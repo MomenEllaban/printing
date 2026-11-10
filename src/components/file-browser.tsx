@@ -18,6 +18,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileSpreadsheet,
   FileText,
   FolderPlus,
   FolderMinus,
@@ -47,6 +48,7 @@ import { BatchPrintDialog } from "./batch-print-dialog";
 import { BatchStickersDialog } from "./batch-stickers-dialog";
 import { StickerPreviewModal } from "./sticker-preview-modal";
 import { AddProctorDialog } from "./add-proctor-dialog";
+import { ExcelViewerModal } from "./excel-viewer-modal";
 import { useI18n } from "./locale-provider";
 import { useActiveProfile } from "./profile-provider";
 import { cn } from "@/lib/cn";
@@ -56,9 +58,11 @@ import { parseExamInfoFromFileName } from "@/lib/exam-utils";
 import type { Breadcrumb, DriveItem, DriveListResult, FileCategory, Locale } from "@/lib/types";
 
 import {
+  isBuildingExcelFile,
   isProctorRegisterFile,
   isControlRegisterFile,
   isStudentRegisterFile,
+  findBuildingExcelFileInItems,
   findProctorFileInItems,
   findControlFileInItems,
   findStudentFileInItems,
@@ -70,6 +74,7 @@ import {
 } from "@/lib/stickers/register-utils";
 
 function RegisterIcon({ category, className }: { category: RegisterCategory; className?: string }) {
+  if (category === "building_excel") return <FileSpreadsheet className={className} />;
   if (category === "control") return <Building2 className={className} />;
   if (category === "student") return <GraduationCap className={className} />;
   return <ClipboardList className={className} />;
@@ -519,18 +524,24 @@ export function FileBrowser({
   const previewStickerState = previewPdfState;
   const setPreviewStickerState = setPreviewPdfState;
 
-  // Register Dialog & Actions (Floor Proctor Register / Building Control Register)
+  // Excel Tabs Viewer & Print Modal
+  const [excelModalOpen, setExcelModalOpen] = useState(false);
+  const [excelModalFile, setExcelModalFile] = useState<DriveItem | null>(null);
+  const [excelModalBuilding, setExcelModalBuilding] = useState<string | undefined>(undefined);
+
+  // Register Dialog & Actions (Building Excel / Room Student Register)
   const [proctorDialogOpen, setProctorDialogOpen] = useState(false);
   const [proctorDialogFolder, setProctorDialogFolder] = useState<{ id: string; name: string } | null>(null);
-  const [proctorDialogType, setProctorDialogType] = useState<"proctor" | "control" | "student">("proctor");
+  const [proctorDialogType, setProctorDialogType] = useState<RegisterCategory>("building_excel");
 
   const handleOpenRegisterDialog = useCallback(
-    (folder: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
+    (folder: { id: string; name: string }, type: RegisterCategory = "building_excel") => {
+      if (!type) return;
       if (!canProfileAddRegister(activeProfile.id, type)) {
         toast.error(
           locale === "ar"
-            ? "غير مصرح لحسابك برفع أو تعديل هذا النوع من الكشوفات."
-            : "Your profile is not authorized to upload or manage this register type.",
+            ? "غير مصرح لحسابك برفع أو تعديل هذا النوع من الملفات."
+            : "Your profile is not authorized to upload or manage this file type.",
         );
         return;
       }
@@ -551,15 +562,34 @@ export function FileBrowser({
         breadcrumbs,
         isCurrentFolder: false,
       });
-      handleOpenRegisterDialog(folder, cat || "proctor");
+      if (cat) {
+        handleOpenRegisterDialog(folder, cat);
+      }
     },
     [handleOpenRegisterDialog, breadcrumbs],
   );
 
   const handleShowRegisterFile = useCallback(
-    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
-      const isControl = type === "control";
-      const isStudent = type === "student";
+    (file: DriveItem, folder?: { id: string; name: string }, type?: RegisterCategory) => {
+      const resolvedType =
+        type ||
+        (isBuildingExcelFile(file)
+          ? "building_excel"
+          : isControlRegisterFile(file)
+          ? "control"
+          : isStudentRegisterFile(file)
+          ? "student"
+          : "proctor");
+
+      if (resolvedType === "building_excel" || isBuildingExcelFile(file)) {
+        setExcelModalFile(file);
+        setExcelModalBuilding(folder?.name);
+        setExcelModalOpen(true);
+        return;
+      }
+
+      const isControl = resolvedType === "control";
+      const isStudent = resolvedType === "student";
       const registerLabel = isControl ? "Control Register" : isStudent ? "Student Register" : "Proctor Register";
       const registerLabelAr = isControl ? "معاينة كشف الكنترول" : isStudent ? "معاينة كشف الطلاب" : "معاينة كشف المراقبين";
       const descAr = isControl
@@ -590,18 +620,42 @@ export function FileBrowser({
   const handleShowProctorFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }) => {
       const folderCat = folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) : null;
-      const type: "proctor" | "control" | "student" =
+      const type: RegisterCategory =
         folderCat ||
-        (isControlRegisterFile(file) ? "control" : isStudentRegisterFile(file) ? "student" : "proctor");
+        (isBuildingExcelFile(file)
+          ? "building_excel"
+          : isControlRegisterFile(file)
+          ? "control"
+          : isStudentRegisterFile(file)
+          ? "student"
+          : "proctor");
       handleShowRegisterFile(file, folder, type);
     },
     [handleShowRegisterFile, breadcrumbs],
   );
 
   const handlePrintRegisterFile = useCallback(
-    (file: DriveItem, folder?: { id: string; name: string }, type: "proctor" | "control" | "student" = "proctor") => {
-      const isControl = type === "control";
-      const isStudent = type === "student";
+    (file: DriveItem, folder?: { id: string; name: string }, type?: RegisterCategory) => {
+      const resolvedType =
+        type ||
+        (isBuildingExcelFile(file)
+          ? "building_excel"
+          : isControlRegisterFile(file)
+          ? "control"
+          : isStudentRegisterFile(file)
+          ? "student"
+          : "proctor");
+
+      if (resolvedType === "building_excel" || isBuildingExcelFile(file)) {
+        // Open the specialized Excel tab viewer and print dialog
+        setExcelModalFile(file);
+        setExcelModalBuilding(folder?.name);
+        setExcelModalOpen(true);
+        return;
+      }
+
+      const isControl = resolvedType === "control";
+      const isStudent = resolvedType === "student";
       const typeNameAr = isControl ? "كشف كنترول" : isStudent ? "كشف طلاب" : "كشف مراقبين";
       const typeNameEn = isControl ? "control" : isStudent ? "student" : "proctor";
       const toastId = toast.loading(
@@ -644,9 +698,15 @@ export function FileBrowser({
   const handlePrintProctorFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }) => {
       const folderCat = folder ? getFolderRegisterCategory({ folder, breadcrumbs, isCurrentFolder: false }) : null;
-      const type: "proctor" | "control" | "student" =
+      const type: RegisterCategory =
         folderCat ||
-        (isControlRegisterFile(file) ? "control" : isStudentRegisterFile(file) ? "student" : "proctor");
+        (isBuildingExcelFile(file)
+          ? "building_excel"
+          : isControlRegisterFile(file)
+          ? "control"
+          : isStudentRegisterFile(file)
+          ? "student"
+          : "proctor");
       handlePrintRegisterFile(file, folder, type);
     },
     [handlePrintRegisterFile, breadcrumbs],
@@ -2989,7 +3049,7 @@ export function FileBrowser({
         customDescription={previewPdfState.customDescription}
       />
 
-      {/* Add / Manage Register Dialog (Floor Proctor / Building Control) */}
+      {/* Add / Manage Register Dialog (Building Excel / Room Student Register) */}
       <AddProctorDialog
         open={proctorDialogOpen}
         onClose={() => {
@@ -2997,7 +3057,7 @@ export function FileBrowser({
           setProctorDialogFolder(null);
         }}
         folder={proctorDialogFolder}
-        registerType={proctorDialogType}
+        registerType={proctorDialogType || undefined}
         currentProctorFile={
           proctorDialogFolder
             ? findRegisterFileInItems(proctorDialogType, folderChildren[proctorDialogFolder.id]) ||
@@ -3008,6 +3068,17 @@ export function FileBrowser({
         onSuccess={handleProctorUploaded}
         onPreviewFile={(file) => handleShowRegisterFile(file, proctorDialogFolder || undefined, proctorDialogType)}
         onPrintFile={(file) => handlePrintRegisterFile(file, proctorDialogFolder || undefined, proctorDialogType)}
+      />
+
+      {/* Building Excel Tabs Viewer & Print Modal */}
+      <ExcelViewerModal
+        open={excelModalOpen}
+        onClose={() => {
+          setExcelModalOpen(false);
+          setExcelModalFile(null);
+        }}
+        file={excelModalFile}
+        buildingName={excelModalBuilding}
       />
     </div>
   );

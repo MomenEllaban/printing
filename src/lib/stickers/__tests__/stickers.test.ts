@@ -4,8 +4,10 @@ import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
 import { generateProctorRegisterPdf } from "../proctor-register-pdf";
 import { generateControlRegisterPdf } from "../control-register-pdf";
 import { generateStudentRegisterPdf } from "../student-register-pdf";
+import { generateBuildingExcelWorkbook } from "../building-excel";
 import {
   getFolderRegisterCategory,
+  isBuildingExcelFile,
   isControlRegisterFile,
   isProctorRegisterFile,
   isStudentRegisterFile,
@@ -14,6 +16,7 @@ import {
 } from "../register-utils";
 import { PROFILES } from "../../profiles";
 import { PDFDocument } from "pdf-lib";
+import * as XLSX from "xlsx";
 
 describe("buildStickerContent", () => {
   it("A. Generates correct sticker for Exam Root (EST 1)", () => {
@@ -230,9 +233,9 @@ describe("generateStickerPdf", () => {
     ]);
   });
 
-  it("generateBatchStickerPdf generates a unified multi-page PDF with 1 page per folder and logo included", async () => {
-    const sticker1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "204"]);
-    const sticker2 = buildStickerContent(["EST 1", "Cairo", "Sheraton", "Engineering", "1st Floor", "101"]);
+  it("generateBatchStickerPdf generates a unified multi-page PDF with 1 page per building/center and logo included", async () => {
+    const sticker1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy"]);
+    const sticker2 = buildStickerContent(["EST 1", "Cairo", "Sheraton", "Engineering"]);
     const sticker3 = buildStickerContent(["EST 1", "Giza", "October", "Main Campus"]);
 
     const pdfBytes = await generateBatchStickerPdf({
@@ -407,36 +410,36 @@ describe("generateStickerPdf", () => {
       ).toBe("student");
     });
 
-    it("Floors have Proctor Register button", () => {
+    it("Floors have NO proctor register button anymore (user request)", () => {
       // By name
-      expect(getFolderRegisterCategory({ folder: { id: "f1", name: "2nd Floor" } })).toBe("proctor");
-      expect(getFolderRegisterCategory({ folder: { id: "f2", name: "الدور الثالث" } })).toBe("proctor");
+      expect(getFolderRegisterCategory({ folder: { id: "f1", name: "2nd Floor" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "f2", name: "الدور الثالث" } })).toBeNull();
 
-      // Inside Building folder (depth 3), child folders are Floors (proctor)
+      // Inside Building folder (depth 3), child folders are Floors -> null
       expect(
         getFolderRegisterCategory({
           folder: { id: "f1", name: "Floor 2" },
           breadcrumbs: insidePharmacyCrumbs,
           isCurrentFolder: false,
         }),
-      ).toBe("proctor");
+      ).toBeNull();
 
-      // When currently inside Floor folder itself
+      // When currently inside Floor folder itself -> null
       expect(
         getFolderRegisterCategory({
           folder: { id: "f1", name: "2nd Floor" },
           breadcrumbs: insideFloorCrumbs,
           isCurrentFolder: true,
         }),
-      ).toBe("proctor");
+      ).toBeNull();
     });
 
-    it("Buildings have Control Register button", () => {
+    it("Buildings have Building Excel button (one Excel with tabs for the building)", () => {
       // By name
-      expect(getFolderRegisterCategory({ folder: { id: "b1", name: "Pharmacy Building" } })).toBe("control");
-      expect(getFolderRegisterCategory({ folder: { id: "b2", name: "مبنى الصيدلة" } })).toBe("control");
+      expect(getFolderRegisterCategory({ folder: { id: "b1", name: "Pharmacy Building" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b2", name: "مبنى الصيدلة" } })).toBe("building_excel");
 
-      // Inside Test Center folder (depth 2), child folders are Buildings (control)
+      // Inside Test Center folder (depth 2), child folders are Buildings (building_excel)
       const insideAbuQirCrumbs = breadcrumbs.slice(0, 4); // up to Abu Qir
       expect(
         getFolderRegisterCategory({
@@ -444,7 +447,7 @@ describe("generateStickerPdf", () => {
           breadcrumbs: insideAbuQirCrumbs,
           isCurrentFolder: false,
         }),
-      ).toBe("control");
+      ).toBe("building_excel");
 
       // When currently inside Building folder itself
       expect(
@@ -453,7 +456,7 @@ describe("generateStickerPdf", () => {
           breadcrumbs: insidePharmacyCrumbs,
           isCurrentFolder: true,
         }),
-      ).toBe("control");
+      ).toBe("building_excel");
     });
 
     it("City, Center, and Root have NO register buttons", () => {
@@ -476,7 +479,19 @@ describe("generateStickerPdf", () => {
       expect(getFolderRegisterCategory({ folder: { id: "root", name: "EST 1" }, isCurrentFolder: true })).toBeNull();
     });
 
-    it("Detects Control Register, Proctor Register, and Student Register files correctly", () => {
+    it("Detects Building Excel, Control Register, Proctor Register, and Student Register files correctly", () => {
+      // Real EST building Excel file from user:
+      expect(
+        isBuildingExcelFile({
+          id: "ex1",
+          name: "EST1 Sheraton Management Oct 09,2026.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      ).toBe(true);
+      expect(isBuildingExcelFile({ id: "ex2", name: "Building_Details.xlsx" })).toBe(true);
+      expect(isBuildingExcelFile({ id: "ex3", name: "Control_Proctors.csv", mimeType: "text/csv" })).toBe(true);
+
+      // PDFs
       expect(isControlRegisterFile({ id: "1", name: "Control_Register_Pharmacy.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isControlRegisterFile({ id: "2", name: "كشف كنترول مبنى صيدلة.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isProctorRegisterFile({ id: "3", name: "Proctor_Register_2nd_Floor.pdf", mimeType: "application/pdf" })).toBe(true);
@@ -494,41 +509,127 @@ describe("generateStickerPdf", () => {
 
   it("Enforces profile permissions for adding registers (canProfileAddRegister)", () => {
     // Printing Admin can add everything
-    expect(canProfileAddRegister("printing", "control")).toBe(true);
-    expect(canProfileAddRegister("printing", "proctor")).toBe(true);
+    expect(canProfileAddRegister("printing", "building_excel")).toBe(true);
     expect(canProfileAddRegister("printing", "student")).toBe(true);
     expect(canProfileAddRegister("printing", null)).toBe(false);
 
-    // Dina: can add control (buildings) & proctor (floors), but NOT student (rooms)
-    expect(canProfileAddRegister("dina", "control")).toBe(true);
-    expect(canProfileAddRegister("dina", "proctor")).toBe(true);
+    // Dina: can add building_excel, but NOT student (rooms)
+    expect(canProfileAddRegister("dina", "building_excel")).toBe(true);
     expect(canProfileAddRegister("dina", "student")).toBe(false);
     expect(canProfileAddRegister("dina", null)).toBe(false);
 
-    // Nabil: can add student (rooms), but NOT control or proctor
+    // Nabil: can add student (rooms), but NOT building_excel
     expect(canProfileAddRegister("nabil", "student")).toBe(true);
-    expect(canProfileAddRegister("nabil", "control")).toBe(false);
-    expect(canProfileAddRegister("nabil", "proctor")).toBe(false);
+    expect(canProfileAddRegister("nabil", "building_excel")).toBe(false);
     expect(canProfileAddRegister("nabil", null)).toBe(false);
   });
 
   it("Provides distinct visual themes and owners for each register category", () => {
-    const controlTheme = getRegisterTheme("control");
-    expect(controlTheme.category).toBe("control");
-    expect(controlTheme.nameAr).toBe("كشف الكنترول");
-    expect(controlTheme.ownerAr).toBe("دينا");
-    expect(controlTheme.textClass).toContain("sky");
-
-    const proctorTheme = getRegisterTheme("proctor");
-    expect(proctorTheme.category).toBe("proctor");
-    expect(proctorTheme.nameAr).toBe("كشف المراقبين");
-    expect(proctorTheme.ownerAr).toBe("دينا");
-    expect(proctorTheme.textClass).toContain("emerald");
+    const excelTheme = getRegisterTheme("building_excel");
+    expect(excelTheme.category).toBe("building_excel");
+    expect(excelTheme.nameAr).toBe("شيت المبنى (Excel)");
+    expect(excelTheme.ownerAr).toBe("دينا");
+    expect(excelTheme.textClass).toContain("emerald");
 
     const studentTheme = getRegisterTheme("student");
     expect(studentTheme.category).toBe("student");
     expect(studentTheme.nameAr).toBe("كشف الطلاب");
     expect(studentTheme.ownerAr).toBe("نبيل");
     expect(studentTheme.textClass).toContain("purple");
+  });
+
+  it("Generates official Building Excel workbook with floor tabs and Control Room tab", () => {
+    const excelBytes = generateBuildingExcelWorkbook({
+      buildingName: "Sheraton Management",
+      examName: "EST 1",
+      center: "AAST Sheraton",
+      floors: ["Ground", "1st Floor", "3rd Floor", "4th Floor", "5th Floor"],
+    });
+
+    expect(excelBytes).toBeInstanceOf(Uint8Array);
+    const wb = XLSX.read(excelBytes, { type: "array" });
+    expect(wb.SheetNames).toContain("Management Ground");
+    expect(wb.SheetNames).toContain("Management 1st Floor");
+    expect(wb.SheetNames).toContain("Control Room");
+  });
+
+  describe("Stickers 4-Up Layout for Rooms and Floors", () => {
+    const room1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "201"]);
+    const room2 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "202"]);
+    const room3 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "203"]);
+    const room4 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "204"]);
+    const room5 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor", "205"]);
+    const floor1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor"]);
+    const building1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy"]);
+
+    it("Prints 4 room stickers on exactly 1 single A4 Landscape page", async () => {
+      const pdfBytes = await generateBatchStickerPdf({
+        contents: [room1, room2, room3, room4],
+        paperMode: "a4",
+      });
+
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      expect(pdfDoc.getPageCount()).toBe(1);
+
+      const page = pdfDoc.getPage(0);
+      const size = page.getSize();
+      expect(size.width).toBeCloseTo(841.89, 0);
+      expect(size.height).toBeCloseTo(595.28, 0);
+    });
+
+    it("Packs Floor stickers and Room stickers together in the 4-quarter A4 grid", async () => {
+      // 1 Floor + 3 Rooms = exactly 4 items -> 1 single A4 sheet
+      const pdfBytes = await generateBatchStickerPdf({
+        contents: [floor1, room1, room2, room3],
+        paperMode: "a4",
+      });
+
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      expect(pdfDoc.getPageCount()).toBe(1);
+    });
+
+    it("Overflows 5 room stickers onto a 2nd A4 sheet (4 on page 1, 1 on page 2)", async () => {
+      const pdfBytes = await generateBatchStickerPdf({
+        contents: [room1, room2, room3, room4, room5],
+        paperMode: "a4",
+      });
+
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      expect(pdfDoc.getPageCount()).toBe(2);
+    });
+
+    it("Prints Building sticker as a full single A4 page, followed by 4-up room stickers", async () => {
+      // 1 Building (full page) + 4 Rooms (1 4-up page) = 2 pages total
+      const pdfBytes = await generateBatchStickerPdf({
+        contents: [building1, room1, room2, room3, room4],
+        paperMode: "a4",
+      });
+
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      expect(pdfDoc.getPageCount()).toBe(2);
+    });
+
+    it("Prints a single room sticker on an A4 sheet with 4-up quadrant formatting and cut lines", async () => {
+      const pdfBytes = await generateStickerPdf({
+        content: room1,
+        paperMode: "a4",
+      });
+
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      expect(pdfDoc.getPageCount()).toBe(1);
+      const size = pdfDoc.getPage(0).getSize();
+      expect(size.width).toBeCloseTo(841.89, 0);
+      expect(size.height).toBeCloseTo(595.28, 0);
+    });
+
+    it("Prints a single building sticker as a large full A4 page", async () => {
+      const pdfBytes = await generateStickerPdf({
+        content: building1,
+        paperMode: "a4",
+      });
+
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      expect(pdfDoc.getPageCount()).toBe(1);
+    });
   });
 });
