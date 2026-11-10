@@ -30,7 +30,10 @@ export function generateBuildingExcelWorkbook(data: BuildingExcelData): Uint8Arr
   const centerName = data.center || "AAST Sheraton";
   const buildingName = data.buildingName || "Management & Tech.";
 
-  const rawFloors = data.floors && data.floors.length > 0 ? data.floors : ["Ground Floor", "1st Floor", "2nd Floor", "3rd Floor"];
+  const rawFloors =
+    data.floors && data.floors.length > 0
+      ? data.floors
+      : ["Ground", "1st Floor", "3rd Floor", "4th Floor", "5th Floor"];
 
   // Helper to create a formatted floor / control sheet
   function createFloorSheet(floorName: string, isControl: boolean = false) {
@@ -64,23 +67,29 @@ export function generateBuildingExcelWorkbook(data: BuildingExcelData): Uint8Arr
 
     if (isControl) {
       sampleRows.push(
-        [1, "Mohamed Nabil", "Head of Control", "01002899038", "IP", "C001", null, ":", null, ":"],
-        [2, "Salah El Din El Desouky", "Control Room Assistant", "01014614751", "IP", "Control", null, ":", null, ":"],
-        [3, "Ragab Gafar Saeed", "Control Room Assistant", "01221266637", "IP", "Control", null, ":", null, ":"],
-        [4, "Rana Shebl Mohamed", "Control Room Assistant", "01022963720", "IP", "Control", null, ":", null, ":"],
-        [5, "Dina Ahmed", "Logistics & Exam Delivery", "01155443322", "IP", "Control", null, ":", null, ":"],
+        [1, "Mohamed Nabil", "Head", "01002899038", "IP", "C001", null, ":", null, ":"],
+        [2, "Salah El Din El Desouky", "Control Room Assistant", "01014614751", "IP", "", null, ":", null, ":"],
+        [3, "Ragab Gafar Saeed", "Control Room Assistant", "01221266637", "IP", "", null, ":", null, ":"],
+        [4, "Rana Shebl Mohamed", "Control Room Assistant", "01022963720", "IP", "", null, ":", null, ":"],
       );
     } else {
       sampleRows.push(
-        [1, "Safwat Ahmed", "Senior", "01002380523", "IP", floorName, null, ":", null, ":"],
-        [2, "Mohamed Hamed Taha", "Roaming", "01018124485", "EP", floorName, null, ":", null, ":"],
-        [3, "Abdel Rahman Afifi", "Senior Assistant", "01008467391", "IP", floorName, null, ":", null, ":"],
-        [4, "Marwa Saeed Seddeek", "Proctor", "01224651450", "EP", "Room 01", null, ":", null, ":"],
-        [5, "Mohamed Gamal Fekry", "Proctor", "01224996864", "EP", "Room 02", null, ":", null, ":"],
+        [1, "Safwat Ahmed", "Senior", "201002380523", "IP", floorName, null, ":", null, ":"],
+        [2, "Mohamed Hamed Taha", "Roaming ", "1018124485", "EP", "", null, ":", null, ":"],
+        [3, "Abdel Rahman Afifi", "Senior", "201008467391", "IP", "", null, ":", null, ":"],
+        [4, "Mahmoud Abdelaal Hassan", "Proctor", "01026354999", "EP", "01", null, ":", null, ":"],
+        [5, "Shaimaa Farouk Ibrahim", "Proctor", "1030101941", "EP", "", null, ":", null, ":"],
+        [6, "Reham Mohammed Shawky", "Proctor", "1001722291", "EP", "", null, ":", null, ":"],
       );
     }
 
-    const allData = [titleRow, emptyRow, headerRow, ...sampleRows];
+    const footerRows: (string | null)[][] = [
+      [],
+      [null, "Head", null, null, null, null, null, null, null, null],
+      [null, "Mohamed Nabil", null, null, null, null, null, null, null, null],
+    ];
+
+    const allData = [titleRow, emptyRow, headerRow, ...sampleRows, ...footerRows];
     const ws = XLSX.utils.aoa_to_sheet(allData);
 
     // Column widths

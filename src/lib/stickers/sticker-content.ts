@@ -61,10 +61,12 @@ export function buildStickerContent(
   }
 
   // Drop generic root folder names if they appear at the top
-  const GENERIC_ROOTS = /^(root|my drive|drive|demo drive|google drive|file manager app|december\s*2026)$/i;
-  
+  const GENERIC_ROOTS =
+    /^(root|my drive|drive|demo drive|google drive|file manager app|december\s*2026|october\s*2026|november\s*2026|est\s*numbers.*|\b(oct|nov|dec|jan|feb|mar|apr|may|jun|jul|aug|sep)\s*\d{4}\b)$/i;
+
   // Find index of the EST root folder (e.g. "EST 1", "EST 2", "EST - 1", "EST I", "EST")
-  const isEstRoot = (name: string) => /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s]+))?$/i.test(name.trim());
+  const isEstRoot = (name: string) =>
+    /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test(name.trim());
   const estIndex = chain.findIndex((name) => isEstRoot(name));
 
   // If an EST root ancestor exists, slice from it downwards

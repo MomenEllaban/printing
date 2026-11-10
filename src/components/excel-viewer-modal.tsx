@@ -7,14 +7,11 @@ import {
   X,
   Download,
   Loader2,
-  Layers,
   CheckCircle2,
   Pencil,
   Save,
   Plus,
   Trash2,
-  Eye,
-  RefreshCw,
 } from "lucide-react";
 import { Button, Spinner } from "./ui";
 import { useI18n } from "./locale-provider";
@@ -22,6 +19,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import * as XLSX from "xlsx";
 import type { DriveItem } from "@/lib/types";
+import { EST_LOGO_BASE64 } from "@/lib/stickers/est-logo-base64";
 
 interface ExcelViewerModalProps {
   open: boolean;
@@ -35,6 +33,144 @@ interface SheetData {
   name: string;
   rows: (string | number | boolean | null)[][];
   merges?: XLSX.Range[];
+}
+
+interface ParsedSheetMeta {
+  center: string;
+  date: string;
+  estType: string;
+  headerRowIdx: number;
+  dataRows: {
+    no: string | number;
+    name: string;
+    proctorType: string;
+    mobile: string;
+    ipEp: string;
+    room: string;
+    arrivalTime: string;
+    departureTime: string;
+    rawRowIdx: number;
+  }[];
+  headName: string;
+}
+
+function parseSheetDetails(
+  sheet: SheetData,
+  fallbackBuilding?: string,
+): ParsedSheetMeta {
+  const rows = sheet.rows || [];
+  let center = "";
+  let date = "09 - 10 - 2026";
+  let estType = "1";
+  let headerRowIdx = -1;
+  let headName = "Mohamed Nabil";
+
+  // Scan first 15 rows for metadata and table header
+  for (let r = 0; r < Math.min(15, rows.length); r++) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const val = String(row[c] ?? "").trim();
+      if (!val) continue;
+
+      if (/^Center\s*:/i.test(val)) {
+        const nextVal = String(row[c + 1] ?? "").trim();
+        center = nextVal || val.replace(/^Center\s*:\s*/i, "");
+      } else if (
+        !center &&
+        /Sheraton|AAST|Abu\s*Qir|Center|مبنى|إدارة|Management/i.test(val) &&
+        !/No\.|Name|Date|Type/i.test(val)
+      ) {
+        center = val;
+      }
+
+      if (/Date\s*:/i.test(val)) {
+        date = val.replace(/^Date\s*:\s*/i, "").trim() || date;
+      } else if (/\b\d{2}\s*-\s*\d{2}\s*-\s*\d{4}\b/.test(val)) {
+        const match = val.match(/\b\d{2}\s*-\s*\d{2}\s*-\s*\d{4}\b/);
+        if (match) date = match[0];
+      }
+
+      if (/EST\s*Type\s*:/i.test(val)) {
+        estType = val.replace(/.*EST\s*Type\s*:\s*/i, "").trim() || estType;
+      }
+
+      if (/^No\.?$/i.test(val) || /^Name$/i.test(val) || /^Proctor\s*Type$/i.test(val)) {
+        if (headerRowIdx === -1) {
+          headerRowIdx = r;
+        }
+      }
+    }
+  }
+
+  if (!center) {
+    center = fallbackBuilding ? `AAST Sheraton ${fallbackBuilding}` : "AAST Sheraton Management & Tech.";
+  }
+
+  if (headerRowIdx === -1) {
+    headerRowIdx = rows.length > 2 ? 2 : 0;
+  }
+
+  // Scan bottom rows for Head name
+  for (let r = rows.length - 1; r >= Math.max(0, rows.length - 8); r--) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const val = String(row[c] ?? "").trim();
+      if (/^Head$/i.test(val) && r + 1 < rows.length) {
+        const nextRowVal = String(rows[r + 1]?.[c] ?? "").trim();
+        if (nextRowVal) headName = nextRowVal;
+      } else if (/Mohamed\s*Nabil|رئيس|مسؤول/i.test(val)) {
+        headName = val;
+      }
+    }
+  }
+
+  // Extract data rows
+  const dataRows: ParsedSheetMeta["dataRows"] = [];
+  for (let r = headerRowIdx + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const cell0 = String(row[0] ?? "").trim();
+    const cell1 = String(row[1] ?? "").trim();
+    const cell2 = String(row[2] ?? "").trim();
+
+    // Stop or skip if it's the footer Head row
+    if (/^Head$/i.test(cell1) || /Mohamed\s*Nabil/i.test(cell1)) {
+      continue;
+    }
+    // Skip completely blank rows
+    if (!cell0 && !cell1 && !cell2) {
+      continue;
+    }
+
+    const no = cell0 || dataRows.length + 1;
+    const name = cell1 || "";
+    const proctorType = cell2 || "Proctor";
+    const mobile = String(row[3] ?? "").trim();
+    const ipEp = String(row[4] ?? "").trim();
+    const room = String(row[5] ?? "").trim();
+    const arrivalTime = String(row[6] ?? "").trim() || "__ : __";
+    const departureTime = String(row[8] ?? "").trim() || "__ : __";
+
+    dataRows.push({
+      no,
+      name,
+      proctorType,
+      mobile,
+      ipEp,
+      room,
+      arrivalTime,
+      departureTime,
+      rawRowIdx: r,
+    });
+  }
+
+  return {
+    center,
+    date,
+    estType,
+    headerRowIdx,
+    dataRows,
+    headName,
+  };
 }
 
 export function ExcelViewerModal({
@@ -99,7 +235,14 @@ export function ExcelViewerModal({
           });
 
           // Ensure non-empty 2D array
-          const cleanRows = rows.length > 0 ? rows : [["No.", "Name", "Proctor Type", "Mobile", "IP / EP", "Room"]];
+          const cleanRows =
+            rows.length > 0
+              ? rows
+              : [
+                  ["Center :", `AAST Sheraton ${name}`, "", "", "", "Date: 09 - 10 - 2026", "", "EST Type : 1", "", ""],
+                  [],
+                  ["No.", "Name", "Proctor Type", "Mobile", "IP / EP", "Room", "Arrival ", "Time", "Departure ", "Time"],
+                ];
 
           parsed.push({
             name,
@@ -159,15 +302,36 @@ export function ExcelViewerModal({
       const targetSheet = { ...copy[activeTabIdx] };
       const targetRows = targetSheet.rows.map((r) => [...r]);
 
-      // Calculate max columns in this sheet
-      const maxCols = Math.max(8, ...targetRows.map((r) => r.length));
-      const newRowNum = targetRows.length - 2 > 0 ? targetRows.length - 2 : targetRows.length + 1;
-      const newRow: (string | number | null)[] = [newRowNum, "", "Proctor", "", "EP", "", "", ":", "", ":"];
+      const maxCols = Math.max(10, ...targetRows.map((r) => r.length));
+      const parsed = parseSheetDetails(targetSheet, buildingName);
+      const newRowNum = parsed.dataRows.length + 1;
+      const newRow: (string | number | null)[] = [
+        newRowNum,
+        "",
+        "Proctor",
+        "",
+        "EP",
+        "",
+        "",
+        ":",
+        "",
+        ":",
+      ];
       while (newRow.length < maxCols) {
         newRow.push("");
       }
 
-      targetRows.push(newRow);
+      // Insert before the footer Head row if present
+      let insertIdx = targetRows.length;
+      for (let r = targetRows.length - 1; r >= 0; r--) {
+        const val = String(targetRows[r]?.[1] ?? "").trim();
+        if (/^Head$/i.test(val) || /Mohamed\s*Nabil/i.test(val)) {
+          insertIdx = r;
+          break;
+        }
+      }
+
+      targetRows.splice(insertIdx, 0, newRow);
       targetSheet.rows = targetRows;
       copy[activeTabIdx] = targetSheet;
       return copy;
@@ -187,108 +351,112 @@ export function ExcelViewerModal({
     });
   };
 
-  // Add new sheet tab
+  // Add new floor tab
   const handleAddNewTab = () => {
-    const tabName = prompt(
-      locale === "ar" ? "أدخل اسم التاب / الدور الجديد:" : "Enter new tab/floor name:",
-      `Management Floor ${sheets.length + 1}`,
-    );
-    if (!tabName?.trim()) return;
-
-    const trimmed = tabName.trim().slice(0, 31);
-    if (sheets.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) {
-      toast.error(locale === "ar" ? "يوجد تاب بهذا الاسم بالفعل" : "A tab with this name already exists");
-      return;
-    }
-
-    const defaultHeaders = [
-      "No.",
-      "Name",
-      "Proctor Type",
-      "Mobile",
-      "IP / EP",
-      "Room",
-      "Arrival Time",
-      "Departure Time",
-    ];
-    const initialRows: (string | number)[][] = [
-      ["Center :", `${buildingName || "Building"} ${trimmed}`, "", "", "", `Date: ${new Date().toLocaleDateString()}`],
+    const floorNum = sheets.length;
+    const newTabName = `${locale === "ar" ? "الدور" : "Floor"} ${floorNum}`;
+    const newRows: (string | number | null)[][] = [
+      ["Center :", `AAST Sheraton Management ${newTabName}`, null, null, null, "Date: 09 - 10 - 2026", null, "EST Type : 1", null, null],
       [],
-      defaultHeaders,
-      [1, "Sample Proctor", "Senior", "01000000000", "IP", trimmed, ":", ":"],
+      ["No.", "Name", "Proctor Type", "Mobile", "IP / EP", "Room", "Arrival ", "Time", "Departure ", "Time"],
+      [1, "Senior Name", "Senior", "01000000000", "IP", newTabName, null, ":", null, ":"],
+      [2, "Proctor Name 1", "Proctor", "01100000000", "EP", "Room 01", null, ":", null, ":"],
+      [3, "Proctor Name 2", "Proctor", "01200000000", "EP", "Room 02", null, ":", null, ":"],
+      [],
+      [null, "Head", null, null, null, null, null, null, null, null],
+      [null, "Mohamed Nabil", null, null, null, null, null, null, null, null],
     ];
 
-    setSheets((prev) => [...prev, { name: trimmed, rows: initialRows }]);
+    setSheets((prev) => [
+      ...prev,
+      {
+        name: newTabName,
+        rows: newRows,
+      },
+    ]);
     setActiveTabIdx(sheets.length);
+    toast.success(
+      locale === "ar"
+        ? `تم إضافة تاب جديد باسم "${newTabName}"`
+        : `Added new tab "${newTabName}"`,
+    );
   };
 
   // Save changes back to Google Drive / Server
   const handleSaveChanges = async () => {
     if (!file || sheets.length === 0) return;
     setSaving(true);
-    const toastId = toast.loading(
-      locale === "ar" ? "جاري حفظ تعديلات شيت المبنى..." : "Saving workbook changes...",
-    );
 
     try {
-      // Build a fresh workbook from sheets state
       const wb = XLSX.utils.book_new();
 
-      for (const sh of sheets) {
-        const ws = XLSX.utils.aoa_to_sheet(sh.rows);
-        if (sh.merges && sh.merges.length > 0) {
-          ws["!merges"] = sh.merges;
+      for (const s of sheets) {
+        const ws = XLSX.utils.aoa_to_sheet(s.rows);
+        if (s.merges && s.merges.length > 0) {
+          ws["!merges"] = s.merges;
         }
-        XLSX.utils.book_append_sheet(wb, ws, sh.name);
+        ws["!cols"] = [
+          { wch: 6 },
+          { wch: 32 },
+          { wch: 20 },
+          { wch: 16 },
+          { wch: 10 },
+          { wch: 14 },
+          { wch: 10 },
+          { wch: 8 },
+          { wch: 12 },
+          { wch: 8 },
+        ];
+        XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
       }
 
-      const outBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([outBuffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
+      const wbArray = XLSX.write(wb, { bookType: "xlsx", type: "array" });
 
-      // Send PUT request to update content
       const res = await fetch(`/api/drive/files/${file.id}/content`, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         },
-        body: blob,
+        body: wbArray,
       });
 
       if (!res.ok) {
-        throw new Error(locale === "ar" ? "فشل حفظ الملف على الخادم" : "Failed to save file on server");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(
+          errData.message || (locale === "ar" ? "فشل حفظ الملف" : "Failed to save file"),
+        );
       }
 
       toast.success(
         locale === "ar"
-          ? "تم حفظ التعديلات في شيت المبنى بنجاح!"
-          : "Workbook changes saved successfully!",
-        { id: toastId },
+          ? "تم حفظ كافة التعديلات في ملف الإكسيل بنجاح!"
+          : "Spreadsheet updated and saved successfully!",
       );
-
       setIsEditing(false);
       onSaved?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error saving spreadsheet", { id: toastId });
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
-  // Print sheets
-  const handlePrint = (singleTab: boolean = false) => {
-    if (!file || sheets.length === 0) return;
+  // Download raw XLSX
+  const handleDownloadXlsx = () => {
+    if (!file) return;
+    const a = document.createElement("a");
+    a.href = `/api/drive/files/${file.id}/content?format=xlsx`;
+    a.download = file.name || "Building_Register.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
-    // Record print status in DB
-    fetch("/api/drive/print-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fileId: file.id,
-        items: [{ id: file.id, name: file.name }],
-      }),
-    }).catch(() => {});
+  // Official A4 Landscape Printing with EST Logo & Header
+  const handlePrint = (singleSheet: boolean = false) => {
+    const sheetsToPrint = singleSheet && sheets[activeTabIdx] ? [sheets[activeTabIdx]] : sheets;
+    if (sheetsToPrint.length === 0) return;
 
     const printFrame = document.createElement("iframe");
     printFrame.style.position = "fixed";
@@ -296,65 +464,110 @@ export function ExcelViewerModal({
     printFrame.style.bottom = "0";
     printFrame.style.width = "0";
     printFrame.style.height = "0";
-    printFrame.style.border = "0";
+    printFrame.style.border = "none";
     document.body.appendChild(printFrame);
 
-    const sheetsToPrint = singleTab ? [sheets[activeTabIdx]] : sheets;
     const frameDoc = printFrame.contentWindow?.document;
     if (!frameDoc) return;
 
     const sheetsHtml = sheetsToPrint
-      .map((sh, idx) => {
-        // Convert current rows to clean table HTML
-        const ws = XLSX.utils.aoa_to_sheet(sh.rows);
-        if (sh.merges && sh.merges.length > 0) {
-          ws["!merges"] = sh.merges;
-        }
-        const html = XLSX.utils.sheet_to_html(ws);
+      .map((s, idx) => {
+        const parsed = parseSheetDetails(s, buildingName);
+
+        const rowsHtml = parsed.dataRows
+          .map((row) => `
+            <tr>
+              <td class="col-no">${row.no}</td>
+              <td class="col-name">${row.name}</td>
+              <td class="col-type"><span class="badge ${row.proctorType.toLowerCase().replace(/\s+/g, "-")}">${row.proctorType}</span></td>
+              <td class="col-mobile font-mono">${row.mobile}</td>
+              <td class="col-ipep text-center font-bold">${row.ipEp}</td>
+              <td class="col-room font-bold">${row.room}</td>
+              <td class="col-time text-center">${row.arrivalTime || "__ : __"}</td>
+              <td class="col-time text-center">${row.departureTime || "__ : __"}</td>
+            </tr>
+          `)
+          .join("");
 
         return `
           <div class="sheet-page ${idx < sheetsToPrint.length - 1 ? "page-break" : ""}">
+            <!-- Official Examination Header with Logo -->
             <div class="official-sheet-header">
-              <div class="header-left">
-                <span class="est-badge">EST OFFICIAL EXAMINATION</span>
-                <span class="building-title">${buildingName || file.name}</span>
+              <div class="header-logo">
+                <img src="data:image/jpeg;base64,${EST_LOGO_BASE64}" alt="EST Logo" class="est-logo-img" />
               </div>
-              <div class="header-right">
-                <span class="tab-badge">${sh.name}</span>
+              <div class="header-center">
+                <h1 class="est-title">EGYPTIAN SCHOLASTIC TEST (EST)</h1>
+                <h2 class="est-subtitle">PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</h2>
+                <div class="center-banner">${parsed.center}</div>
+              </div>
+              <div class="header-meta">
+                <div class="meta-box">
+                  <div><strong>Date:</strong> ${parsed.date}</div>
+                  <div><strong>EST Type:</strong> ${parsed.estType}</div>
+                  <div><strong>Sheet:</strong> <span class="tab-highlight">${s.name}</span></div>
+                </div>
               </div>
             </div>
-            <div class="table-container">
-              ${html}
+
+            <!-- Examination Table -->
+            <table class="exam-table">
+              <thead>
+                <tr>
+                  <th class="col-no">No.</th>
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Proctor Type</th>
+                  <th class="col-mobile">Mobile</th>
+                  <th class="col-ipep">IP / EP</th>
+                  <th class="col-room">Room</th>
+                  <th class="col-time">Arrival Time</th>
+                  <th class="col-time">Departure Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+
+            <!-- Official Footer with Signature -->
+            <div class="official-footer">
+              <div class="footer-left">
+                <strong>Head of Center:</strong> ${parsed.headName}
+              </div>
+              <div class="footer-center">
+                <strong>Signature:</strong> ___________________________________
+              </div>
+              <div class="footer-right">
+                <strong>Date:</strong> ___ / ___ / 2026
+              </div>
             </div>
           </div>
         `;
       })
-      .join("\n");
+      .join("");
 
     const fullHtml = `
       <!DOCTYPE html>
       <html>
         <head>
+          <title>${file?.name || "EST Building Register"}</title>
           <meta charset="utf-8" />
-          <title>${file.name} - ${singleTab ? sheets[activeTabIdx]?.name : "All Tabs"}</title>
           <style>
             @page {
               size: A4 landscape;
-              margin: 8mm 10mm 8mm 10mm;
+              margin: 7mm 9mm 7mm 9mm;
             }
             * {
               box-sizing: border-box;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
             }
             body {
               margin: 0;
               padding: 0;
-              font-family: Arial, "Segoe UI", Tahoma, sans-serif;
-              color: #111;
+              font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              color: #000;
               background: #fff;
-              font-size: 9.5pt;
-              line-height: 1.3;
+              font-size: 8.5pt;
+              line-height: 1.25;
             }
             .sheet-page {
               width: 100%;
@@ -366,57 +579,124 @@ export function ExcelViewerModal({
             }
             .official-sheet-header {
               display: flex;
-              justify-content: space-between;
               align-items: center;
-              border-bottom: 2px solid #000;
+              justify-content: space-between;
+              border-bottom: 2.5px solid #0f172a;
               padding-bottom: 6px;
               margin-bottom: 8px;
             }
-            .est-badge {
-              font-size: 11pt;
-              font-weight: 800;
+            .header-logo {
+              width: 130px;
+              display: flex;
+              align-items: center;
+            }
+            .est-logo-img {
+              height: 48px;
+              width: auto;
+              object-fit: contain;
+            }
+            .header-center {
+              flex: 1;
+              text-align: center;
+              padding: 0 10px;
+            }
+            .est-title {
+              margin: 0;
+              font-size: 13pt;
+              font-weight: 900;
               letter-spacing: 0.5px;
-              color: #000;
-              display: block;
+              color: #0f172a;
             }
-            .building-title {
-              font-size: 9.5pt;
-              font-weight: 600;
-              color: #333;
-            }
-            .tab-badge {
-              background: #f1f5f9;
-              border: 1.5px solid #000;
-              padding: 3px 10px;
-              font-size: 9.5pt;
+            .est-subtitle {
+              margin: 2px 0 4px;
+              font-size: 8.5pt;
               font-weight: 700;
+              letter-spacing: 1px;
+              color: #475569;
+            }
+            .center-banner {
+              display: inline-block;
+              font-size: 9.5pt;
+              font-weight: 800;
+              color: #0f172a;
+              background: #f1f5f9;
+              padding: 2px 10px;
               border-radius: 4px;
+              border: 1px solid #cbd5e1;
             }
-            .table-container {
+            .header-meta {
+              width: 170px;
+              text-align: right;
+            }
+            .meta-box {
+              background: #f8fafc;
+              border: 1px solid #94a3b8;
+              border-radius: 4px;
+              padding: 4px 8px;
+              font-size: 8pt;
+              line-height: 1.4;
+              text-align: left;
+            }
+            .tab-highlight {
+              font-weight: 800;
+              color: #047857;
+            }
+            .exam-table {
               width: 100%;
-              overflow: visible;
+              border-collapse: collapse;
+              margin: 0 0 10px;
             }
-            table {
-              width: 100% !important;
-              border-collapse: collapse !important;
-              margin: 0 auto;
-              page-break-inside: auto;
-            }
-            tr {
-              page-break-inside: avoid;
-              page-break-after: auto;
-            }
-            th, td {
-              border: 1px solid #1e293b !important;
-              padding: 5px 8px !important;
-              font-size: 9.5pt !important;
-              text-align: start;
+            .exam-table th,
+            .exam-table td {
+              border: 1px solid #334155;
+              padding: 4px 6px;
               vertical-align: middle;
             }
-            tr:first-child td, tr:nth-child(3) td, tr th {
-              background-color: #f8fafc !important;
-              font-weight: bold;
+            .exam-table th {
+              background-color: #f1f5f9;
+              color: #0f172a;
+              font-size: 8.5pt;
+              font-weight: 800;
+              text-transform: uppercase;
+              text-align: start;
+              letter-spacing: 0.3px;
             }
+            .exam-table tr:nth-child(even) td {
+              background-color: #fafafa;
+            }
+            .col-no { width: 4.5%; text-align: center !important; font-weight: bold; }
+            .col-name { width: 33%; font-weight: 600; font-size: 9pt; }
+            .col-type { width: 14%; }
+            .col-mobile { width: 14%; font-size: 8pt; letter-spacing: 0.5px; }
+            .col-ipep { width: 7%; }
+            .col-room { width: 10.5%; text-align: center; }
+            .col-time { width: 8.5%; font-family: monospace; font-size: 8pt; color: #334155; }
+
+            .badge {
+              display: inline-block;
+              padding: 1px 6px;
+              font-size: 7.5pt;
+              font-weight: 700;
+              border-radius: 3px;
+              border: 1px solid #94a3b8;
+            }
+            .senior { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+            .roaming { background: #e0f2fe; color: #0369a1; border-color: #38bdf8; }
+            .proctor { background: #ecfdf5; color: #047857; border-color: #10b981; }
+            .head { background: #f3e8ff; color: #6b21a8; border-color: #a855f7; }
+
+            .official-footer {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-top: 8px;
+              padding-top: 6px;
+              border-top: 1.5px solid #0f172a;
+              font-size: 8.5pt;
+            }
+            .footer-left { width: 30%; }
+            .footer-center { width: 45%; }
+            .footer-right { width: 25%; text-align: right; }
           </style>
         </head>
         <body>
@@ -429,9 +709,12 @@ export function ExcelViewerModal({
     frameDoc.write(fullHtml);
     frameDoc.close();
 
-    toast.loading(locale === "ar" ? "جاري فتح نافذة الطباعة بالعرض (A4 Landscape)..." : "Opening A4 Landscape print dialog...", {
-      duration: 1500,
-    });
+    toast.loading(
+      locale === "ar"
+        ? "جاري فتح نافذة الطباعة بالعرض (A4 Landscape)..."
+        : "Opening A4 Landscape print dialog...",
+      { duration: 1500 },
+    );
 
     setTimeout(() => {
       try {
@@ -456,7 +739,7 @@ export function ExcelViewerModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs animate-in fade-in-0 duration-150">
       <div className="relative flex flex-col w-full max-w-7xl max-h-[94vh] bg-surface-elevated border border-border rounded-2xl shadow-2xl overflow-hidden text-foreground">
-        {/* Top Header */}
+        {/* Top Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-border bg-surface shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
@@ -478,8 +761,8 @@ export function ExcelViewerModal({
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "ar"
-                  ? `ريجستر تفاصيل المبنى • ${sheets.length} تابات متوفرة`
-                  : `Building Register Workbook • ${sheets.length} Sheets Available`}
+                  ? `ريجستر تفاصيل المبنى الرسمي • ${sheets.length} تابات متوفرة`
+                  : `Official Building Register Workbook • ${sheets.length} Sheets Available`}
               </p>
             </div>
           </div>
@@ -525,56 +808,53 @@ export function ExcelViewerModal({
             <Button
               type="button"
               variant="secondary"
-              className="text-xs font-semibold gap-1.5 py-1.5 px-3 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
-              onClick={() => handlePrint(true)}
+              className="text-xs font-semibold gap-1.5 py-1.5 px-3 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/20"
+              onClick={() => handlePrint(false)}
               disabled={loading || sheets.length === 0}
-              title={locale === "ar" ? "طباعة التاب المعروض حالياً على ورقة A4 بالعرض" : "Print active tab on A4 Landscape"}
+              title={locale === "ar" ? "طباعة جميع التابات بتنسيق رسمي A4 بالعرض" : "Print all tabs formatted A4 Landscape"}
             >
-              <Printer className="size-3.5" />
-              <span>{locale === "ar" ? "طباعة هذا التاب (A4 بالعرض)" : "Print Tab (A4)"}</span>
+              <Printer className="size-3.5 text-indigo-600" />
+              <span>{locale === "ar" ? "طباعة الكل (A4 بالعرض)" : "Print All (Landscape)"}</span>
             </Button>
 
             <Button
               type="button"
-              variant="primary"
-              className="text-xs font-bold gap-1.5 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-              onClick={() => handlePrint(false)}
+              variant="ghost"
+              className="text-xs gap-1.5 py-1.5 px-2.5 text-muted-foreground hover:text-foreground"
+              onClick={() => handlePrint(true)}
               disabled={loading || sheets.length === 0}
-              title={locale === "ar" ? "طباعة كل التابات في صفحات A4 منفصلة بالعرض" : "Print all tabs on separate A4 pages"}
+              title={locale === "ar" ? "طباعة التاب الحالي فقط" : "Print current tab only"}
             >
-              <Layers className="size-3.5" />
-              <span>{locale === "ar" ? "طباعة كل التابات" : "Print All Tabs"}</span>
+              <Printer className="size-3.5" />
+              <span>{locale === "ar" ? "طباعة هذا التاب" : "Print Tab"}</span>
             </Button>
 
-            <a
-              href={`/api/drive/files/${file.id}/content?format=xlsx`}
-              download={file.name}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border border-border hover:bg-surface text-muted-foreground hover:text-foreground transition-all"
-              title={locale === "ar" ? "تحميل ملف الإكسيل الأصلي" : "Download original Excel file"}
+            <Button
+              type="button"
+              variant="ghost"
+              className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg"
+              onClick={handleDownloadXlsx}
+              title={locale === "ar" ? "تحميل ملف Excel الأصلي" : "Download raw Excel file"}
             >
-              <Download className="size-3.5" />
-              <span className="hidden sm:inline">{locale === "ar" ? "تحميل" : "Download"}</span>
-            </a>
+              <Download className="size-4" />
+            </Button>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface transition-colors cursor-pointer"
+              className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-surface-soft transition-colors cursor-pointer"
             >
               <X className="size-5" />
             </button>
           </div>
         </div>
 
-        {/* Tabs Bar */}
+        {/* Tab Navigator */}
         {sheets.length > 0 && (
-          <div className="flex items-center justify-between gap-2 px-5 py-2 border-b border-border bg-surface-muted/50 overflow-x-auto shrink-0 select-none">
-            <div className="flex items-center gap-1.5 min-w-max">
-              <span className="text-[11px] font-bold text-muted-foreground uppercase me-1">
-                {locale === "ar" ? "التابات:" : "Sheets:"}
-              </span>
+          <div className="flex items-center justify-between px-5 py-2 border-b border-border bg-surface-soft/40 gap-3 overflow-x-auto shrink-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
               {sheets.map((sheet, idx) => {
-                const isActive = activeTabIdx === idx && !viewAll;
+                const isActive = activeTabIdx === idx;
                 return (
                   <button
                     key={sheet.name}
@@ -584,17 +864,17 @@ export function ExcelViewerModal({
                       setViewAll(false);
                     }}
                     className={cn(
-                      "px-3 py-1.5 text-xs rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 border",
+                      "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg font-bold transition-all shrink-0 cursor-pointer",
                       isActive
-                        ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                        : "bg-surface border-border hover:bg-surface-elevated text-foreground",
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-surface-elevated text-muted-foreground hover:text-foreground border border-border hover:border-emerald-500/40",
                     )}
                   >
                     <span>{sheet.name}</span>
                     <span
                       className={cn(
-                        "text-[10px] px-1 py-0.2 rounded-full",
-                        isActive ? "bg-emerald-700 text-emerald-100" : "bg-muted text-muted-foreground",
+                        "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
+                        isActive ? "bg-white/20 text-white" : "bg-surface-soft text-muted-foreground",
                       )}
                     >
                       {sheet.rows.length}
@@ -633,7 +913,7 @@ export function ExcelViewerModal({
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto p-4 sm:p-6 bg-surface/40" ref={printAreaRef}>
+        <div className="flex-1 overflow-auto p-4 sm:p-6 bg-surface/30" ref={printAreaRef}>
           {loading && (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
               <Spinner className="size-8 text-emerald-600" />
@@ -659,6 +939,7 @@ export function ExcelViewerModal({
             <div className="space-y-6">
               {(viewAll ? sheets : [currentSheet]).map((sheet, sIdx) => {
                 const sheetRealIdx = viewAll ? sIdx : activeTabIdx;
+                const parsed = parseSheetDetails(sheet, buildingName);
 
                 if (isEditing) {
                   // Interactive Editable Table Grid
@@ -670,7 +951,7 @@ export function ExcelViewerModal({
                       <div className="flex items-center justify-between px-4 py-2.5 bg-surface border-b border-border">
                         <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
                           <FileSpreadsheet className="size-3.5" />
-                          <span>{sheet.name} (وضع التعديل)</span>
+                          <span>{sheet.name} ({locale === "ar" ? "وضع التعديل" : "Edit Mode"})</span>
                         </span>
                         <Button
                           type="button"
@@ -679,42 +960,58 @@ export function ExcelViewerModal({
                           onClick={handleAddRow}
                         >
                           <Plus className="size-3" />
-                          <span>{locale === "ar" ? "+ سطر جديد" : "Add Row"}</span>
+                          <span>{locale === "ar" ? "+ إضافة مراقب/سطر" : "Add Row"}</span>
                         </Button>
                       </div>
 
                       <div className="overflow-x-auto p-2">
                         <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-surface border-b border-border text-[11px] text-muted-foreground font-semibold">
+                              <th className="w-8 p-1.5 text-center">#</th>
+                              <th className="w-12 p-1.5 text-center">No.</th>
+                              <th className="p-1.5 text-start">Name</th>
+                              <th className="w-28 p-1.5 text-start">Proctor Type</th>
+                              <th className="w-28 p-1.5 text-start">Mobile</th>
+                              <th className="w-16 p-1.5 text-center">IP / EP</th>
+                              <th className="w-20 p-1.5 text-center">Room</th>
+                              <th className="w-20 p-1.5 text-center">Arrival</th>
+                              <th className="w-20 p-1.5 text-center">Departure</th>
+                              <th className="w-8 p-1.5 text-center"></th>
+                            </tr>
+                          </thead>
                           <tbody>
-                            {sheet.rows.map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-surface-soft border-b border-border/60">
-                                <td className="w-8 p-1 text-center text-muted-foreground font-mono text-[10px]">
-                                  {rIdx + 1}
-                                </td>
-                                {row.map((cell, cIdx) => (
-                                  <td key={cIdx} className="p-1 border-e border-border/40 min-w-[90px]">
-                                    <input
-                                      type="text"
-                                      value={String(cell ?? "")}
-                                      onChange={(e) =>
-                                        handleCellChange(sheetRealIdx, rIdx, cIdx, e.target.value)
-                                      }
-                                      className="w-full px-2 py-1 bg-transparent hover:bg-surface focus:bg-surface rounded border border-transparent focus:border-emerald-500 outline-none text-xs text-foreground transition-all"
-                                    />
+                            {sheet.rows.map((row, rIdx) => {
+                              return (
+                                <tr key={rIdx} className="hover:bg-surface-soft border-b border-border/50">
+                                  <td className="w-8 p-1 text-center text-muted-foreground font-mono text-[10px]">
+                                    {rIdx + 1}
                                   </td>
-                                ))}
-                                <td className="w-8 p-1 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteRow(rIdx)}
-                                    className="p-1 text-muted-foreground hover:text-rose-600 rounded transition-colors cursor-pointer"
-                                    title={locale === "ar" ? "حذف هذا السطر" : "Delete row"}
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                                  {row.map((cell, cIdx) => (
+                                    <td key={cIdx} className="p-1 border-e border-border/30 min-w-[70px]">
+                                      <input
+                                        type="text"
+                                        value={String(cell ?? "")}
+                                        onChange={(e) =>
+                                          handleCellChange(sheetRealIdx, rIdx, cIdx, e.target.value)
+                                        }
+                                        className="w-full px-2 py-1 bg-transparent hover:bg-surface focus:bg-surface rounded border border-transparent focus:border-emerald-500 outline-none text-xs text-foreground transition-all"
+                                      />
+                                    </td>
+                                  ))}
+                                  <td className="w-8 p-1 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRow(rIdx)}
+                                      className="p-1 text-muted-foreground hover:text-rose-600 rounded transition-colors cursor-pointer"
+                                      title={locale === "ar" ? "حذف هذا السطر" : "Delete row"}
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -722,32 +1019,150 @@ export function ExcelViewerModal({
                   );
                 }
 
-                // Clean Beautiful Formatted View
-                const ws = XLSX.utils.aoa_to_sheet(sheet.rows);
-                if (sheet.merges && sheet.merges.length > 0) {
-                  ws["!merges"] = sheet.merges;
-                }
-                const tableHtml = XLSX.utils.sheet_to_html(ws);
-
+                // Official High-Fidelity Formatted View with EST Logo & Header
                 return (
                   <div
                     key={sheet.name}
-                    className="bg-surface-elevated border border-border rounded-xl shadow-xs overflow-hidden"
+                    className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl shadow-md overflow-hidden text-slate-900 dark:text-slate-100"
                   >
-                    <div className="flex items-center justify-between px-4 py-2.5 bg-surface border-b border-border">
-                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                        <FileSpreadsheet className="size-3.5" />
-                        {sheet.name}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {sheet.rows.length} {locale === "ar" ? "صف" : "rows"}
-                      </span>
+                    {/* Top Examination Banner with Official Logo */}
+                    <div className="p-5 border-b-2 border-slate-900 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60">
+                      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                        {/* Logo */}
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={`data:image/jpeg;base64,${EST_LOGO_BASE64}`}
+                            alt="EST Official Logo"
+                            className="h-14 w-auto object-contain rounded drop-shadow-xs"
+                          />
+                          <div>
+                            <h3 className="text-sm font-black tracking-wide text-slate-900 dark:text-white uppercase">
+                              Egyptian Scholastic Test (EST)
+                            </h3>
+                            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
+                              Proctor Attendance & Assignment Register
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Center & Building Badge */}
+                        <div className="text-center px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
+                          <div className="text-xs font-black">{parsed.center}</div>
+                          <div className="text-[11px] font-semibold opacity-90">{sheet.name}</div>
+                        </div>
+
+                        {/* Meta Box */}
+                        <div className="flex items-center gap-4 text-xs font-semibold bg-white dark:bg-slate-900 px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs">
+                          <div>
+                            <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Date:</span>
+                            <span className="font-bold text-slate-900 dark:text-white">{parsed.date}</span>
+                          </div>
+                          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700" />
+                          <div>
+                            <span className="text-slate-500 dark:text-slate-400 block text-[10px]">EST Type:</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{parsed.estType}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-                    <div
-                      className="p-3 overflow-x-auto excel-table-styled"
-                      dangerouslySetInnerHTML={{ __html: tableHtml }}
-                    />
+                    {/* Table of Proctors & Rooms */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-b border-slate-300 dark:border-slate-700 font-extrabold text-[11px] uppercase tracking-wide">
+                            <th className="w-12 py-2.5 px-3 text-center border-e border-slate-300 dark:border-slate-700">No.</th>
+                            <th className="py-2.5 px-4 text-start border-e border-slate-300 dark:border-slate-700">Name</th>
+                            <th className="w-36 py-2.5 px-3 text-start border-e border-slate-300 dark:border-slate-700">Proctor Type</th>
+                            <th className="w-32 py-2.5 px-3 text-start border-e border-slate-300 dark:border-slate-700">Mobile</th>
+                            <th className="w-20 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">IP / EP</th>
+                            <th className="w-24 py-2.5 px-3 text-center border-e border-slate-300 dark:border-slate-700">Room</th>
+                            <th className="w-24 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Arrival Time</th>
+                            <th className="w-24 py-2.5 px-2 text-center">Departure Time</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
+                          {parsed.dataRows.map((r, rowIdx) => {
+                            const isSenior = /Senior/i.test(r.proctorType);
+                            const isRoaming = /Roaming/i.test(r.proctorType);
+                            const isHead = /Head/i.test(r.proctorType);
+
+                            return (
+                              <tr
+                                key={rowIdx}
+                                className={cn(
+                                  "hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors",
+                                  isSenior && "bg-amber-50/40 dark:bg-amber-950/20 font-bold",
+                                  isRoaming && "bg-sky-50/30 dark:bg-sky-950/15",
+                                )}
+                              >
+                                <td className="py-2 px-3 text-center font-bold text-slate-500 border-e border-slate-200 dark:border-slate-800">
+                                  {r.no}
+                                </td>
+                                <td className="py-2 px-4 font-semibold text-slate-900 dark:text-slate-100 border-e border-slate-200 dark:border-slate-800">
+                                  {r.name}
+                                </td>
+                                <td className="py-2 px-3 border-e border-slate-200 dark:border-slate-800">
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold",
+                                      isSenior
+                                        ? "bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300"
+                                        : isRoaming
+                                        ? "bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 border border-sky-300"
+                                        : isHead
+                                        ? "bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-300"
+                                        : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300",
+                                    )}
+                                  >
+                                    {r.proctorType}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800">
+                                  {r.mobile}
+                                </td>
+                                <td className="py-2 px-2 text-center border-e border-slate-200 dark:border-slate-800">
+                                  <span className="font-bold text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                    {r.ipEp || "EP"}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-center border-e border-slate-200 dark:border-slate-800">
+                                  {r.room ? (
+                                    <span className="font-extrabold text-xs px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+                                      {r.room}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">-</span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-2 text-center font-mono text-[11px] text-slate-500 border-e border-slate-200 dark:border-slate-800">
+                                  {r.arrivalTime || "__ : __"}
+                                </td>
+                                <td className="py-2 px-2 text-center font-mono text-[11px] text-slate-500">
+                                  {r.departureTime || "__ : __"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Official Signature Footer Bar */}
+                    <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-700 dark:text-slate-300 gap-4">
+                      <div>
+                        <span className="font-bold text-slate-500">{locale === "ar" ? "رئيس السنتر:" : "Head of Center:"} </span>
+                        <span className="font-extrabold text-slate-900 dark:text-white">{parsed.headName}</span>
+                      </div>
+                      <div className="font-medium text-slate-500">
+                        <span>{locale === "ar" ? "التوقيع:" : "Signature:"} </span>
+                        <span className="font-mono">___________________________________</span>
+                      </div>
+                      <div className="font-medium text-slate-500">
+                        <span>{locale === "ar" ? "التاريخ:" : "Date:"} </span>
+                        <span className="font-mono">___ / ___ / 2026</span>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -755,14 +1170,14 @@ export function ExcelViewerModal({
           )}
         </div>
 
-        {/* Modal Footer Note */}
+        {/* Modal Bottom Footer Note */}
         <div className="px-5 py-2.5 border-t border-border bg-surface shrink-0 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="size-3.5 text-emerald-600" />
             <span>
               {locale === "ar"
-                ? "معاينة منسقة وتعديل مباشر مع طباعة A4 بالعرض (Landscape) وفواصل صفحات لكل تاب."
-                : "Formatted preview, live editing, and A4 Landscape printing with page-breaks."}
+                ? "معاينة منسقة مع لوجو EST وتعديل مباشر مع طباعة A4 بالعرض (Landscape) وفواصل صفحات لكل دور."
+                : "Formatted preview with EST logo, live editing, and A4 Landscape printing with page-breaks."}
             </span>
           </div>
           <Button type="button" variant="ghost" onClick={onClose} className="text-xs py-1 px-3">
@@ -770,30 +1185,6 @@ export function ExcelViewerModal({
           </Button>
         </div>
       </div>
-
-      <style jsx global>{`
-        .excel-table-styled table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 11px;
-          line-height: 1.4;
-        }
-        .excel-table-styled td,
-        .excel-table-styled th {
-          border: 1px solid var(--border, #cbd5e1);
-          padding: 6px 10px;
-          text-align: start;
-          vertical-align: middle;
-        }
-        .excel-table-styled tr:hover {
-          background-color: rgba(16, 185, 129, 0.04);
-        }
-        .excel-table-styled tr:first-child td,
-        .excel-table-styled tr:nth-child(3) td {
-          font-weight: 600;
-          background-color: var(--surface-muted, #f8fafc);
-        }
-      `}</style>
     </div>
   );
 }

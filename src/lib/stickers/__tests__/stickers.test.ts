@@ -435,15 +435,36 @@ describe("generateStickerPdf", () => {
     });
 
     it("Buildings have Building Excel button (one Excel with tabs for the building)", () => {
-      // By name
+      // By name with various real-world patterns
       expect(getFolderRegisterCategory({ folder: { id: "b1", name: "Pharmacy Building" } })).toBe("building_excel");
       expect(getFolderRegisterCategory({ folder: { id: "b2", name: "مبنى الصيدلة" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b3", name: "High School" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b4", name: "Building A" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b5", name: "Sheraton Management" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b6", name: "Engineering" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b7", name: "كلية الهندسة" } })).toBe("building_excel");
+      expect(getFolderRegisterCategory({ folder: { id: "b8", name: "Primary Section" } })).toBe("building_excel");
 
-      // Inside Test Center folder (depth 2), child folders are Buildings (building_excel)
+      // Inside Test Center folder (depth 2 or Center parent), child folders are Buildings (building_excel)
       const insideAbuQirCrumbs = breadcrumbs.slice(0, 4); // up to Abu Qir
       expect(
         getFolderRegisterCategory({
           folder: { id: "b1", name: "Pharmacy" },
+          breadcrumbs: insideAbuQirCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("building_excel");
+      // Even with custom/generic building names inside a Center:
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "custom1", name: "New Wing" },
+          breadcrumbs: insideAbuQirCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("building_excel");
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "custom2", name: "Sheraton" },
           breadcrumbs: insideAbuQirCrumbs,
           isCurrentFolder: false,
         }),

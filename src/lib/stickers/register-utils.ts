@@ -1,4 +1,5 @@
 import type { DriveItem, Breadcrumb } from "@/lib/types";
+import { buildStickerContent } from "./sticker-content";
 
 export type RegisterCategory = "building_excel" | "student" | "control" | "proctor" | null;
 
@@ -234,79 +235,120 @@ export function getFolderRegisterCategory(params: {
   depth?: number;
   isCurrentFolder?: boolean;
 }): RegisterCategory {
-  const { folder, breadcrumbs, depth, isCurrentFolder } = params;
+  const { folder, breadcrumbs, isCurrentFolder } = params;
   if (folder.isFolder === false) return null;
 
   const folderName = folder.name.trim();
 
-  // Explicit Floor detection by name -> ALWAYS null (no register upload for floors)
+  // 1. Explicit Floor detection by name -> ALWAYS null (no register upload for floors)
   if (
-    /floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b|\bground(\s*floor)?\b|\bأرضي\b/i.test(folderName) ||
+    /floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b|\bground(\s*floor)?\b|\bأرضي\b|\bbasement\b|\bبدروم\b|\bmezzanine\b|\bميزانين\b/i.test(
+      folderName,
+    ) ||
     /^(ground|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)\s*(floor)?$/i.test(folderName)
   ) {
     return null;
   }
 
-  // Explicit Room detection by name (e.g. 204, 205, Room 1, قاعة 5, لجنة 1)
-  if (/^(\d{1,4}[A-Za-z]?|[A-Za-z]\d{2,4}|room\s*\d+|قاعة\s*\d+|committee\s*\d+|لجنة\s*\d+)$/i.test(folderName)) {
+  // 2. Explicit Room detection by name (e.g. 204, 205, Room 1, قاعة 5, لجنة 1) -> ALWAYS student
+  if (
+    /^(\d{1,4}[A-Za-z]?|[A-Za-z]\d{1,4}|room\s*\d+|قاعة\s*\d+|committee\s*\d+|لجنة\s*\d+|lab\s*\d+|معمل\s*\d+)$/i.test(
+      folderName,
+    )
+  ) {
     return "student";
   }
-  if (/room|قاعة|لجنة/i.test(folderName) && !/control|proctor|floor|building|management|pharmacy/i.test(folderName)) {
+  if (
+    /room|قاعة|لجنة|معمل/i.test(folderName) &&
+    !/control|proctor|floor|building|management|pharmacy|center|faculty|school|سنتر|مبنى|إدارة/i.test(folderName)
+  ) {
     return "student";
   }
 
-  // Explicit Building detection by name -> Building Excel!
+  // 3. Exam Root / Drive Root / Governorate detection -> ALWAYS null
   if (
-    /building|مبنى|قسم|faculty|كلية|pharmacy|dentistry|engineering|management|technology|campus|architecture|business|صيدلة|هندسة|إدارة|طب|أسنان/i.test(
+    /^(cairo|alexandria|giza|qalyubia|mansoura|tanta|ismailia|suez|port said|القاهرة|الإسكندرية|الجيزة|القليوبية|المنصورة|طنطا|الإسماعيلية|السويس|بورسعيد|root|drive|my drive|home|file manager app)$/i.test(
+      folderName,
+    ) ||
+    /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test(folderName) ||
+    /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
+      folderName,
+    ) ||
+    /^est\s*numbers/i.test(folderName)
+  ) {
+    return null;
+  }
+
+  // 4. Center check helper
+  const isCenterName = (n: string) =>
+    /center|سنتر|مركز|campus|aast|academy|أكاديمية|جامعة|مجمع/i.test(n) &&
+    !/building|مبنى|faculty|كلية|management|pharmacy|engineering|قسم/i.test(n);
+
+  // 5. Explicit Building detection by name -> Building Excel!
+  if (
+    /building|مبنى|قسم|faculty|كلية|pharmacy|dentistry|engineering|management|technology|campus|architecture|business|صيدلة|هندسة|إدارة|طب|أسنان|علوم|تجارة|حقوق|ألسن|science|arts|commerce|law|languages|nursing|computer|it\b|ai\b|school|مدرسة|academy|أكاديمية|institute|معهد|hall|block|جناح|tower|برج|main|رئيسي|annex|ملحق|administration|admin\b|primary|secondary|prep|high\s*school|ابتدائي|إعدادي|ثانوي|بنين|بنات|girls|boys/i.test(
       folderName,
     )
   ) {
     return "building_excel";
   }
 
-  // Analyze EST breadcrumb hierarchy if present
-  if (breadcrumbs && breadcrumbs.length > 0) {
-    const isEst = (n?: string | null) =>
-      /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s]+))?$/i.test((n || "").trim());
-    const estIdx = breadcrumbs.findIndex((b) => isEst(b.name));
+  // 6. Parent Folder Analysis:
+  // If the parent folder is a Center, then ANY subfolder inside it (that is not a floor or room) is a Building!
+  const parentFolder = isCurrentFolder
+    ? breadcrumbs && breadcrumbs.length >= 2
+      ? breadcrumbs[breadcrumbs.length - 2]
+      : null
+    : breadcrumbs && breadcrumbs.length >= 1
+    ? breadcrumbs[breadcrumbs.length - 1]
+    : null;
 
-    if (estIdx >= 0) {
-      // Relative depth of current folder inside EST
-      const currentFolderEstDepth = breadcrumbs.length - 1 - estIdx;
-
-      if (isCurrentFolder) {
-        // We are inspecting currentFolder itself (for the top toolbar)
-        // 0: EST (Root) -> null
-        // 1: Governorate / City -> null
-        // 2: Test Center -> null
-        // 3: Building -> "building_excel"
-        // 4: Floor -> null (no proctor register upload per floor)
-        // 5+: Room -> "student"
-        if (currentFolderEstDepth === 3) return "building_excel";
-        if (currentFolderEstDepth === 4) return null;
-        if (currentFolderEstDepth >= 5) return "student";
-        return null;
-      } else {
-        // We are inspecting an item INSIDE currentFolder (row in table or grid)
-        // If currentFolder is depth 2 (Test Center, e.g. Abu Qir): child folders are Buildings!
-        if (currentFolderEstDepth === 2) return "building_excel";
-        // If currentFolder is depth 3 (Building, e.g. Pharmacy): child folders are Floors -> null!
-        if (currentFolderEstDepth === 3) return null;
-        // If currentFolder is depth 4 (Floor, e.g. 2nd Floor): child folders are Rooms!
-        if (currentFolderEstDepth === 4) return "student";
-        // If currentFolder is depth 0 (EST) -> items are Governorates -> null
-        // If currentFolder is depth 1 (Gov) -> items are Centers -> null
-        return null;
-      }
+  if (parentFolder) {
+    const parentName = (parentFolder.name || "").trim();
+    if (isCenterName(parentName) || /center|سنتر|مركز|sheraton|abu\s*qir/i.test(parentName)) {
+      // Child of a Center is a Building!
+      return "building_excel";
     }
   }
 
-  // If depth is explicitly passed from a recursive tree view
-  if (typeof depth === "number") {
-    if (depth === 3) return "building_excel";
-    if (depth === 4) return null;
-    if (depth >= 5) return "student";
-    return null;
+  // 7. Full hierarchy analysis using buildStickerContent
+  if (breadcrumbs && breadcrumbs.length > 0) {
+    try {
+      const chain = isCurrentFolder
+        ? breadcrumbs.map((b) => b.name)
+        : [...breadcrumbs.map((b) => b.name), folderName];
+      const sticker = buildStickerContent(chain);
+      if (sticker.level === "building") return "building_excel";
+      if (sticker.level === "room") return "student";
+      if (
+        sticker.level === "floor" ||
+        sticker.level === "center" ||
+        sticker.level === "governorate" ||
+        sticker.level === "root"
+      ) {
+        return null;
+      }
+    } catch {
+      // ignore
+    }
+
+    // Relative depth from EST Root
+    const isEst = (n?: string | null) =>
+      /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test((n || "").trim());
+    const estIdx = breadcrumbs.findIndex((b) => isEst(b.name));
+
+    if (estIdx >= 0) {
+      const currentFolderEstDepth = breadcrumbs.length - 1 - estIdx;
+      if (isCurrentFolder) {
+        if (currentFolderEstDepth === 3) return "building_excel";
+        if (currentFolderEstDepth === 4) return null;
+        if (currentFolderEstDepth >= 5) return "student";
+      } else {
+        if (currentFolderEstDepth === 2) return "building_excel";
+        if (currentFolderEstDepth === 3) return null;
+        if (currentFolderEstDepth === 4) return "student";
+      }
+    }
   }
 
   return null;
