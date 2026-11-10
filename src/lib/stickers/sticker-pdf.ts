@@ -68,9 +68,9 @@ async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
   ];
 
   for (const fp of fontPaths) {
-    if (fs.existsSync(fp)) {
+    if (fs.existsSync(/*turbopackIgnore: true*/ fp)) {
       try {
-        const fontBytes = fs.readFileSync(fp);
+        const fontBytes = fs.readFileSync(/*turbopackIgnore: true*/ fp);
         return await pdfDoc.embedFont(fontBytes, { subset: true });
       } catch {}
     }

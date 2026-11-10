@@ -1,5 +1,4 @@
 import type { DriveItem, Breadcrumb } from "@/lib/types";
-import { buildStickerContent } from "./sticker-content";
 
 export type RegisterCategory = "building_excel" | "student" | "control" | "proctor" | null;
 
@@ -311,25 +310,17 @@ export function getFolderRegisterCategory(params: {
     }
   }
 
-  // 7. Full hierarchy analysis using buildStickerContent
+  // 7. Full hierarchy analysis
   if (breadcrumbs && breadcrumbs.length > 0) {
-    try {
-      const chain = isCurrentFolder
-        ? breadcrumbs.map((b) => b.name)
-        : [...breadcrumbs.map((b) => b.name), folderName];
-      const sticker = buildStickerContent(chain);
-      if (sticker.level === "building") return "building_excel";
-      if (sticker.level === "room") return "student";
-      if (
-        sticker.level === "floor" ||
-        sticker.level === "center" ||
-        sticker.level === "governorate" ||
-        sticker.level === "root"
-      ) {
-        return null;
-      }
-    } catch {
-      // ignore
+    const chain = isCurrentFolder
+      ? breadcrumbs.map((b) => b.name)
+      : [...breadcrumbs.map((b) => b.name), folderName];
+
+    const level = resolveFolderLevelFromChain(chain);
+    if (level === "building") return "building_excel";
+    if (level === "room") return "student";
+    if (level === "floor" || level === "center" || level === "governorate" || level === "root") {
+      return null;
     }
 
     // Relative depth from EST Root
@@ -352,5 +343,42 @@ export function getFolderRegisterCategory(params: {
   }
 
   return null;
+}
+
+/**
+ * Pure, client-safe resolution of folder hierarchy level without any server dependencies.
+ */
+function resolveFolderLevelFromChain(
+  chain: string[],
+): "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom" {
+  const clean = chain
+    .map((s) => (s || "").trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+
+  if (clean.length === 0) return "custom";
+
+  const GENERIC_ROOTS =
+    /^(root|my drive|drive|demo drive|google drive|file manager app|december\s*2026|october\s*2026|november\s*2026|est\s*numbers.*|\b(oct|nov|dec|jan|feb|mar|apr|may|jun|jul|aug|sep)\s*\d{4}\b)$/i;
+
+  const isEstRoot = (name: string) =>
+    /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test(name.trim());
+
+  const estIndex = clean.findIndex((name) => isEstRoot(name));
+  const relevantChain =
+    estIndex >= 0 ? clean.slice(estIndex) : clean.filter((c) => !GENERIC_ROOTS.test(c));
+  if (relevantChain.length === 0) return "custom";
+
+  if (isEstRoot(relevantChain[0]) && relevantChain.length === 1) {
+    return "root";
+  }
+
+  const locationChain = isEstRoot(relevantChain[0]) ? relevantChain.slice(1) : relevantChain;
+
+  if (locationChain.length === 1) return "governorate";
+  if (locationChain.length === 2) return "center";
+  if (locationChain.length === 3) return "building";
+  if (locationChain.length === 4) return "floor";
+  if (locationChain.length >= 5) return "room";
+  return "custom";
 }
 

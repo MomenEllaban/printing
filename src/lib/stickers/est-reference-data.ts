@@ -1,5 +1,3 @@
-import type { drive_v3 } from "googleapis";
-
 export interface EstReferenceRow {
   governorate: string;
   testCenter: string;
@@ -258,89 +256,6 @@ export const EST_REFERENCE_DATA: EstReferenceRow[] = [
   { governorate: "Menofia", testCenter: "Al Ryada University", building: "Science And Technology", floor: "1st Floor", room: "D 028", studentsEst1: 16, studentsWithoutEssay: 16, studentsWithEssay: 0 },
   { governorate: "Menofia", testCenter: "Al Ryada University", building: "Science And Technology", floor: "1st Floor", room: "D 120", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
 ];
-
-/**
- * Creates or gets an existing folder by name under a parent folder.
- */
-async function getOrCreateSubFolder(
-  drive: drive_v3.Drive,
-  parentId: string,
-  name: string,
-  cache: Map<string, string>,
-): Promise<string> {
-  const cacheKey = `${parentId}:::${name.trim()}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey)!;
-
-  const escapedName = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const escapedParent = parentId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-
-  const listRes = await drive.files.list({
-    q: `name = '${escapedName}' and '${escapedParent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-    fields: "files(id,name)",
-    pageSize: 1,
-    supportsAllDrives: true,
-  });
-
-  let folderId = listRes.data.files?.[0]?.id;
-  if (!folderId) {
-    const { createFolder } = await import("../drive");
-    const created = await createFolder(drive, name.trim(), parentId);
-    folderId = created.id!;
-  }
-
-  cache.set(cacheKey, folderId);
-  return folderId;
-}
-
-/**
- * Seeds the complete EST hierarchy in Google Drive according to the reference data:
- * Root -> December 2026 -> EST 1 -> Governorate -> Test Center -> Building -> Floor -> Room
- */
-export async function seedEstFolderStructure(
-  drive: drive_v3.Drive,
-  rootParentId: string,
-  options?: { scheduleName?: string; examName?: string } | string,
-  onProgress?: (msg: string) => void,
-): Promise<{ totalCreated: number; estRootId: string; scheduleFolderId?: string }> {
-  const cache = new Map<string, string>();
-  const scheduleName = (typeof options === "object" ? options?.scheduleName : undefined) ?? "December 2026";
-  const examName = (typeof options === "string" ? options : options?.examName) ?? "EST 1";
-
-  // Step 1: Create or find schedule folder (e.g. "December 2026") under rootParentId
-  let parentForExam = rootParentId;
-  let scheduleFolderId: string | undefined;
-  if (scheduleName) {
-    onProgress?.(`Creating or finding schedule folder "${scheduleName}"...`);
-    scheduleFolderId = await getOrCreateSubFolder(drive, rootParentId, scheduleName, cache);
-    parentForExam = scheduleFolderId;
-  }
-
-  // Step 2: Create or find exam root (e.g. "EST 1") inside the schedule folder
-  onProgress?.(`Creating or finding root folder "${examName}"...`);
-  const estRootId = await getOrCreateSubFolder(drive, parentForExam, examName, cache);
-
-  let count = 1;
-  const processed = new Set<string>();
-
-  for (const row of EST_REFERENCE_DATA) {
-    const govId = await getOrCreateSubFolder(drive, estRootId, row.governorate, cache);
-    const centerId = await getOrCreateSubFolder(drive, govId, row.testCenter, cache);
-    const buildingId = await getOrCreateSubFolder(drive, centerId, row.building, cache);
-    const floorId = await getOrCreateSubFolder(drive, buildingId, row.floor, cache);
-    
-    const roomKey = `${floorId}:::${row.room}`;
-    if (!processed.has(roomKey)) {
-      await getOrCreateSubFolder(drive, floorId, row.room, cache);
-      processed.add(roomKey);
-      count++;
-      if (count % 10 === 0) {
-        onProgress?.(`Created ${count} folders...`);
-      }
-    }
-  }
-
-  return { totalCreated: cache.size, estRootId, scheduleFolderId };
-}
 
 export interface SubfolderInfoResult {
   childCount: number;
