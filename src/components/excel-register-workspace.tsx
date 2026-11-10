@@ -279,6 +279,8 @@ export function ExcelRegisterWorkspace({
             return (
               <div
                 key={sheet.name}
+                dir="ltr"
+                style={{ direction: "ltr" }}
                 className="bg-surface-elevated border border-border rounded-2xl shadow-sm overflow-hidden"
               >
                 {/* Edit Mode Header Toolbar */}
@@ -370,8 +372,8 @@ export function ExcelRegisterWorkspace({
                 </div>
 
                 {/* Focused, Comfortable Proctors Table */}
-                <div className="overflow-x-auto p-3">
-                  <table className="w-full border-collapse text-xs">
+                <div className="overflow-x-auto p-3" dir="ltr" style={{ direction: "ltr" }}>
+                  <table className="w-full border-collapse text-xs" dir="ltr" style={{ direction: "ltr" }}>
                     <thead>
                       <tr className="bg-surface-soft border-b border-border text-[11px] font-extrabold text-muted-foreground uppercase tracking-wider">
                         <th className="w-10 p-2 text-center">#</th>
@@ -540,6 +542,8 @@ export function ExcelRegisterWorkspace({
           return (
             <div
               key={sheet.name}
+              dir="ltr"
+              style={{ direction: "ltr" }}
               className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-2xl shadow-md overflow-hidden text-slate-900 dark:text-slate-100"
             >
               {/* Top Examination Banner with Official Logo */}
@@ -591,8 +595,8 @@ export function ExcelRegisterWorkspace({
               </div>
 
               {/* Table of Proctors & Rooms - 10 Columns */}
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-xs">
+              <div className="overflow-x-auto" dir="ltr" style={{ direction: "ltr" }}>
+                <table className="w-full border-collapse text-xs" dir="ltr" style={{ direction: "ltr" }}>
                   <thead>
                     <tr className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-b border-slate-300 dark:border-slate-700 font-extrabold text-[11px] uppercase tracking-wide">
                       <th className="w-10 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">No.</th>

@@ -195,34 +195,36 @@ export function PreviewShell({
         </div>
       </div>
 
-      {kind === "pdf" && (
-        <PdfViewer fileId={item.id} initialZoom={previewSettings.pdfDefaultZoom} initialFit={previewSettings.pdfFitMode} />
-      )}
-      {kind === "excel" && (
-        <ExcelViewer
-          fileId={item.id}
-          extension={item.extension}
-          density={previewSettings.excelDisplayMode}
-          isEditing={isEditing}
-          onEditingChange={setIsEditing}
-          saveRef={saveExcelRef}
-        />
-      )}
-      {kind === "word" && <DocxViewer fileId={item.id} extension={item.extension} />}
-      {kind === "image" && <ImageViewer fileId={item.id} name={item.name} />}
-      {kind === "unsupported" && (
-        <div className="card flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-strong text-muted">
-            <FileQuestion className="size-7" />
+      <div className="document-preview-stage w-full" dir="ltr" style={{ direction: "ltr" }}>
+        {kind === "pdf" && (
+          <PdfViewer fileId={item.id} initialZoom={previewSettings.pdfDefaultZoom} initialFit={previewSettings.pdfFitMode} />
+        )}
+        {kind === "excel" && (
+          <ExcelViewer
+            fileId={item.id}
+            extension={item.extension}
+            density={previewSettings.excelDisplayMode}
+            isEditing={isEditing}
+            onEditingChange={setIsEditing}
+            saveRef={saveExcelRef}
+          />
+        )}
+        {kind === "word" && <DocxViewer fileId={item.id} extension={item.extension} />}
+        {kind === "image" && <ImageViewer fileId={item.id} name={item.name} />}
+        {kind === "unsupported" && (
+          <div className="card flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-strong text-muted">
+              <FileQuestion className="size-7" />
+            </div>
+            <h2 className="text-base font-semibold">{t("preview.unsupported")}</h2>
+            <p className="max-w-md text-sm text-muted">{t("preview.rawUnavailable")}</p>
+            <a href={`/api/drive/files/${item.id}/content?download=1`} className="btn-primary">
+              <Download className="size-4" />
+              {t("common.download")}
+            </a>
           </div>
-          <h2 className="text-base font-semibold">{t("preview.unsupported")}</h2>
-          <p className="max-w-md text-sm text-muted">{t("preview.rawUnavailable")}</p>
-          <a href={`/api/drive/files/${item.id}/content?download=1`} className="btn-primary">
-            <Download className="size-4" />
-            {t("common.download")}
-          </a>
-        </div>
-      )}
+        )}
+      </div>
 
       <section className="no-print card grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <Detail label={t("common.name")} value={item.name} />

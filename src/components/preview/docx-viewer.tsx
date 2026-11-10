@@ -71,6 +71,8 @@ export function DocxViewer({ fileId, extension }: { fileId: string; extension: s
       )}
       <div
         className="docx-content border border-border shadow-card"
+        dir="ltr"
+        style={{ direction: "ltr", textAlign: "left" }}
         dangerouslySetInnerHTML={{ __html: html ?? "" }}
       />
     </div>

@@ -405,7 +405,7 @@ export function generateEstPrintHtml(
 
   return `
     <!DOCTYPE html>
-    <html>
+    <html dir="ltr" lang="en">
       <head>
         <title>${pageTitle}</title>
         <meta charset="utf-8" />
@@ -424,8 +424,17 @@ export function generateEstPrintHtml(
               margin: 0 !important;
               padding: 0 !important;
               background: #fff !important;
+              direction: ltr !important;
+              unicode-bidi: isolate !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
+            }
+            .sheet-page,
+            .exam-table,
+            .official-sheet-header,
+            .official-footer {
+              direction: ltr !important;
+              unicode-bidi: isolate !important;
             }
             .sheet-page {
               width: 100% !important;

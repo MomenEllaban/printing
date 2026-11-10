@@ -16,7 +16,7 @@ export function PdfViewer({
   initialZoom: number;
   initialFit: "width" | "page" | "auto";
 }) {
-  const { t } = useI18n();
+  const { t, dir } = useI18n();
   const [numPages, setNumPages] = useState(0);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(initialZoom);
@@ -102,9 +102,29 @@ export function PdfViewer({
         canvas.height = Math.floor(viewport.height * ratio);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
+        canvas.dir = "ltr";
+        canvas.style.direction = "ltr";
+        canvas.style.letterSpacing = "normal";
+        canvas.style.wordSpacing = "normal";
         const context = canvas.getContext("2d");
         if (!context) continue;
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+        // Force standard LTR text direction and reset letter/word spacing on the canvas 2D context
+        // so that PDF.js glyph positioning and text rendering are never distorted by the website's RTL mode.
+        if ("direction" in context) {
+          context.direction = "ltr";
+        }
+        if ("letterSpacing" in context) {
+          (context as unknown as { letterSpacing: string }).letterSpacing = "0px";
+        }
+        if ("wordSpacing" in context) {
+          (context as unknown as { wordSpacing: string }).wordSpacing = "0px";
+        }
+        if ("fontKerning" in context) {
+          (context as unknown as { fontKerning: string }).fontKerning = "normal";
+        }
+
         await pdfPage.render({ canvasContext: context, viewport }).promise;
         if (token !== renderToken.current) return;
       }
@@ -115,7 +135,7 @@ export function PdfViewer({
     } finally {
       if (token === renderToken.current) setRendering(false);
     }
-  }, [containerWidth, fit, numPages, zoom]);
+  }, [containerWidth, fit, numPages, zoom, dir]);
 
   useEffect(() => {
     void render();
@@ -221,11 +241,16 @@ export function PdfViewer({
         </div>
       </div>
 
-      <div ref={wrapRef} className="rounded-2xl bg-surface-strong/60 p-2 sm:p-4">
-        <div ref={pagesRef} className="mx-auto flex w-fit max-w-full flex-col items-center gap-4">
+      <div ref={wrapRef} dir="ltr" style={{ direction: "ltr" }} className="rounded-2xl bg-surface-strong/60 p-2 sm:p-4">
+        <div ref={pagesRef} dir="ltr" style={{ direction: "ltr" }} className="mx-auto flex w-fit max-w-full flex-col items-center gap-4">
           {Array.from({ length: numPages }).map((_, index) => (
-            <div key={index} id={`pdf-page-wrap-${index + 1}`} className="max-w-full">
-              <canvas id={`pdf-page-${index + 1}`} className="pdf-canvas-shadow mx-auto block max-w-full rounded-sm bg-white" />
+            <div key={index} id={`pdf-page-wrap-${index + 1}`} dir="ltr" style={{ direction: "ltr" }} className="max-w-full">
+              <canvas
+                id={`pdf-page-${index + 1}`}
+                dir="ltr"
+                style={{ direction: "ltr", letterSpacing: "normal", wordSpacing: "normal" }}
+                className="pdf-canvas-shadow mx-auto block max-w-full rounded-sm bg-white"
+              />
             </div>
           ))}
         </div>

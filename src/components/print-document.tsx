@@ -181,7 +181,7 @@ export function PrintDocument({
   }
 
   return (
-    <div className="print-shell min-h-dvh bg-white text-black">
+    <div className="print-shell min-h-dvh bg-white text-black" dir="ltr" style={{ direction: "ltr" }}>
       <style>{`
         @page {
           size: ${pageSize};
@@ -201,8 +201,18 @@ export function PrintDocument({
             margin: 0 !important;
             padding: 0 !important;
             font-size: 10pt !important;
+            direction: ltr !important;
+            unicode-bidi: isolate !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+          .print-shell,
+          .sheet-page,
+          .exam-table,
+          .official-sheet-header,
+          .official-footer {
+            direction: ltr !important;
+            unicode-bidi: isolate !important;
           }
           .sheet-page {
             width: 100% !important;
@@ -428,7 +438,12 @@ export function PrintDocument({
         )}
 
         {kind === "word" && html !== null && (
-          <div className="docx-content border border-slate-200" dangerouslySetInnerHTML={{ __html: html }} />
+          <div
+            className="docx-content border border-slate-200"
+            dir="ltr"
+            style={{ direction: "ltr", textAlign: "left" }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
         )}
 
         {kind === "excel" &&
@@ -441,6 +456,8 @@ export function PrintDocument({
             return (
               <section
                 key={`${pageObj.sheetName}-p${pageObj.pageIndex}`}
+                dir="ltr"
+                style={{ direction: "ltr" }}
                 className={`sheet-page mb-6 ${isLastGlobalPage ? "sheet-page-last" : "break-after-page"}`}
               >
                 {/* Official Examination Header with Logo */}
