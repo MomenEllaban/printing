@@ -29,11 +29,11 @@ export interface RoomSpanResult {
 
 /**
  * Computes vertical cell merging (rowspan) for the Room column.
- * Uses exact sheet merges if available, or groups consecutive rows sharing the room.
+ * Seamlessly groups consecutive proctors assigned to the same room or floor.
  */
 export function computeRoomSpans(
   dataRows: ProctorRowItem[],
-  merges?: XLSX.Range[],
+  _merges?: XLSX.Range[],
 ): RoomSpanResult {
   const spanMap = new Map<number, number>();
   const resolvedRoomMap = new Map<number, string>();
@@ -42,89 +42,39 @@ export function computeRoomSpans(
     return { spanMap, resolvedRoomMap };
   }
 
-  // 1. Try matching with workbook column 5 (Room) merges
-  const col5Merges = (merges || []).filter((m) => m.s.c === 5);
-  let usedMergesFromSheet = false;
+  let currentStart = 0;
+  let currentRoom = dataRows[0]?.room ? String(dataRows[0].room).trim() : "";
 
-  if (col5Merges.length > 0) {
-    const matchingMerges = col5Merges.filter((m) =>
-      dataRows.some((dr) => (dr.rawRowIdx ?? -1) >= m.s.r && (dr.rawRowIdx ?? -1) <= m.e.r),
-    );
+  for (let i = 0; i < dataRows.length; i++) {
+    const rawVal = dataRows[i]?.room;
+    const roomVal = rawVal !== undefined && rawVal !== null ? String(rawVal).trim() : "";
 
-    if (matchingMerges.length > 0) {
-      usedMergesFromSheet = true;
-      for (let i = 0; i < dataRows.length; i++) {
-        spanMap.set(i, 1);
-        resolvedRoomMap.set(i, dataRows[i].room.trim());
+    if (i === 0) {
+      currentStart = 0;
+      currentRoom = roomVal;
+      continue;
+    }
+
+    // A new group starts when roomVal is non-empty AND differs from currentRoom (if currentRoom is not empty)
+    // or when currentRoom was empty and roomVal is non-empty
+    const isNewGroup = roomVal !== "" && (currentRoom === "" || roomVal !== currentRoom);
+
+    if (isNewGroup) {
+      const span = i - currentStart;
+      spanMap.set(currentStart, span);
+      for (let k = currentStart; k < i; k++) {
+        resolvedRoomMap.set(k, currentRoom);
       }
-
-      for (const m of matchingMerges) {
-        const indices: number[] = [];
-        let topRoomVal = "";
-        for (let i = 0; i < dataRows.length; i++) {
-          const raw = dataRows[i].rawRowIdx ?? -1;
-          if (raw >= m.s.r && raw <= m.e.r) {
-            indices.push(i);
-            if (!topRoomVal && dataRows[i].room.trim()) {
-              topRoomVal = dataRows[i].room.trim();
-            }
-          }
-        }
-
-        if (indices.length > 0) {
-          const firstIdx = indices[0];
-          spanMap.set(firstIdx, indices.length);
-          for (let k = 0; k < indices.length; k++) {
-            const idx = indices[k];
-            resolvedRoomMap.set(idx, topRoomVal);
-            if (k > 0) {
-              spanMap.delete(idx);
-            }
-          }
-        }
-      }
+      currentStart = i;
+      currentRoom = roomVal;
     }
   }
 
-  // 2. Fallback to smart grouping: room starts on non-empty value,
-  // subsequent rows belong to the same group if room is empty or matches.
-  if (!usedMergesFromSheet) {
-    let currentStart = 0;
-    let currentRoom = dataRows[0]?.room.trim() || "";
-
-    for (let i = 0; i < dataRows.length; i++) {
-      const roomVal = dataRows[i].room.trim();
-
-      if (i === 0) {
-        currentStart = 0;
-        currentRoom = roomVal;
-        continue;
-      }
-
-      const startsNewGroup = roomVal !== "" && (currentRoom === "" || roomVal !== currentRoom);
-
-      if (startsNewGroup) {
-        const span = i - currentStart;
-        spanMap.set(currentStart, span);
-        for (let k = currentStart; k < i; k++) {
-          resolvedRoomMap.set(k, currentRoom);
-          if (k > currentStart) {
-            spanMap.delete(k);
-          }
-        }
-        currentStart = i;
-        currentRoom = roomVal;
-      }
-    }
-
-    const lastSpan = dataRows.length - currentStart;
-    spanMap.set(currentStart, lastSpan);
-    for (let k = currentStart; k < dataRows.length; k++) {
-      resolvedRoomMap.set(k, currentRoom);
-      if (k > currentStart) {
-        spanMap.delete(k);
-      }
-    }
+  // Finalize the last group
+  const lastSpan = dataRows.length - currentStart;
+  spanMap.set(currentStart, lastSpan);
+  for (let k = currentStart; k < dataRows.length; k++) {
+    resolvedRoomMap.set(k, currentRoom);
   }
 
   return { spanMap, resolvedRoomMap };

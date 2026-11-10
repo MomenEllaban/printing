@@ -267,6 +267,34 @@ export function ExcelViewerModal({
                   ],
                 ];
 
+          // Auto-fill inherited room values for each proctor row from vertical merges
+          let headerIdx = -1;
+          for (let r = 0; r < Math.min(15, cleanRows.length); r++) {
+            const cell0 = String(cleanRows[r]?.[0] ?? "").trim();
+            const cell1 = String(cleanRows[r]?.[1] ?? "").trim();
+            if (/^No\.?$/i.test(cell0) || /^Name$/i.test(cell1)) {
+              headerIdx = r;
+              break;
+            }
+          }
+          if (headerIdx !== -1) {
+            let activeRoom = "";
+            for (let r = headerIdx + 1; r < cleanRows.length; r++) {
+              const row = cleanRows[r] || [];
+              const cell1 = String(row[1] ?? "").trim();
+              if (/^Head$/i.test(cell1) || /Mohamed\s*Nabil/i.test(cell1)) break;
+              if (!row[0] && !row[1] && !row[2]) continue;
+
+              const currentRoom = String(row[5] ?? "").trim();
+              if (currentRoom) {
+                activeRoom = currentRoom;
+              } else if (activeRoom) {
+                while (row.length <= 5) row.push("");
+                row[5] = activeRoom;
+              }
+            }
+          }
+
           parsed.push({
             name,
             rows: cleanRows,
@@ -432,7 +460,7 @@ export function ExcelViewerModal({
         const otherMerges = (s.merges || []).filter((m) => m.s.c !== 5 || m.e.c !== 5);
         const roomMerges: XLSX.Range[] = [];
         const parsed = parseSheetDetails(s, buildingName);
-        const { spanMap } = computeRoomSpans(parsed.dataRows, s.merges);
+        const { spanMap } = computeRoomSpans(parsed.dataRows);
 
         for (const [startIdx, span] of spanMap.entries()) {
           if (span > 1 && startIdx + span - 1 < parsed.dataRows.length) {
@@ -531,7 +559,7 @@ export function ExcelViewerModal({
     const sheetsHtml = sheetsToPrint
       .map((s, idx) => {
         const parsed = parseSheetDetails(s, buildingName);
-        const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows, s.merges);
+        const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows);
         const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
 
         const rowsHtml = parsed.dataRows
@@ -1059,71 +1087,227 @@ export function ExcelViewerModal({
                 const parsed = parseSheetDetails(sheet, buildingName);
 
                 if (isEditing) {
-                  // Interactive Editable Table Grid with the 10 Required Columns
+                  // Beautiful, Clean & Ergonomic Edit Mode Focused Exclusively on Proctors & Rooms
                   return (
                     <div
                       key={sheet.name}
-                      className="bg-surface-elevated border border-border rounded-xl shadow-xs overflow-hidden"
+                      className="bg-surface-elevated border border-border rounded-2xl shadow-sm overflow-hidden"
                     >
-                      <div className="flex items-center justify-between px-4 py-2.5 bg-surface border-b border-border">
-                        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                          <FileSpreadsheet className="size-3.5" />
-                          <span>{sheet.name} ({locale === "ar" ? "وضع التعديل المباشر" : "Edit Mode"})</span>
-                        </span>
+                      {/* Edit Mode Header Toolbar */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-amber-500/10 border-b border-amber-500/20">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            <Pencil className="size-4" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                              <span>{sheet.name}</span>
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold">
+                                {locale === "ar" ? "تعديل بيانات المراقبين واللجان" : "Editing Proctors & Rooms"}
+                              </span>
+                            </h3>
+                            <p className="text-xs text-muted-foreground">
+                              {locale === "ar"
+                                ? "يظهر رقم الروم أمام كل مراقب بوضوح. كرر رقم الروم للمراقبين في نفس اللجنة لدمجهم تلقائياً."
+                                : "Room numbers are clearly visible on every row. Proctors with the same room will be merged automatically."}
+                            </p>
+                          </div>
+                        </div>
+
                         <Button
                           type="button"
                           variant="secondary"
-                          className="text-xs font-semibold gap-1 py-1 px-2.5"
+                          className="text-xs font-bold gap-1.5 py-1.5 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                           onClick={handleAddRow}
                         >
-                          <Plus className="size-3" />
-                          <span>{locale === "ar" ? "+ إضافة مراقب/سطر" : "Add Row"}</span>
+                          <Plus className="size-3.5" />
+                          <span>{locale === "ar" ? "+ إضافة مراقب جديد" : "+ Add Proctor"}</span>
                         </Button>
                       </div>
 
-                      <div className="overflow-x-auto p-2">
+                      {/* Clean Sheet Metadata Settings Card */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 p-4 bg-surface-soft/40 border-b border-border">
+                        <div>
+                          <label className="block text-[11px] font-bold text-muted-foreground mb-1">
+                            {locale === "ar" ? "اسم السنتر والمبنى (Center):" : "Center / Building:"}
+                          </label>
+                          <input
+                            type="text"
+                            value={parsed.center}
+                            onChange={(e) => handleCellChange(sheetRealIdx, 0, 1, e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-foreground text-xs font-semibold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-muted-foreground mb-1">
+                            {locale === "ar" ? "التاريخ (Date):" : "Date:"}
+                          </label>
+                          <input
+                            type="text"
+                            value={parsed.date}
+                            onChange={(e) => handleCellChange(sheetRealIdx, 0, 5, `Date: ${e.target.value}`)}
+                            className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-foreground text-xs font-semibold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-muted-foreground mb-1">
+                            {locale === "ar" ? "نوع الامتحان (EST Type):" : "EST Type:"}
+                          </label>
+                          <input
+                            type="text"
+                            value={parsed.estType}
+                            onChange={(e) => handleCellChange(sheetRealIdx, 0, 7, `EST Type : ${e.target.value}`)}
+                            className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-foreground text-xs font-semibold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-muted-foreground mb-1">
+                            {locale === "ar" ? "رئيس السنتر (Head of Center):" : "Head of Center:"}
+                          </label>
+                          <input
+                            type="text"
+                            value={parsed.headName}
+                            onChange={(e) => {
+                              for (let r = sheet.rows.length - 1; r >= 0; r--) {
+                                const val = String(sheet.rows[r]?.[1] ?? "").trim();
+                                if (/Mohamed\s*Nabil|Head/i.test(val)) {
+                                  handleCellChange(sheetRealIdx, r + 1 < sheet.rows.length ? r + 1 : r, 1, e.target.value);
+                                  break;
+                                }
+                              }
+                            }}
+                            className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-foreground text-xs font-semibold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Focused, Comfortable Proctors Table */}
+                      <div className="overflow-x-auto p-3">
                         <table className="w-full border-collapse text-xs">
                           <thead>
-                            <tr className="bg-surface border-b border-border text-[11px] text-muted-foreground font-semibold">
-                              <th className="w-8 p-1.5 text-center">#</th>
-                              <th className="w-12 p-1.5 text-center">1. No.</th>
-                              <th className="p-1.5 text-start min-w-[140px]">2. Name</th>
-                              <th className="w-28 p-1.5 text-start">3. Proctor Type</th>
-                              <th className="w-24 p-1.5 text-start">4. Mobile</th>
-                              <th className="w-14 p-1.5 text-center">5. IP/EP</th>
-                              <th className="w-16 p-1.5 text-center">6. Room</th>
-                              <th className="w-28 p-1.5 text-center">7. Arrival Signature</th>
-                              <th className="w-16 p-1.5 text-center">8. Time (Arr)</th>
-                              <th className="w-28 p-1.5 text-center">9. Departure Signature</th>
-                              <th className="w-16 p-1.5 text-center">10. Time (Dep)</th>
-                              <th className="w-8 p-1.5 text-center"></th>
+                            <tr className="bg-surface-soft border-b border-border text-[11px] font-extrabold text-muted-foreground uppercase tracking-wider">
+                              <th className="w-10 p-2 text-center">#</th>
+                              <th className="w-16 p-2 text-center">1. No.</th>
+                              <th className="p-2 text-start min-w-[200px]">2. Name (اسم المراقب)</th>
+                              <th className="w-32 p-2 text-start">3. Proctor Type</th>
+                              <th className="w-32 p-2 text-start">4. Mobile</th>
+                              <th className="w-16 p-2 text-center">5. IP/EP</th>
+                              <th className="w-24 p-2 text-center bg-sky-500/10 text-sky-700 dark:text-sky-300 font-extrabold">
+                                6. Room (اللجنة)
+                              </th>
+                              <th className="w-28 p-2 text-center">7. Arrival Sig</th>
+                              <th className="w-20 p-2 text-center">8. Time (حضور)</th>
+                              <th className="w-28 p-2 text-center">9. Departure Sig</th>
+                              <th className="w-20 p-2 text-center">10. Time (انصراف)</th>
+                              <th className="w-12 p-2 text-center"></th>
                             </tr>
                           </thead>
-                          <tbody>
-                            {sheet.rows.map((row, rIdx) => {
+                          <tbody className="divide-y divide-border">
+                            {parsed.dataRows.map((r, dIdx) => {
                               return (
-                                <tr key={rIdx} className="hover:bg-surface-soft border-b border-border/50">
-                                  <td className="w-8 p-1 text-center text-muted-foreground font-mono text-[10px]">
-                                    {rIdx + 1}
+                                <tr key={dIdx} className="hover:bg-surface-soft/60 transition-colors">
+                                  <td className="p-2 text-center text-muted-foreground font-mono text-[11px]">
+                                    {dIdx + 1}
                                   </td>
-                                  {row.map((cell, cIdx) => (
-                                    <td key={cIdx} className="p-1 border-e border-border/30 min-w-[70px]">
-                                      <input
-                                        type="text"
-                                        value={String(cell ?? "")}
-                                        onChange={(e) =>
-                                          handleCellChange(sheetRealIdx, rIdx, cIdx, e.target.value)
-                                        }
-                                        className="w-full px-2 py-1 bg-transparent hover:bg-surface focus:bg-surface rounded border border-transparent focus:border-emerald-500 outline-none text-xs text-foreground transition-all"
-                                      />
-                                    </td>
-                                  ))}
-                                  <td className="w-8 p-1 text-center">
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[0] ?? r.no)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 0, e.target.value)}
+                                      className="w-full px-2 py-1 text-center font-bold bg-surface rounded border border-border focus:border-emerald-500 outline-none text-xs"
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[1] ?? r.name)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 1, e.target.value)}
+                                      className="w-full px-2.5 py-1 font-semibold bg-surface rounded border border-border focus:border-emerald-500 outline-none text-xs"
+                                      placeholder="Full name..."
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <select
+                                      value={String(sheet.rows[r.rawRowIdx]?.[2] ?? r.proctorType)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 2, e.target.value)}
+                                      className="w-full px-2 py-1 bg-surface rounded border border-border text-xs focus:border-emerald-500 outline-none font-semibold cursor-pointer"
+                                    >
+                                      <option value="Proctor">Proctor</option>
+                                      <option value="Senior">Senior</option>
+                                      <option value="Roaming">Roaming</option>
+                                      <option value="Control Room Assistant">Control Room Assistant</option>
+                                      <option value="Head">Head</option>
+                                    </select>
+                                  </td>
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[3] ?? r.mobile)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 3, e.target.value)}
+                                      className="w-full px-2 py-1 font-mono text-xs bg-surface rounded border border-border focus:border-emerald-500 outline-none"
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <select
+                                      value={String((sheet.rows[r.rawRowIdx]?.[4] ?? r.ipEp) || "EP")}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 4, e.target.value)}
+                                      className="w-full px-1 py-1 text-center font-bold bg-surface rounded border border-border text-xs focus:border-emerald-500 outline-none cursor-pointer"
+                                    >
+                                      <option value="EP">EP</option>
+                                      <option value="IP">IP</option>
+                                    </select>
+                                  </td>
+                                  <td className="p-1 bg-sky-500/5">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[5] ?? r.room)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 5, e.target.value)}
+                                      className="w-full px-2 py-1 text-center font-extrabold bg-surface rounded border border-sky-400 dark:border-sky-700 text-sky-900 dark:text-sky-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none text-xs shadow-2xs"
+                                      placeholder="e.g. 401"
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[6] ?? r.arrivalSignature)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 6, e.target.value)}
+                                      className="w-full px-2 py-1 text-center bg-surface rounded border border-border text-xs focus:border-emerald-500 outline-none"
+                                      placeholder="Signature..."
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[7] ?? r.arrivalTime)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 7, e.target.value)}
+                                      className="w-full px-1.5 py-1 text-center font-mono text-xs bg-surface rounded border border-border focus:border-emerald-500 outline-none"
+                                      placeholder="__ : __"
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[8] ?? r.departureSignature)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 8, e.target.value)}
+                                      className="w-full px-2 py-1 text-center bg-surface rounded border border-border text-xs focus:border-emerald-500 outline-none"
+                                      placeholder="Signature..."
+                                    />
+                                  </td>
+                                  <td className="p-1">
+                                    <input
+                                      type="text"
+                                      value={String(sheet.rows[r.rawRowIdx]?.[9] ?? r.departureTime)}
+                                      onChange={(e) => handleCellChange(sheetRealIdx, r.rawRowIdx, 9, e.target.value)}
+                                      className="w-full px-1.5 py-1 text-center font-mono text-xs bg-surface rounded border border-border focus:border-emerald-500 outline-none"
+                                      placeholder="__ : __"
+                                    />
+                                  </td>
+                                  <td className="p-1 text-center">
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteRow(rIdx)}
-                                      className="p-1 text-muted-foreground hover:text-rose-600 rounded transition-colors cursor-pointer"
-                                      title={locale === "ar" ? "حذف هذا السطر" : "Delete row"}
+                                      onClick={() => handleDeleteRow(r.rawRowIdx)}
+                                      className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                      title={locale === "ar" ? "حذف هذا المراقب" : "Delete proctor"}
                                     >
                                       <Trash2 className="size-3.5" />
                                     </button>
@@ -1133,6 +1317,18 @@ export function ExcelViewerModal({
                             })}
                           </tbody>
                         </table>
+
+                        <div className="mt-3.5 flex justify-center pb-1">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="text-xs font-bold gap-1.5 py-2 px-5 border-dashed border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            onClick={handleAddRow}
+                          >
+                            <Plus className="size-3.5" />
+                            <span>{locale === "ar" ? "+ إضافة مراقب جديد في نهاية الجدول" : "+ Add Proctor"}</span>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1140,7 +1336,7 @@ export function ExcelViewerModal({
 
                 // Official High-Fidelity Formatted View with EST Logo, Header & 10 Columns
                 const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
-                const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows, sheet.merges);
+                const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows);
 
                 return (
                   <div
@@ -1205,7 +1401,7 @@ export function ExcelViewerModal({
                             <th className="w-28 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Proctor Type</th>
                             <th className="w-28 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Mobile</th>
                             <th className="w-14 py-2.5 px-1 text-center border-e border-slate-300 dark:border-slate-700">IP / EP</th>
-                            <th className="w-20 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Room</th>
+                            <th className="w-20 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700 font-extrabold">Room</th>
                             <th className="w-32 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Arrival Signature</th>
                             <th className="w-16 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Time</th>
                             <th className="w-32 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Departure Signature</th>
@@ -1262,25 +1458,15 @@ export function ExcelViewerModal({
                                   </span>
                                 </td>
 
+                                {/* Merged Room Cell: One large cell with room name centered, matching Excel */}
                                 {shouldRenderRoomCell && (
                                   <td
                                     rowSpan={roomSpan}
-                                    className="py-2.5 px-2 text-center align-middle border-e border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70"
+                                    className="py-3 px-3 text-center align-middle font-bold border-e border-slate-300 dark:border-slate-700 bg-sky-50/50 dark:bg-sky-950/20 text-slate-900 dark:text-slate-100"
                                   >
-                                    {roomDisplay ? (
-                                      <div className="flex flex-col items-center justify-center gap-1">
-                                        <span className="font-extrabold text-xs px-2.5 py-1 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs">
-                                          {roomDisplay}
-                                        </span>
-                                        {roomSpan > 1 && (
-                                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full">
-                                            {roomSpan} {locale === "ar" ? "مراقبين" : "proctors"}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="text-muted-foreground">-</span>
-                                    )}
+                                    <div className="font-extrabold text-xs sm:text-sm tracking-wide text-slate-900 dark:text-slate-100">
+                                      {roomDisplay}
+                                    </div>
                                   </td>
                                 )}
 

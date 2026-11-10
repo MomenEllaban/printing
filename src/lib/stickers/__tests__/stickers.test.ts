@@ -642,18 +642,20 @@ describe("generateStickerPdf", () => {
       expect(resolvedRoomMap.get(6)).toBe("3");
     });
 
-    it("Honors sheet !merges if provided directly from workbook", () => {
+    it("Correctly groups proctors when room name is populated on every row (Edit Mode pattern)", () => {
       const mockRows = [
-        { no: 1, name: "P1", proctorType: "Proctor", mobile: "010", ipEp: "EP", room: "101", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 10 },
-        { no: 2, name: "P2", proctorType: "Proctor", mobile: "011", ipEp: "EP", room: "", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 11 },
+        { no: 1, name: "P1", proctorType: "Proctor", mobile: "010", ipEp: "EP", room: "401", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 10 },
+        { no: 2, name: "P2", proctorType: "Proctor", mobile: "011", ipEp: "EP", room: "401", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 11 },
+        { no: 3, name: "P3", proctorType: "Proctor", mobile: "012", ipEp: "EP", room: "401", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 12 },
       ];
-      const merges = [{ s: { r: 10, c: 5 }, e: { r: 11, c: 5 } }];
 
-      const { spanMap, resolvedRoomMap } = computeRoomSpans(mockRows, merges);
-      expect(spanMap.get(0)).toBe(2);
+      const { spanMap, resolvedRoomMap } = computeRoomSpans(mockRows);
+      expect(spanMap.get(0)).toBe(3);
       expect(spanMap.has(1)).toBe(false);
-      expect(resolvedRoomMap.get(0)).toBe("101");
-      expect(resolvedRoomMap.get(1)).toBe("101");
+      expect(spanMap.has(2)).toBe(false);
+      expect(resolvedRoomMap.get(0)).toBe("401");
+      expect(resolvedRoomMap.get(1)).toBe("401");
+      expect(resolvedRoomMap.get(2)).toBe("401");
     });
   });
 
