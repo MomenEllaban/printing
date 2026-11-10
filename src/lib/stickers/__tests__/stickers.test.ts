@@ -559,7 +559,7 @@ describe("generateStickerPdf", () => {
     expect(studentTheme.textClass).toContain("purple");
   });
 
-  it("Generates official Building Excel workbook with floor tabs and Control Room tab", () => {
+  it("Generates official Building Excel workbook with floor tabs, Control Room tab, and the exact 10 required columns", () => {
     const excelBytes = generateBuildingExcelWorkbook({
       buildingName: "Sheraton Management",
       examName: "EST 1",
@@ -572,6 +572,33 @@ describe("generateStickerPdf", () => {
     expect(wb.SheetNames).toContain("Management Ground");
     expect(wb.SheetNames).toContain("Management 1st Floor");
     expect(wb.SheetNames).toContain("Control Room");
+
+    // Verify the exact 10 required columns in Management Ground:
+    const wsGround = wb.Sheets["Management Ground"];
+    const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(wsGround, { header: 1 });
+    const headerRow = rows[2]; // Row 3 (0-based 2)
+    expect(headerRow).toEqual([
+      "No.",
+      "Name",
+      "Proctor Type",
+      "Mobile",
+      "IP / EP",
+      "Room",
+      "Arrival Signature",
+      "Time",
+      "Departure Signature",
+      "Time",
+    ]);
+
+    // Verify first data row sequential numbering and separate Time fields
+    const dataRow1 = rows[3];
+    expect(dataRow1[0]).toBe(1); // No.
+    expect(dataRow1[1]).toBe("Safwat Ahmed"); // Name
+    expect(dataRow1[2]).toBe("Senior"); // Proctor Type
+    expect(dataRow1[4]).toBe("IP"); // IP / EP
+    expect(dataRow1[5]).toBe("Ground"); // Room
+    expect(dataRow1[7]).toBe(":"); // Arrival Time
+    expect(dataRow1[9]).toBe(":"); // Departure Time
   });
 
   describe("Stickers 4-Up Layout for Rooms and Floors", () => {

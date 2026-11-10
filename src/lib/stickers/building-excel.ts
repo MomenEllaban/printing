@@ -57,9 +57,9 @@ export function generateBuildingExcelWorkbook(data: BuildingExcelData): Uint8Arr
       "Mobile",
       "IP / EP",
       "Room",
-      "Arrival ",
+      "Arrival Signature",
       "Time",
-      "Departure ",
+      "Departure Signature",
       "Time",
     ];
 
@@ -92,18 +92,18 @@ export function generateBuildingExcelWorkbook(data: BuildingExcelData): Uint8Arr
     const allData = [titleRow, emptyRow, headerRow, ...sampleRows, ...footerRows];
     const ws = XLSX.utils.aoa_to_sheet(allData);
 
-    // Column widths
+    // Column widths tailored for A4 landscape printing and handwritten signatures
     ws["!cols"] = [
-      { wch: 6 },  // No.
-      { wch: 32 }, // Name
-      { wch: 22 }, // Proctor Type
-      { wch: 16 }, // Mobile
-      { wch: 10 }, // IP / EP
-      { wch: 14 }, // Room
-      { wch: 10 }, // Arrival
-      { wch: 8 },  // Time
-      { wch: 12 }, // Departure
-      { wch: 8 },  // Time
+      { wch: 6 },  // 1. No.
+      { wch: 32 }, // 2. Name
+      { wch: 22 }, // 3. Proctor Type
+      { wch: 16 }, // 4. Mobile
+      { wch: 10 }, // 5. IP / EP
+      { wch: 12 }, // 6. Room
+      { wch: 20 }, // 7. Arrival Signature (sufficient space for handwriting)
+      { wch: 10 }, // 8. Time (Arrival)
+      { wch: 20 }, // 9. Departure Signature (sufficient space for handwriting)
+      { wch: 10 }, // 10. Time (Departure)
     ];
 
     // Merges for header row: col 1 spans 3 cols (1, 2, 3), col 5 spans 2 cols (5, 6)
