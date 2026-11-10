@@ -10,6 +10,7 @@ import {
   computeRoomSpans,
   parseSheetDetails,
   type SheetData,
+  type ParsedProctorRow,
 } from "@/lib/stickers/building-excel";
 
 type PrintKind = "pdf" | "excel" | "word" | "image" | "unsupported";
@@ -132,6 +133,53 @@ export function PrintDocument({
 
   const visibleSheets = selectedSheet === "all" ? sheets : sheets.filter((s) => s.name === selectedSheet);
 
+  const ROWS_PER_PAGE = 15;
+  const printablePages: {
+    sheetName: string;
+    centerClean: string;
+    date: string;
+    estType: string;
+    headName: string;
+    pageIndex: number;
+    totalPages: number;
+    rows: ParsedProctorRow[];
+  }[] = [];
+
+  if (kind === "excel") {
+    for (const sheet of visibleSheets) {
+      const parsed = parseSheetDetails(sheet);
+      const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
+      const dataRows = parsed.dataRows;
+
+      if (dataRows.length === 0) {
+        printablePages.push({
+          sheetName: sheet.name,
+          centerClean,
+          date: parsed.date,
+          estType: parsed.estType,
+          headName: parsed.headName,
+          pageIndex: 0,
+          totalPages: 1,
+          rows: [],
+        });
+      } else {
+        const totalPages = Math.ceil(dataRows.length / ROWS_PER_PAGE);
+        for (let p = 0; p < totalPages; p++) {
+          printablePages.push({
+            sheetName: sheet.name,
+            centerClean,
+            date: parsed.date,
+            estType: parsed.estType,
+            headName: parsed.headName,
+            pageIndex: p,
+            totalPages,
+            rows: dataRows.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE),
+          });
+        }
+      }
+    }
+  }
+
   return (
     <div className="print-shell min-h-dvh bg-white text-black">
       <style>{`
@@ -141,32 +189,71 @@ export function PrintDocument({
         }
         @media print {
           .no-print { display: none !important; }
-          .break-after-page { page-break-after: always; break-after: page; }
-          .print-shell { padding: 8mm 10mm 6mm 10mm !important; margin: 0 !important; }
+          .break-after-page { page-break-after: always !important; break-after: page !important; }
+          .print-shell, .print-shell > div {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
           body {
+            width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            font-size: 9.5pt !important;
+            font-size: 10pt !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          .sheet-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            padding: 5mm 6mm 5mm 6mm !important;
+            margin: 0 !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .sheet-page.sheet-page-last,
+          .sheet-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+          .exam-table tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
           a[href]:after { content: none !important; }
         }
-        .sheet-page { width: 100%; box-sizing: border-box; }
+        .sheet-page {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 5mm 6mm 5mm 6mm;
+          page-break-after: always;
+          break-after: page;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .sheet-page.sheet-page-last,
+        .sheet-page:last-child {
+          page-break-after: auto;
+          break-after: auto;
+        }
         .official-sheet-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
           border-bottom: 2px solid #0f172a;
-          padding-bottom: 5px;
-          margin-bottom: 8px;
+          padding-bottom: 4px;
+          margin-bottom: 5px;
         }
         .header-logo { width: 130px; display: flex; align-items: center; }
         .est-logo-img { height: 48px; width: auto; object-fit: contain; }
         .header-center { flex: 1; text-align: center; padding: 0 10px; }
         .est-register-title {
-          margin: 0 0 4px;
-          font-size: 14.5pt;
+          margin: 0 0 3px;
+          font-size: 15pt;
           font-weight: 900;
           letter-spacing: 0.5px;
           color: #0f172a;
@@ -176,59 +263,61 @@ export function PrintDocument({
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          font-size: 10pt;
+          font-size: 10.5pt;
           color: #0f172a;
           background: #f8fafc;
-          padding: 3px 14px;
+          padding: 2.5px 14px;
           border-radius: 4px;
           border: 1.5px solid #0f172a;
         }
         .center-label { font-weight: 900; color: #0f172a; }
         .center-val { font-weight: 700; color: #0f172a; }
-        .header-meta { width: 185px; text-align: right; }
+        .header-meta { width: 195px; text-align: right; }
         .meta-box {
           background: #f8fafc;
           border: 1.5px solid #0f172a;
           border-radius: 4px;
-          padding: 4px 10px;
+          padding: 3px 8px;
           font-size: 8.5pt;
           line-height: 1.35;
           text-align: left;
         }
-        .meta-lbl { font-weight: 800; color: #0f172a; display: inline-block; min-width: 62px; }
+        .meta-lbl { font-weight: 800; color: #0f172a; display: inline-block; min-width: 60px; }
         .meta-val { font-weight: 600; color: #334155; }
         .tab-highlight { font-weight: 800; color: #047857; }
-        .exam-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 8px; }
+        .page-badge { font-weight: 700; color: #64748b; font-size: 8pt; margin-inline-start: 3px; }
+        .exam-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 5px; }
         .exam-table th, .exam-table td {
           border: 1px solid #0f172a !important;
-          padding: 5px 4px;
+          padding: 4px 4px;
           vertical-align: middle;
-          min-height: 30px;
         }
         .exam-table th {
           background-color: #f1f5f9 !important;
           color: #0f172a;
-          font-size: 8.5pt;
+          font-size: 9pt;
           font-weight: 800;
           text-transform: uppercase;
           text-align: center;
           letter-spacing: 0.2px;
+          height: 27px;
         }
         .exam-table th.col-name { text-align: start; padding-inline-start: 8px; }
+        .exam-table td { height: 31px; }
         .exam-table tr:nth-child(even) td { background-color: #fafafa; }
-        .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 9pt; }
-        .col-name { width: 23.5%; font-weight: 700; font-size: 9.5pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .col-type { width: 8.5%; text-align: center !important; font-size: 8pt; }
-        .col-mobile { width: 10.5%; text-align: center !important; font-size: 8.5pt; letter-spacing: 0.2px; font-family: monospace; }
-        .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 9pt; }
-        .col-room { width: 6.5%; text-align: center !important; font-size: 10pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
+        .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 10pt; }
+        .col-name { width: 24%; font-weight: 700; font-size: 10pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .col-type { width: 8.5%; text-align: center !important; font-size: 8.5pt; }
+        .col-mobile { width: 10.5%; text-align: center !important; font-size: 9.5pt; letter-spacing: 0.2px; font-family: monospace; font-weight: 600; }
+        .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 10pt; }
+        .col-room { width: 7%; text-align: center !important; font-size: 11pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
         .col-sig { width: 14.5%; text-align: center; }
-        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 8.5pt; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
+        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 9pt; font-weight: 600; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
         .sig-line { border-bottom: 1px dashed #94a3b8; height: 16px; margin: 1px 4px; }
         .badge {
           display: inline-block;
           padding: 1.5px 5px;
-          font-size: 7.5pt;
+          font-size: 8pt;
           font-weight: 700;
           border-radius: 3px;
           border: 1px solid #94a3b8;
@@ -242,10 +331,10 @@ export function PrintDocument({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-top: 8px;
-          padding-top: 6px;
+          margin-top: 5px;
+          padding-top: 4px;
           border-top: 1.5px solid #0f172a;
-          font-size: 8.5pt;
+          font-size: 9pt;
         }
         .footer-left { width: 30%; }
         .footer-center { width: 45%; }
@@ -343,15 +432,16 @@ export function PrintDocument({
         )}
 
         {kind === "excel" &&
-          visibleSheets.map((sheet, sIdx) => {
-            const parsed = parseSheetDetails(sheet);
-            const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows);
-            const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
+          printablePages.map((pageObj, pageGlobalIdx) => {
+            const { spanMap, resolvedRoomMap } = computeRoomSpans(pageObj.rows);
+            const isLastGlobalPage = pageGlobalIdx === printablePages.length - 1;
+            const pageIndicator =
+              pageObj.totalPages > 1 ? ` (Page ${pageObj.pageIndex + 1} of ${pageObj.totalPages})` : "";
 
             return (
               <section
-                key={sheet.name}
-                className={`sheet-page mb-8 ${sIdx < visibleSheets.length - 1 ? "break-after-page" : ""}`}
+                key={`${pageObj.sheetName}-p${pageObj.pageIndex}`}
+                className={`sheet-page mb-6 ${isLastGlobalPage ? "sheet-page-last" : "break-after-page"}`}
               >
                 {/* Official Examination Header with Logo */}
                 <div className="official-sheet-header">
@@ -362,19 +452,23 @@ export function PrintDocument({
                     <div className="est-register-title">PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</div>
                     <div className="center-banner">
                       <span className="center-label">Center :</span>
-                      <span className="center-val">{centerClean}</span>
+                      <span className="center-val">{pageObj.centerClean}</span>
                     </div>
                   </div>
                   <div className="header-meta">
                     <div className="meta-box">
-                      <div><span className="meta-lbl">Date:</span> <span className="meta-val">{parsed.date}</span></div>
-                      <div><span className="meta-lbl">EST Type:</span> <span className="meta-val">{parsed.estType}</span></div>
-                      <div><span className="meta-lbl">Sheet:</span> <span className="tab-highlight">{sheet.name}</span></div>
+                      <div><span className="meta-lbl">Date:</span> <span className="meta-val">{pageObj.date}</span></div>
+                      <div><span className="meta-lbl">EST Type:</span> <span className="meta-val">{pageObj.estType}</span></div>
+                      <div>
+                        <span className="meta-lbl">Sheet:</span>
+                        <span className="tab-highlight">{pageObj.sheetName}</span>
+                        {pageIndicator ? <span className="page-badge">{pageIndicator}</span> : null}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Examination Table with 10 Required Columns */}
+                {/* Examination Table with 10 Required Columns (Strict max 15 rows per page) */}
                 <table className="exam-table">
                   <thead>
                     <tr>
@@ -391,7 +485,7 @@ export function PrintDocument({
                     </tr>
                   </thead>
                   <tbody>
-                    {parsed.dataRows.map((row, rIdx) => {
+                    {pageObj.rows.map((row, rIdx) => {
                       const roomSpan = spanMap.get(rIdx);
                       const shouldRenderRoomCell = roomSpan !== undefined;
                       const roomDisplay = resolvedRoomMap.get(rIdx) || row.room || "";
@@ -433,7 +527,7 @@ export function PrintDocument({
                 {/* Official Footer with Signature */}
                 <div className="official-footer">
                   <div className="footer-left">
-                    <strong>Head of Center:</strong> {parsed.headName}
+                    <strong>Head of Center:</strong> {pageObj.headName}
                   </div>
                   <div className="footer-center">
                     <strong>Signature:</strong> ___________________________________

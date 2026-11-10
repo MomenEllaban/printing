@@ -237,9 +237,17 @@ export function parseSheetDetails(
   };
 }
 
+const ROWS_PER_PAGE = 15;
+
 /**
  * Generates official high-fidelity A4 landscape HTML matching the EST Proctor Attendance Register.
- * Features enlarged readable fonts, official EST logo, Center banner, 10 columns, and zero-margin printing.
+ * Features:
+ * - Strict pagination of maximum 15 rows per A4 page.
+ * - Dynamic room span merging recalculated per page chunk so merged cells never split across pages.
+ * - Uniform, balanced margins (5mm top/bottom, 6mm sides) eliminating wasted white margins.
+ * - Clean top header and matching top margin on Page 2 and subsequent pages.
+ * - Enlarged fonts, row heights, and legible badges for physical examination printouts.
+ * - Zero trailing blank pages.
  */
 export function generateEstPrintHtml(
   sheets: SheetData[],
@@ -249,13 +257,57 @@ export function generateEstPrintHtml(
   const buildingName = options?.buildingName;
   const pageTitle = options?.title || "EST Building Register";
 
-  const sheetsHtml = sheetsToPrint
-    .map((s, idx) => {
-      const parsed = parseSheetDetails(s, buildingName);
-      const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows);
-      const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
+  // Flatten all sheets into individual printable page chunks with max 15 rows each
+  const printablePages: {
+    sheetName: string;
+    centerClean: string;
+    date: string;
+    estType: string;
+    headName: string;
+    pageIndex: number;
+    totalPages: number;
+    rows: ParsedProctorRow[];
+  }[] = [];
 
-      const rowsHtml = parsed.dataRows
+  for (const s of sheetsToPrint) {
+    const parsed = parseSheetDetails(s, buildingName);
+    const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
+    const dataRows = parsed.dataRows;
+
+    if (dataRows.length === 0) {
+      printablePages.push({
+        sheetName: s.name,
+        centerClean,
+        date: parsed.date,
+        estType: parsed.estType,
+        headName: parsed.headName,
+        pageIndex: 0,
+        totalPages: 1,
+        rows: [],
+      });
+    } else {
+      const totalPages = Math.ceil(dataRows.length / ROWS_PER_PAGE);
+      for (let p = 0; p < totalPages; p++) {
+        printablePages.push({
+          sheetName: s.name,
+          centerClean,
+          date: parsed.date,
+          estType: parsed.estType,
+          headName: parsed.headName,
+          pageIndex: p,
+          totalPages,
+          rows: dataRows.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE),
+        });
+      }
+    }
+  }
+
+  const sheetsHtml = printablePages
+    .map((pageObj, pageGlobalIdx) => {
+      // Compute room spans dynamically for this page chunk so room cells merge cleanly within this page
+      const { spanMap, resolvedRoomMap } = computeRoomSpans(pageObj.rows);
+
+      const rowsHtml = pageObj.rows
         .map((row, rIdx) => {
           const roomSpan = spanMap.get(rIdx);
           const shouldRenderRoomCell = roomSpan !== undefined;
@@ -282,8 +334,12 @@ export function generateEstPrintHtml(
         })
         .join("");
 
+      const isLastGlobalPage = pageGlobalIdx === printablePages.length - 1;
+      const pageIndicator =
+        pageObj.totalPages > 1 ? ` (Page ${pageObj.pageIndex + 1} of ${pageObj.totalPages})` : "";
+
       return `
-        <div class="sheet-page ${idx < sheetsToPrint.length - 1 ? "page-break" : ""}">
+        <div class="sheet-page ${isLastGlobalPage ? "sheet-page-last" : ""}">
           <!-- Official Examination Header with Logo -->
           <div class="official-sheet-header">
             <div class="header-logo">
@@ -293,19 +349,23 @@ export function generateEstPrintHtml(
               <div class="est-register-title">PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</div>
               <div class="center-banner">
                 <span class="center-label">Center :</span>
-                <span class="center-val">${centerClean}</span>
+                <span class="center-val">${pageObj.centerClean}</span>
               </div>
             </div>
             <div class="header-meta">
               <div class="meta-box">
-                <div><span class="meta-lbl">Date:</span> <span class="meta-val">${parsed.date}</span></div>
-                <div><span class="meta-lbl">EST Type:</span> <span class="meta-val">${parsed.estType}</span></div>
-                <div><span class="meta-lbl">Sheet:</span> <span class="tab-highlight">${s.name}</span></div>
+                <div><span class="meta-lbl">Date:</span> <span class="meta-val">${pageObj.date}</span></div>
+                <div><span class="meta-lbl">EST Type:</span> <span class="meta-val">${pageObj.estType}</span></div>
+                <div>
+                  <span class="meta-lbl">Sheet:</span>
+                  <span class="tab-highlight">${pageObj.sheetName}</span>
+                  ${pageIndicator ? `<span class="page-badge">${pageIndicator}</span>` : ""}
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Examination Table with 10 Required Columns -->
+          <!-- Examination Table with 10 Required Columns (Strict max 15 rows per page) -->
           <table class="exam-table">
             <thead>
               <tr>
@@ -329,7 +389,7 @@ export function generateEstPrintHtml(
           <!-- Official Footer with Signature -->
           <div class="official-footer">
             <div class="footer-left">
-              <strong>Head of Center:</strong> ${parsed.headName}
+              <strong>Head of Center:</strong> ${pageObj.headName}
             </div>
             <div class="footer-center">
               <strong>Signature:</strong> ___________________________________
@@ -360,11 +420,35 @@ export function generateEstPrintHtml(
               margin: 0mm !important;
             }
             html, body {
+              width: 100% !important;
               margin: 0 !important;
               padding: 0 !important;
               background: #fff !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
+            }
+            .sheet-page {
+              width: 100% !important;
+              max-width: 100% !important;
+              box-sizing: border-box !important;
+              padding: 5mm 6mm 5mm 6mm !important;
+              margin: 0 !important;
+              page-break-after: always !important;
+              break-after: page !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .sheet-page.sheet-page-last,
+            .sheet-page:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            .exam-table tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            a[href]:after {
+              content: none !important;
             }
           }
           * {
@@ -376,25 +460,30 @@ export function generateEstPrintHtml(
             font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: #000;
             background: #fff;
-            font-size: 9.5pt;
-            line-height: 1.25;
+            font-size: 10pt;
+            line-height: 1.2;
           }
           .sheet-page {
             width: 100%;
             box-sizing: border-box;
-            padding: 8mm 10mm 6mm 10mm;
-          }
-          .page-break {
+            padding: 5mm 6mm 5mm 6mm;
             page-break-after: always;
             break-after: page;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .sheet-page.sheet-page-last,
+          .sheet-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
           }
           .official-sheet-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             border-bottom: 2px solid #0f172a;
-            padding-bottom: 5px;
-            margin-bottom: 8px;
+            padding-bottom: 4px;
+            margin-bottom: 5px;
           }
           .header-logo {
             width: 130px;
@@ -412,8 +501,8 @@ export function generateEstPrintHtml(
             padding: 0 10px;
           }
           .est-register-title {
-            margin: 0 0 4px;
-            font-size: 14.5pt;
+            margin: 0 0 3px;
+            font-size: 15pt;
             font-weight: 900;
             letter-spacing: 0.5px;
             color: #0f172a;
@@ -423,10 +512,10 @@ export function generateEstPrintHtml(
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 10pt;
+            font-size: 10.5pt;
             color: #0f172a;
             background: #f8fafc;
-            padding: 3px 14px;
+            padding: 2.5px 14px;
             border-radius: 4px;
             border: 1.5px solid #0f172a;
           }
@@ -439,14 +528,14 @@ export function generateEstPrintHtml(
             color: #0f172a;
           }
           .header-meta {
-            width: 185px;
+            width: 195px;
             text-align: right;
           }
           .meta-box {
             background: #f8fafc;
             border: 1.5px solid #0f172a;
             border-radius: 4px;
-            padding: 4px 10px;
+            padding: 3px 8px;
             font-size: 8.5pt;
             line-height: 1.35;
             text-align: left;
@@ -455,7 +544,7 @@ export function generateEstPrintHtml(
             font-weight: 800;
             color: #0f172a;
             display: inline-block;
-            min-width: 62px;
+            min-width: 60px;
           }
           .meta-val {
             font-weight: 600;
@@ -465,43 +554,52 @@ export function generateEstPrintHtml(
             font-weight: 800;
             color: #047857;
           }
+          .page-badge {
+            font-weight: 700;
+            color: #64748b;
+            font-size: 8pt;
+            margin-inline-start: 3px;
+          }
           .exam-table {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            margin: 0 0 8px;
+            margin: 0 0 5px;
           }
           .exam-table th,
           .exam-table td {
             border: 1px solid #0f172a !important;
-            padding: 5px 4px;
+            padding: 4px 4px;
             vertical-align: middle;
-            min-height: 30px;
           }
           .exam-table th {
             background-color: #f1f5f9 !important;
             color: #0f172a;
-            font-size: 8.5pt;
+            font-size: 9pt;
             font-weight: 800;
             text-transform: uppercase;
             text-align: center;
             letter-spacing: 0.2px;
+            height: 27px;
           }
           .exam-table th.col-name {
             text-align: start;
             padding-inline-start: 8px;
           }
+          .exam-table td {
+            height: 31px;
+          }
           .exam-table tr:nth-child(even) td {
             background-color: #fafafa;
           }
-          .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 9pt; }
-          .col-name { width: 23.5%; font-weight: 700; font-size: 9.5pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-          .col-type { width: 8.5%; text-align: center !important; font-size: 8pt; }
-          .col-mobile { width: 10.5%; text-align: center !important; font-size: 8.5pt; letter-spacing: 0.2px; font-family: monospace; }
-          .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 9pt; }
-          .col-room { width: 6.5%; text-align: center !important; font-size: 10pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
+          .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 10pt; }
+          .col-name { width: 24%; font-weight: 700; font-size: 10pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .col-type { width: 8.5%; text-align: center !important; font-size: 8.5pt; }
+          .col-mobile { width: 10.5%; text-align: center !important; font-size: 9.5pt; letter-spacing: 0.2px; font-family: monospace; font-weight: 600; }
+          .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 10pt; }
+          .col-room { width: 7%; text-align: center !important; font-size: 11pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
           .col-sig { width: 14.5%; text-align: center; }
-          .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 8.5pt; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
+          .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 9pt; font-weight: 600; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
 
           .sig-line {
             border-bottom: 1px dashed #94a3b8;
@@ -512,7 +610,7 @@ export function generateEstPrintHtml(
           .badge {
             display: inline-block;
             padding: 1.5px 5px;
-            font-size: 7.5pt;
+            font-size: 8pt;
             font-weight: 700;
             border-radius: 3px;
             border: 1px solid #94a3b8;
@@ -527,10 +625,10 @@ export function generateEstPrintHtml(
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 8px;
-            padding-top: 6px;
+            margin-top: 5px;
+            padding-top: 4px;
             border-top: 1.5px solid #0f172a;
-            font-size: 8.5pt;
+            font-size: 9pt;
           }
           .footer-left { width: 30%; }
           .footer-center { width: 45%; }
