@@ -352,7 +352,7 @@ export function ExcelRegisterWorkspace({
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-muted-foreground mb-1">
-                      {locale === "ar" ? "رئيس السنتر (Head of Center):" : "Head of Center:"}
+                      {locale === "ar" ? "رئيس المبنى (Head of Building):" : "Head of Building:"}
                     </label>
                     <input
                       type="text"
@@ -711,19 +711,11 @@ export function ExcelRegisterWorkspace({
                 </table>
               </div>
 
-              {/* Official Signature Footer Bar */}
-              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-700 dark:text-slate-300 gap-4">
-                <div>
-                  <span className="font-bold text-slate-500">{locale === "ar" ? "رئيس السنتر:" : "Head of Center:"} </span>
+              {/* Official Building Head Footer Bar (Clean, without screen signatures) */}
+              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-500">{locale === "ar" ? "رئيس المبنى:" : "Head of Building:"} </span>
                   <span className="font-extrabold text-slate-900 dark:text-white">{parsed.headName}</span>
-                </div>
-                <div className="font-medium text-slate-500">
-                  <span>{locale === "ar" ? "التوقيع:" : "Signature:"} </span>
-                  <span className="font-mono">___________________________________</span>
-                </div>
-                <div className="font-medium text-slate-500">
-                  <span>{locale === "ar" ? "التاريخ:" : "Date:"} </span>
-                  <span className="font-mono">___ / ___ / 2026</span>
                 </div>
               </div>
             </div>

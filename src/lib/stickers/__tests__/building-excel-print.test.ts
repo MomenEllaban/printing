@@ -62,7 +62,11 @@ describe("generateEstPrintHtml pagination and layout", () => {
     // Check typography & style rules
     expect(html).toContain("size: A4 landscape");
     expect(html).toContain("margin: 0mm !important");
-    expect(html).toContain("padding: 5mm 6mm 5mm 6mm");
+    expect(html).toContain("padding: 8mm 7mm 8mm 7mm");
+
+    // Check footer contains Head of Building and Page indicators
+    expect(html).toContain("Head of Building:");
+    expect(html).toContain("Page:</strong> 1 of 2");
   });
 
   it("handles small sheets with <= 15 rows on a single page", () => {

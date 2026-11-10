@@ -218,7 +218,7 @@ export function PrintDocument({
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
-            padding: 5mm 6mm 5mm 6mm !important;
+            padding: 8mm 7mm 8mm 7mm !important;
             margin: 0 !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -239,7 +239,7 @@ export function PrintDocument({
         .sheet-page {
           width: 100%;
           box-sizing: border-box;
-          padding: 5mm 6mm 5mm 6mm;
+          padding: 8mm 7mm 8mm 7mm;
           page-break-after: always;
           break-after: page;
           page-break-inside: avoid;
@@ -254,19 +254,19 @@ export function PrintDocument({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          border-bottom: 2px solid #0f172a;
-          padding-bottom: 4px;
-          margin-bottom: 5px;
+          border-bottom: 2px solid #000;
+          padding-bottom: 5px;
+          margin-bottom: 7px;
         }
         .header-logo { width: 130px; display: flex; align-items: center; }
-        .est-logo-img { height: 48px; width: auto; object-fit: contain; }
+        .est-logo-img { height: 46px; width: auto; object-fit: contain; }
         .header-center { flex: 1; text-align: center; padding: 0 10px; }
         .est-register-title {
           margin: 0 0 3px;
-          font-size: 15pt;
+          font-size: 15.5pt;
           font-weight: 900;
           letter-spacing: 0.5px;
-          color: #0f172a;
+          color: #000;
           text-transform: uppercase;
         }
         .center-banner {
@@ -274,81 +274,90 @@ export function PrintDocument({
           align-items: center;
           gap: 6px;
           font-size: 10.5pt;
-          color: #0f172a;
-          background: #f8fafc;
+          color: #000;
+          background: #f1f5f9;
           padding: 2.5px 14px;
           border-radius: 4px;
-          border: 1.5px solid #0f172a;
+          border: 1.5px solid #000;
         }
-        .center-label { font-weight: 900; color: #0f172a; }
-        .center-val { font-weight: 700; color: #0f172a; }
+        .center-label { font-weight: 900; color: #000; }
+        .center-val { font-weight: 700; color: #000; }
         .header-meta { width: 195px; text-align: right; }
         .meta-box {
           background: #f8fafc;
-          border: 1.5px solid #0f172a;
+          border: 1.5px solid #000;
           border-radius: 4px;
           padding: 3px 8px;
           font-size: 8.5pt;
           line-height: 1.35;
           text-align: left;
+          color: #000;
         }
-        .meta-lbl { font-weight: 800; color: #0f172a; display: inline-block; min-width: 60px; }
-        .meta-val { font-weight: 600; color: #334155; }
-        .tab-highlight { font-weight: 800; color: #047857; }
-        .page-badge { font-weight: 700; color: #64748b; font-size: 8pt; margin-inline-start: 3px; }
-        .exam-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 5px; }
+        .meta-lbl { font-weight: 800; color: #000; display: inline-block; min-width: 60px; }
+        .meta-val { font-weight: 600; color: #1e293b; }
+        .tab-highlight { font-weight: 800; color: #000; }
+        .page-badge { font-weight: 700; color: #475569; font-size: 8pt; margin-inline-start: 3px; }
+        .exam-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 6px; }
         .exam-table th, .exam-table td {
-          border: 1px solid #0f172a !important;
-          padding: 4px 4px;
+          border: 1.2px solid #000 !important;
+          padding: 4px 5px;
           vertical-align: middle;
+          color: #000 !important;
         }
         .exam-table th {
-          background-color: #f1f5f9 !important;
-          color: #0f172a;
-          font-size: 9pt;
-          font-weight: 800;
+          background-color: #e2e8f0 !important;
+          color: #000 !important;
+          font-size: 9.5pt;
+          font-weight: 900;
           text-transform: uppercase;
           text-align: center;
           letter-spacing: 0.2px;
-          height: 27px;
+          height: 33px;
         }
         .exam-table th.col-name { text-align: start; padding-inline-start: 8px; }
-        .exam-table td { height: 31px; }
+        .exam-table td { height: 37px; }
         .exam-table tr:nth-child(even) td { background-color: #fafafa; }
-        .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 10pt; }
-        .col-name { width: 24%; font-weight: 700; font-size: 10pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .col-type { width: 8.5%; text-align: center !important; font-size: 8.5pt; }
-        .col-mobile { width: 10.5%; text-align: center !important; font-size: 9.5pt; letter-spacing: 0.2px; font-family: monospace; font-weight: 600; }
-        .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 10pt; }
-        .col-room { width: 7%; text-align: center !important; font-size: 11pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
+        .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 10.5pt; }
+        .col-name { width: 24%; font-weight: 700; font-size: 10.5pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .col-type { width: 8.5%; text-align: center !important; font-size: 9pt; }
+        .col-mobile { width: 10.5%; text-align: center !important; font-size: 10pt; letter-spacing: 0.2px; font-family: monospace; font-weight: 600; }
+        .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 10.5pt; }
+        .col-room { width: 7%; text-align: center !important; font-size: 11.5pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
         .col-sig { width: 14.5%; text-align: center; }
-        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 9pt; font-weight: 600; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
-        .sig-line { border-bottom: 1px dashed #94a3b8; height: 16px; margin: 1px 4px; }
+        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 9.5pt; font-weight: 700; color: #000; white-space: nowrap !important; letter-spacing: 0.5px; }
+        .sig-line { border-bottom: 1.5px dashed #475569; height: 20px; margin: 1px 4px; }
+
+        /* Grayscale & Black-and-White Optimized Badges */
         .badge {
           display: inline-block;
-          padding: 1.5px 5px;
-          font-size: 8pt;
+          padding: 2px 7px;
+          font-size: 8.5pt;
           font-weight: 700;
-          border-radius: 3px;
-          border: 1px solid #94a3b8;
+          border-radius: 4px;
           white-space: nowrap;
+          color: #000 !important;
+          letter-spacing: 0.2px;
         }
-        .senior { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
-        .roaming { background: #e0f2fe; color: #0369a1; border-color: #38bdf8; }
-        .proctor { background: #ecfdf5; color: #047857; border-color: #10b981; }
-        .head { background: #f3e8ff; color: #6b21a8; border-color: #a855f7; }
+        .senior { background: #e2e8f0 !important; color: #000 !important; border: 1.5px solid #000 !important; font-weight: 800 !important; }
+        .roaming { background: #f1f5f9 !important; color: #000 !important; border: 1.2px dashed #000 !important; font-weight: 700 !important; }
+        .proctor { background: #ffffff !important; color: #000 !important; border: 1px solid #475569 !important; font-weight: 600 !important; }
+        .head { background: #1e293b !important; color: #ffffff !important; border: 1.5px solid #000 !important; font-weight: 800 !important; }
+
         .official-footer {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-top: 5px;
-          padding-top: 4px;
-          border-top: 1.5px solid #0f172a;
-          font-size: 9pt;
+          margin-top: 8px;
+          padding-top: 6px;
+          border-top: 2px solid #000;
+          font-size: 9.5pt;
+          color: #000;
         }
-        .footer-left { width: 30%; }
-        .footer-center { width: 45%; }
-        .footer-right { width: 25%; text-align: right; }
+        .footer-head { width: 27%; white-space: nowrap; }
+        .footer-head strong { font-weight: 800; }
+        .footer-sig { width: 38%; white-space: nowrap; }
+        .footer-date { width: 20%; white-space: nowrap; }
+        .footer-page { width: 15%; text-align: right; font-weight: 800; white-space: nowrap; }
       `}</style>
 
       {/* Interactive Toolbar for Screen view */}
@@ -541,16 +550,19 @@ export function PrintDocument({
                   </tbody>
                 </table>
 
-                {/* Official Footer with Signature */}
+                {/* Official Footer with Building Head, Signature, Date & Page Indicator */}
                 <div className="official-footer">
-                  <div className="footer-left">
-                    <strong>Head of Center:</strong> {pageObj.headName}
+                  <div className="footer-head">
+                    <strong>Head of Building:</strong> {pageObj.headName}
                   </div>
-                  <div className="footer-center">
+                  <div className="footer-sig">
                     <strong>Signature:</strong> ___________________________________
                   </div>
-                  <div className="footer-right">
+                  <div className="footer-date">
                     <strong>Date:</strong> ___ / ___ / 2026
+                  </div>
+                  <div className="footer-page">
+                    <strong>Page:</strong> {pageObj.pageIndex + 1} of {pageObj.totalPages}
                   </div>
                 </div>
               </section>
