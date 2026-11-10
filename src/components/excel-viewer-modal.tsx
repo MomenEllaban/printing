@@ -388,19 +388,63 @@ export function ExcelViewerModal({
       copy[activeTabIdx] = targetSheet;
       return copy;
     });
+    toast.success(locale === "ar" ? "تمت إضافة مراقب جديد للجدول" : "Added new proctor row");
   };
 
-  // Delete row from active tab
-  const handleDeleteRow = (rowIdx: number) => {
+  // Delete row from active tab with sequential re-numbering
+  const handleDeleteRow = (rowIdx: number, sheetIdx?: number) => {
     if (sheets.length === 0) return;
+    const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
     setSheets((prev) => {
       const copy = [...prev];
-      const targetSheet = { ...copy[activeTabIdx] };
+      const targetSheet = { ...copy[targetIdx] };
+      if (!targetSheet) return prev;
       const targetRows = targetSheet.rows.filter((_, idx) => idx !== rowIdx);
+
+      // Re-number sequential No. starting from 1 for data rows
+      let headerIdx = -1;
+      for (let r = 0; r < Math.min(10, targetRows.length); r++) {
+        if (/^No\.?$/i.test(String(targetRows[r]?.[0] ?? "").trim())) {
+          headerIdx = r;
+          break;
+        }
+      }
+      if (headerIdx !== -1) {
+        let count = 1;
+        for (let r = headerIdx + 1; r < targetRows.length; r++) {
+          const row = targetRows[r];
+          if (!row) continue;
+          const val1 = String(row[1] ?? "").trim();
+          if (/^Head$/i.test(val1) || /Mohamed\s*Nabil/i.test(val1)) break;
+          if (!row[0] && !row[1] && !row[2]) continue;
+          row[0] = count++;
+        }
+      }
+
       targetSheet.rows = targetRows;
-      copy[activeTabIdx] = targetSheet;
+      copy[targetIdx] = targetSheet;
       return copy;
     });
+    toast.success(
+      locale === "ar"
+        ? "تم حذف المراقب من الجدول بنجاح. لا تنسَ الضغط على 'حفظ التعديلات' بالأعلى."
+        : "Proctor row removed successfully. Click 'Save Changes' to update file.",
+    );
+  };
+
+  // Delete the last added proctor row
+  const handleDeleteLastRow = (sheetIdx?: number) => {
+    if (sheets.length === 0) return;
+    const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
+    const targetSheet = sheets[targetIdx];
+    if (!targetSheet) return;
+    const parsed = parseSheetDetails(targetSheet, buildingName);
+    if (parsed.dataRows.length === 0) {
+      toast.error(locale === "ar" ? "لا يوجد مراقبين لحذفهم" : "No proctors to delete");
+      return;
+    }
+    const lastRow = parsed.dataRows[parsed.dataRows.length - 1];
+    handleDeleteRow(lastRow.rawRowIdx, targetIdx);
   };
 
   // Add new floor tab
@@ -1199,7 +1243,7 @@ export function ExcelViewerModal({
                               <th className="w-20 p-2 text-center">8. Time (حضور)</th>
                               <th className="w-28 p-2 text-center">9. Departure Sig</th>
                               <th className="w-20 p-2 text-center">10. Time (انصراف)</th>
-                              <th className="w-12 p-2 text-center"></th>
+                              <th className="w-20 p-2 text-center text-rose-600 dark:text-rose-400 font-extrabold">{locale === "ar" ? "حذف" : "Delete"}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
@@ -1302,14 +1346,15 @@ export function ExcelViewerModal({
                                       placeholder="__ : __"
                                     />
                                   </td>
-                                  <td className="p-1 text-center">
+                                  <td className="p-1.5 text-center">
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteRow(r.rawRowIdx)}
-                                      className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                                      title={locale === "ar" ? "حذف هذا المراقب" : "Delete proctor"}
+                                      onClick={() => handleDeleteRow(r.rawRowIdx, sheetRealIdx)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60 rounded-lg border border-rose-300 dark:border-rose-800 transition-colors cursor-pointer shadow-2xs"
+                                      title={locale === "ar" ? "حذف هذا المراقب نهائيًا" : "Delete proctor"}
                                     >
                                       <Trash2 className="size-3.5" />
+                                      <span>{locale === "ar" ? "حذف" : "Delete"}</span>
                                     </button>
                                   </td>
                                 </tr>
@@ -1318,15 +1363,25 @@ export function ExcelViewerModal({
                           </tbody>
                         </table>
 
-                        <div className="mt-3.5 flex justify-center pb-1">
+                        <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2.5 pb-1">
                           <Button
                             type="button"
                             variant="secondary"
-                            className="text-xs font-bold gap-1.5 py-2 px-5 border-dashed border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            className="text-xs font-bold gap-1.5 py-2 px-5 border-dashed border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 cursor-pointer"
                             onClick={handleAddRow}
                           >
                             <Plus className="size-3.5" />
-                            <span>{locale === "ar" ? "+ إضافة مراقب جديد في نهاية الجدول" : "+ Add Proctor"}</span>
+                            <span>{locale === "ar" ? "+ إضافة مراقب جديد" : "+ Add Proctor"}</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="text-xs font-bold gap-1.5 py-2 px-4 border-dashed border-rose-500/50 hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 cursor-pointer"
+                            onClick={() => handleDeleteLastRow(sheetRealIdx)}
+                            title={locale === "ar" ? "حذف آخر مراقب تمت إضافته" : "Delete last added proctor"}
+                          >
+                            <Trash2 className="size-3.5" />
+                            <span>{locale === "ar" ? "حذف آخر مراقب" : "Delete Last Proctor"}</span>
                           </Button>
                         </div>
                       </div>
@@ -1405,7 +1460,8 @@ export function ExcelViewerModal({
                             <th className="w-32 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Arrival Signature</th>
                             <th className="w-16 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Time</th>
                             <th className="w-32 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Departure Signature</th>
-                            <th className="w-16 py-2.5 px-2 text-center">Time</th>
+                            <th className="w-16 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Time</th>
+                            <th className="w-14 py-2.5 px-1 text-center no-print text-rose-600 font-bold">{locale === "ar" ? "حذف" : "Del"}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
@@ -1487,8 +1543,18 @@ export function ExcelViewerModal({
                                     <div className="border-b border-dashed border-slate-300 dark:border-slate-700 h-4 mx-2" />
                                   )}
                                 </td>
-                                <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800 whitespace-nowrap">
                                   {r.departureTime === ":" ? "__ : __" : (r.departureTime || "__ : __")}
+                                </td>
+                                <td className="py-2.5 px-1 text-center no-print">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRow(r.rawRowIdx, sheetRealIdx)}
+                                    className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                    title={locale === "ar" ? "حذف هذا المراقب" : "Delete this proctor"}
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                  </button>
                                 </td>
                               </tr>
                             );

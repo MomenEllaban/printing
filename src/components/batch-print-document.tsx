@@ -72,11 +72,12 @@ export function BatchPrintDocument({
   return (
     <div className="min-h-dvh bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <style>{`
-        @page { size: ${pageSize}; margin: ${margin}; }
+        @page { size: ${pageSize}; margin: 0mm !important; }
         @media print {
           .no-print { display: none !important; }
           .print-break { page-break-after: always; break-after: page; }
-          body { background: white !important; color: black !important; }
+          body { background: white !important; color: black !important; margin: 0 !important; padding: 0 !important; }
+          a[href]:after { content: none !important; }
         }
       `}</style>
 

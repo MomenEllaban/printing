@@ -283,6 +283,9 @@ a[href] {
 }
 
 @media print {
+  @page {
+    margin: 0mm !important;
+  }
   .no-print,
   .app-sidebar,
   .app-topbar {
@@ -291,9 +294,11 @@ a[href] {
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
   .print-shell {
-    padding: 0 !important;
+    padding: 6mm 8mm !important;
     display: block !important;
   }
   .docx-content {
@@ -308,5 +313,8 @@ a[href] {
   a {
     text-decoration: none !important;
     color: inherit !important;
+  }
+  a[href]:after {
+    content: none !important;
   }
 }

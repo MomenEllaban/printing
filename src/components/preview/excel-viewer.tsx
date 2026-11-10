@@ -494,7 +494,7 @@ export function ExcelViewer({
     toast.success(locale === "ar" ? "تم إضافة سطر مراقب جديد" : "Added new proctor row");
   };
 
-  // Delete row
+  // Delete row with sequential re-numbering
   const handleDeleteRow = (rowIndex: number) => {
     if (!workbook || !sheet) return;
     setWorkbook((prev) => {
@@ -502,6 +502,27 @@ export function ExcelViewer({
       const s = prev.sheetMap[sheet];
       if (!s) return prev;
       const newRows = s.rows.filter((_, idx) => idx !== rowIndex);
+
+      // Re-number sequential No. starting from 1 for data rows
+      let headerIdx = -1;
+      for (let r = 0; r < Math.min(10, newRows.length); r++) {
+        if (/^No\.?$/i.test(String(newRows[r]?.[0] ?? "").trim())) {
+          headerIdx = r;
+          break;
+        }
+      }
+      if (headerIdx !== -1) {
+        let count = 1;
+        for (let r = headerIdx + 1; r < newRows.length; r++) {
+          const row = newRows[r];
+          if (!row) continue;
+          const val1 = String(row[1] ?? "").trim();
+          if (/^Head$/i.test(val1) || /Mohamed\s*Nabil/i.test(val1)) break;
+          if (!row[0] && !row[1] && !row[2]) continue;
+          row[0] = count++;
+        }
+      }
+
       return {
         ...prev,
         sheetMap: {
@@ -510,6 +531,33 @@ export function ExcelViewer({
         },
       };
     });
+    toast.success(
+      locale === "ar"
+        ? "تم حذف المراقب من الجدول بنجاح. لا تنسَ الضغط على 'حفظ التعديلات' بالأعلى."
+        : "Proctor row removed successfully. Click 'Save' to update file.",
+    );
+  };
+
+  // Delete the last added proctor row
+  const handleDeleteLastRow = () => {
+    if (!workbook || !sheet) return;
+    const targetSheet = workbook.sheetMap[sheet];
+    if (!targetSheet) return;
+    let lastDataRowIdx = -1;
+    for (let r = targetSheet.rows.length - 1; r > headerRowIdx; r--) {
+      const row = targetSheet.rows[r];
+      if (!row) continue;
+      const val1 = String(row[1] ?? "").trim();
+      if (/^Head$/i.test(val1) || /Mohamed\s*Nabil/i.test(val1)) continue;
+      if (!row[0] && !row[1] && !row[2]) continue;
+      lastDataRowIdx = r;
+      break;
+    }
+    if (lastDataRowIdx === -1) {
+      toast.error(locale === "ar" ? "لا يوجد مراقبين لحذفهم" : "No proctors to delete");
+      return;
+    }
+    handleDeleteRow(lastDataRowIdx);
   };
 
   // Add new floor sheet tab
@@ -617,7 +665,7 @@ export function ExcelViewer({
         <style>
           @page {
             size: A4 landscape;
-            margin: 8mm 6mm !important;
+            margin: 0mm !important;
           }
           * {
             box-sizing: border-box;
@@ -627,9 +675,12 @@ export function ExcelViewer({
           body {
             font-family: Arial, Helvetica, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 8mm 6mm !important;
             background: #fff;
             color: #000;
+          }
+          a[href]:after {
+            content: none !important;
           }
           .header-box {
             display: flex;
@@ -847,6 +898,15 @@ export function ExcelViewer({
               {locale === "ar" ? "إضافة مراقب" : "Add Proctor"}
             </Button>
             <Button
+              variant="secondary"
+              onClick={handleDeleteLastRow}
+              className="h-7 text-[11px] gap-1 font-bold px-2.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-rose-200 dark:border-rose-800"
+              title={locale === "ar" ? "حذف آخر مراقب تمت إضافته" : "Delete last added proctor"}
+            >
+              <Trash2 className="size-3" />
+              {locale === "ar" ? "حذف آخر مراقب" : "Delete Last"}
+            </Button>
+            <Button
               variant="primary"
               onClick={() => void handleSaveSpreadsheet()}
               loading={saving}
@@ -878,17 +938,18 @@ export function ExcelViewer({
                   {columnName(index)}
                 </th>
               ))}
-              {isEditing && (
-                <th className={cn(padding, "bg-surface-strong text-center text-xs font-bold w-12 border-b border-border")}>
-                  {locale === "ar" ? "حذف" : "Del"}
-                </th>
-              )}
+              <th className={cn(padding, "bg-surface-strong text-center text-xs font-bold w-16 border-b border-border text-rose-600 dark:text-rose-400 no-print")}>
+                {locale === "ar" ? "حذف" : "Del"}
+              </th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.slice(0, visibleRows).map((row, rowIndex) => {
               const isHeaderRow = rowIndex === headerRowIdx;
               const isMetaRow = rowIndex < headerRowIdx;
+              const isFooterRow =
+                /^Head$/i.test(String(row[1] ?? "").trim()) ||
+                /Mohamed\s*Nabil/i.test(String(row[1] ?? "").trim());
 
               return (
                 <tr
@@ -1029,21 +1090,20 @@ export function ExcelViewer({
                     );
                   })}
 
-                  {/* Edit mode delete row action */}
-                  {isEditing && (
-                    <td className={cn(padding, "border-b border-border text-center p-1")}>
-                      {rowIndex > headerRowIdx && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteRow(rowIndex)}
-                          className="p-1.5 text-danger/80 hover:text-danger hover:bg-danger/10 rounded-lg transition-colors cursor-pointer"
-                          title={locale === "ar" ? "حذف هذا السطر" : "Delete row"}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  )}
+                  {/* Delete row action (both in Edit and View mode, hidden from printing) */}
+                  <td className={cn(padding, "border-b border-border text-center p-1 no-print")}>
+                    {rowIndex > headerRowIdx && !isFooterRow && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRow(rowIndex)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60 rounded-lg border border-rose-300 dark:border-rose-800 transition-colors cursor-pointer shadow-2xs"
+                        title={locale === "ar" ? "حذف هذا المراقب" : "Delete row"}
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span className="hidden sm:inline">{locale === "ar" ? "حذف" : "Delete"}</span>
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}

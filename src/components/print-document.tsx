@@ -127,10 +127,13 @@ export function PrintDocument({
   return (
     <div className="print-shell min-h-dvh bg-white text-black">
       <style>{`
-        @page { size: ${pageSize}; margin: ${margin}; }
+        @page { size: ${pageSize}; margin: 0mm !important; }
         @media print {
           .no-print { display: none !important; }
           .break-after-page { page-break-after: always; break-after: page; }
+          .print-shell { padding: ${margin || "8mm"} !important; margin: 0 !important; }
+          body { margin: 0 !important; padding: 0 !important; }
+          a[href]:after { content: none !important; }
           table { width: 100% !important; border-collapse: collapse !important; margin: 0 auto !important; }
           tr { page-break-inside: avoid !important; }
           th, td { border: 1px solid #000 !important; padding: 5px 8px !important; font-size: 9.5pt !important; }
