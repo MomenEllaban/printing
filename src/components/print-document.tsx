@@ -350,14 +350,12 @@ export function PrintDocument({
           margin-top: 8px;
           padding-top: 6px;
           border-top: 2px solid #000;
-          font-size: 9.5pt;
+          font-size: 10pt;
           color: #000;
         }
-        .footer-head { width: 27%; white-space: nowrap; }
+        .footer-head { white-space: nowrap; }
         .footer-head strong { font-weight: 800; }
-        .footer-sig { width: 38%; white-space: nowrap; }
-        .footer-date { width: 20%; white-space: nowrap; }
-        .footer-page { width: 15%; text-align: right; font-weight: 800; white-space: nowrap; }
+        .footer-page { text-align: right; font-weight: 800; white-space: nowrap; }
       `}</style>
 
       {/* Interactive Toolbar for Screen view */}
@@ -550,16 +548,10 @@ export function PrintDocument({
                   </tbody>
                 </table>
 
-                {/* Official Footer with Building Head, Signature, Date & Page Indicator */}
+                {/* Official Footer with Building Head & Page Indicator */}
                 <div className="official-footer">
                   <div className="footer-head">
                     <strong>Head of Building:</strong> {pageObj.headName}
-                  </div>
-                  <div className="footer-sig">
-                    <strong>Signature:</strong> ___________________________________
-                  </div>
-                  <div className="footer-date">
-                    <strong>Date:</strong> ___ / ___ / 2026
                   </div>
                   <div className="footer-page">
                     <strong>Page:</strong> {pageObj.pageIndex + 1} of {pageObj.totalPages}
