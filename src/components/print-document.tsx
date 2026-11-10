@@ -5,6 +5,12 @@ import { Printer, X } from "lucide-react";
 import { Spinner } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
 import type { DriveItem } from "@/lib/types";
+import { EST_LOGO_BASE64 } from "@/lib/stickers/est-logo-base64";
+import {
+  computeRoomSpans,
+  parseSheetDetails,
+  type SheetData,
+} from "@/lib/stickers/building-excel";
 
 type PrintKind = "pdf" | "excel" | "word" | "image" | "unsupported";
 
@@ -28,14 +34,16 @@ export function PrintDocument({
 }) {
   const { t } = useI18n();
   const [html, setHtml] = useState<string | null>(null);
-  const [sheets, setSheets] = useState<{ name: string; html: string; rows: (string | number | boolean | null)[][] }[]>([]);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
   const [selectedSheet, setSelectedSheet] = useState<string>("all");
   const [loading, setLoading] = useState(kind !== "unsupported" && kind !== "image");
   const [error, setError] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
   const printed = useRef(false);
 
-  const pageSize = `${settings.paperSize} ${settings.orientation}`;
+  // If it's an Excel sheet, always default to A4 landscape for optimal proctor table layout
+  const effectiveOrientation = kind === "excel" ? "landscape" : settings.orientation;
+  const pageSize = `${settings.paperSize} ${effectiveOrientation}`;
   const margin = `${MARGIN_MM[settings.margins]}mm`;
 
   useEffect(() => {
@@ -62,17 +70,17 @@ export function PrintDocument({
             typeof source === "string"
               ? XLSX.read(source, { type: "string" })
               : XLSX.read(new Uint8Array(source), { type: "array" });
-          const output = workbook.SheetNames.map((name) => {
+          const output: SheetData[] = workbook.SheetNames.map((name) => {
             const ws = workbook.Sheets[name];
             return {
               name,
-              html: XLSX.utils.sheet_to_html(ws),
               rows: XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
                 header: 1,
                 defval: "",
                 raw: false,
-                blankrows: false,
+                blankrows: true,
               }),
+              merges: ws["!merges"] || [],
             };
           });
           if (!cancelled) setSheets(output);
@@ -127,27 +135,129 @@ export function PrintDocument({
   return (
     <div className="print-shell min-h-dvh bg-white text-black">
       <style>{`
-        @page { size: ${pageSize}; margin: 0mm !important; }
+        @page {
+          size: ${pageSize};
+          margin: 0mm !important;
+        }
         @media print {
           .no-print { display: none !important; }
           .break-after-page { page-break-after: always; break-after: page; }
-          .print-shell { padding: ${margin || "8mm"} !important; margin: 0 !important; }
-          body { margin: 0 !important; padding: 0 !important; }
+          .print-shell { padding: 8mm 10mm 6mm 10mm !important; margin: 0 !important; }
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 9.5pt !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           a[href]:after { content: none !important; }
-          table { width: 100% !important; border-collapse: collapse !important; margin: 0 auto !important; }
-          tr { page-break-inside: avoid !important; }
-          th, td { border: 1px solid #000 !important; padding: 5px 8px !important; font-size: 9.5pt !important; }
-          tr:first-child td, tr:nth-child(3) td, tr th { background-color: #f1f5f9 !important; font-weight: bold !important; }
         }
-        .excel-table-container table { width: 100%; border-collapse: collapse; }
-        .excel-table-container th, .excel-table-container td { border: 1px solid #cbd5e1; padding: 6px 10px; font-size: 11px; text-align: start; }
-        .excel-table-container tr:first-child td, .excel-table-container tr:nth-child(3) td { background-color: #f8fafc; font-weight: 600; }
+        .sheet-page { width: 100%; box-sizing: border-box; }
+        .official-sheet-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 2px solid #0f172a;
+          padding-bottom: 5px;
+          margin-bottom: 8px;
+        }
+        .header-logo { width: 130px; display: flex; align-items: center; }
+        .est-logo-img { height: 48px; width: auto; object-fit: contain; }
+        .header-center { flex: 1; text-align: center; padding: 0 10px; }
+        .est-register-title {
+          margin: 0 0 4px;
+          font-size: 14.5pt;
+          font-weight: 900;
+          letter-spacing: 0.5px;
+          color: #0f172a;
+          text-transform: uppercase;
+        }
+        .center-banner {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 10pt;
+          color: #0f172a;
+          background: #f8fafc;
+          padding: 3px 14px;
+          border-radius: 4px;
+          border: 1.5px solid #0f172a;
+        }
+        .center-label { font-weight: 900; color: #0f172a; }
+        .center-val { font-weight: 700; color: #0f172a; }
+        .header-meta { width: 185px; text-align: right; }
+        .meta-box {
+          background: #f8fafc;
+          border: 1.5px solid #0f172a;
+          border-radius: 4px;
+          padding: 4px 10px;
+          font-size: 8.5pt;
+          line-height: 1.35;
+          text-align: left;
+        }
+        .meta-lbl { font-weight: 800; color: #0f172a; display: inline-block; min-width: 62px; }
+        .meta-val { font-weight: 600; color: #334155; }
+        .tab-highlight { font-weight: 800; color: #047857; }
+        .exam-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 8px; }
+        .exam-table th, .exam-table td {
+          border: 1px solid #0f172a !important;
+          padding: 5px 4px;
+          vertical-align: middle;
+          min-height: 30px;
+        }
+        .exam-table th {
+          background-color: #f1f5f9 !important;
+          color: #0f172a;
+          font-size: 8.5pt;
+          font-weight: 800;
+          text-transform: uppercase;
+          text-align: center;
+          letter-spacing: 0.2px;
+        }
+        .exam-table th.col-name { text-align: start; padding-inline-start: 8px; }
+        .exam-table tr:nth-child(even) td { background-color: #fafafa; }
+        .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 9pt; }
+        .col-name { width: 23.5%; font-weight: 700; font-size: 9.5pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .col-type { width: 8.5%; text-align: center !important; font-size: 8pt; }
+        .col-mobile { width: 10.5%; text-align: center !important; font-size: 8.5pt; letter-spacing: 0.2px; font-family: monospace; }
+        .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 9pt; }
+        .col-room { width: 6.5%; text-align: center !important; font-size: 10pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
+        .col-sig { width: 14.5%; text-align: center; }
+        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 8.5pt; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
+        .sig-line { border-bottom: 1px dashed #94a3b8; height: 16px; margin: 1px 4px; }
+        .badge {
+          display: inline-block;
+          padding: 1.5px 5px;
+          font-size: 7.5pt;
+          font-weight: 700;
+          border-radius: 3px;
+          border: 1px solid #94a3b8;
+          white-space: nowrap;
+        }
+        .senior { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+        .roaming { background: #e0f2fe; color: #0369a1; border-color: #38bdf8; }
+        .proctor { background: #ecfdf5; color: #047857; border-color: #10b981; }
+        .head { background: #f3e8ff; color: #6b21a8; border-color: #a855f7; }
+        .official-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 8px;
+          padding-top: 6px;
+          border-top: 1.5px solid #0f172a;
+          font-size: 8.5pt;
+        }
+        .footer-left { width: 30%; }
+        .footer-center { width: 45%; }
+        .footer-right { width: 25%; text-align: right; }
       `}</style>
+
+      {/* Interactive Toolbar for Screen view */}
       <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold">{item.name}</p>
           <p className="text-[11px] text-slate-500">
-            {t("print.hint")} · {settings.paperSize} · {settings.orientation === "portrait" ? t("settings.portrait") : t("settings.landscape")} · {settings.scale}%
+            {t("print.hint")} · {settings.paperSize} · {effectiveOrientation === "portrait" ? t("settings.portrait") : t("settings.landscape")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -171,7 +281,7 @@ export function PrintDocument({
                   onClick={() => setSelectedSheet(sh.name)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
                     selectedSheet === sh.name
-                      ? "bg-teal-600 text-white"
+                      ? "bg-emerald-600 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
@@ -187,7 +297,7 @@ export function PrintDocument({
               window.print();
             }}
             disabled={!ready}
-            className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer shadow-xs"
           >
             <Printer className="size-4" />
             {t("print.now")}
@@ -195,7 +305,7 @@ export function PrintDocument({
           <button
             type="button"
             onClick={() => window.close()}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
           >
             <X className="size-4" />
             {t("print.close")}
@@ -203,10 +313,10 @@ export function PrintDocument({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1200px] p-4 print:p-0" style={{ zoom: settings.scale / 100 }}>
+      <div className="mx-auto max-w-[1250px] p-4 print:p-0" style={{ zoom: settings.scale / 100 }}>
         {loading && (
           <div className="no-print flex flex-col items-center justify-center gap-3 py-24 text-sm text-slate-500">
-            <Spinner className="size-6 text-teal-600" />
+            <Spinner className="size-6 text-emerald-600" />
             {t("print.preparingFile")}
           </div>
         )}
@@ -233,43 +343,108 @@ export function PrintDocument({
         )}
 
         {kind === "excel" &&
-          visibleSheets.map((sheet, sIdx) => (
-            <section
-              key={sheet.name}
-              className={`mb-8 ${sIdx < visibleSheets.length - 1 ? "break-after-page" : ""}`}
-            >
-              <div className="mb-3 flex items-center justify-between border-b-2 border-slate-900 pb-1.5 font-bold text-slate-800">
-                <span className="text-base font-extrabold">{sheet.name}</span>
-                <span className="text-xs text-slate-500 font-normal">{item.name}</span>
-              </div>
-              {sheet.html ? (
-                <div
-                  className="excel-table-container overflow-x-auto"
-                  dangerouslySetInnerHTML={{ __html: sheet.html }}
-                />
-              ) : (
-                <table className="w-full border-collapse text-[11px]">
+          visibleSheets.map((sheet, sIdx) => {
+            const parsed = parseSheetDetails(sheet);
+            const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows);
+            const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
+
+            return (
+              <section
+                key={sheet.name}
+                className={`sheet-page mb-8 ${sIdx < visibleSheets.length - 1 ? "break-after-page" : ""}`}
+              >
+                {/* Official Examination Header with Logo */}
+                <div className="official-sheet-header">
+                  <div className="header-logo">
+                    <img src={`data:image/jpeg;base64,${EST_LOGO_BASE64}`} alt="EST Logo" className="est-logo-img" />
+                  </div>
+                  <div className="header-center">
+                    <div className="est-register-title">PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</div>
+                    <div className="center-banner">
+                      <span className="center-label">Center :</span>
+                      <span className="center-val">{centerClean}</span>
+                    </div>
+                  </div>
+                  <div className="header-meta">
+                    <div className="meta-box">
+                      <div><span className="meta-lbl">Date:</span> <span className="meta-val">{parsed.date}</span></div>
+                      <div><span className="meta-lbl">EST Type:</span> <span className="meta-val">{parsed.estType}</span></div>
+                      <div><span className="meta-lbl">Sheet:</span> <span className="tab-highlight">{sheet.name}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Examination Table with 10 Required Columns */}
+                <table className="exam-table">
+                  <thead>
+                    <tr>
+                      <th className="col-no">No.</th>
+                      <th className="col-name">Name</th>
+                      <th className="col-type">Proctor Type</th>
+                      <th className="col-mobile">Mobile</th>
+                      <th className="col-ipep">IP / EP</th>
+                      <th className="col-room">Room</th>
+                      <th className="col-sig">Arrival Signature</th>
+                      <th className="col-time">Time</th>
+                      <th className="col-sig">Departure Signature</th>
+                      <th className="col-time">Time</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {sheet.rows.map((row, rowIndex) => (
-                      <tr key={rowIndex}>
-                        {row.map((cell, cellIndex) =>
-                          rowIndex === 0 ? (
-                            <th key={cellIndex} className="border border-slate-300 bg-slate-100 px-1.5 py-1 text-start font-semibold">
-                              {String(cell ?? "")}
-                            </th>
-                          ) : (
-                            <td key={cellIndex} className="border border-slate-300 px-1.5 py-1 text-start">
-                              {String(cell ?? "")}
+                    {parsed.dataRows.map((row, rIdx) => {
+                      const roomSpan = spanMap.get(rIdx);
+                      const shouldRenderRoomCell = roomSpan !== undefined;
+                      const roomDisplay = resolvedRoomMap.get(rIdx) || row.room || "";
+
+                      return (
+                        <tr key={rIdx}>
+                          <td className="col-no">{row.no}</td>
+                          <td className="col-name">{row.name}</td>
+                          <td className="col-type">
+                            <span className={`badge ${row.proctorType.toLowerCase().replace(/\s+/g, "-")}`}>
+                              {row.proctorType}
+                            </span>
+                          </td>
+                          <td className="col-mobile font-mono">{row.mobile}</td>
+                          <td className="col-ipep text-center font-bold">{row.ipEp}</td>
+                          {shouldRenderRoomCell && (
+                            <td rowSpan={roomSpan} className="col-room">
+                              {roomDisplay}
                             </td>
-                          ),
-                        )}
-                      </tr>
-                    ))}
+                          )}
+                          <td className="col-sig">
+                            {row.arrivalSignature ? row.arrivalSignature : <div className="sig-line" />}
+                          </td>
+                          <td className="col-time text-center">
+                            {row.arrivalTime === ":" ? "__ : __" : (row.arrivalTime || "__ : __")}
+                          </td>
+                          <td className="col-sig">
+                            {row.departureSignature ? row.departureSignature : <div className="sig-line" />}
+                          </td>
+                          <td className="col-time text-center">
+                            {row.departureTime === ":" ? "__ : __" : (row.departureTime || "__ : __")}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              )}
-            </section>
-          ))}
+
+                {/* Official Footer with Signature */}
+                <div className="official-footer">
+                  <div className="footer-left">
+                    <strong>Head of Center:</strong> {parsed.headName}
+                  </div>
+                  <div className="footer-center">
+                    <strong>Signature:</strong> ___________________________________
+                  </div>
+                  <div className="footer-right">
+                    <strong>Date:</strong> ___ / ___ / 2026
+                  </div>
+                </div>
+              </section>
+            );
+          })}
       </div>
     </div>
   );

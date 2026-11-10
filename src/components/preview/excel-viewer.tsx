@@ -1,83 +1,67 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Grid3X3,
-  Loader2,
-  Search,
-  Pencil,
-  Save,
-  Plus,
-  Trash2,
-  Printer,
-  CheckCircle2,
-  X,
-  FileSpreadsheet,
-} from "lucide-react";
-import { Button, Input, Spinner } from "@/components/ui";
+import { useEffect, useState, useRef } from "react";
+import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
-import { cn } from "@/lib/cn";
-import { formatNumber } from "@/lib/format";
 import { toast } from "sonner";
-import { EST_LOGO_BASE64 } from "@/lib/stickers/est-logo-base64";
-
-type Cell = string | number | boolean | null;
-
-interface SheetMerge {
-  s: { c: number; r: number };
-  e: { c: number; r: number };
-}
-
-interface SheetData {
-  name: string;
-  rows: Cell[][];
-  merges: SheetMerge[];
-  range: { s: { c: number; r: number }; e: { c: number; r: number } };
-}
-
-interface WorkbookData {
-  sheets: string[];
-  sheetMap: Record<string, SheetData>;
-}
-
-const ROW_LIMIT = 500;
+import * as XLSX from "xlsx";
+import {
+  ExcelRegisterWorkspace,
+} from "@/components/excel-register-workspace";
+import {
+  computeRoomSpans,
+  parseSheetDetails,
+  printEstSheetsWithIframe,
+  type SheetData,
+} from "@/lib/stickers/building-excel";
 
 export interface ExcelViewerProps {
   fileId: string;
   extension: string | null;
-  density: "compact" | "normal" | "comfortable";
+  density?: "compact" | "normal" | "comfortable";
   isEditing?: boolean;
   onEditingChange?: (editing: boolean) => void;
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  buildingName?: string;
 }
 
 export function ExcelViewer({
   fileId,
   extension,
-  density,
-  isEditing = false,
+  isEditing: externalEditing,
   onEditingChange,
   saveRef,
+  buildingName,
 }: ExcelViewerProps) {
-  const { t, locale, dir } = useI18n();
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(null);
-  const [sheet, setSheet] = useState<string>("");
-  const [search, setSearch] = useState("");
-  const [visibleRows, setVisibleRows] = useState(ROW_LIMIT);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { locale, t } = useI18n();
+  const [sheets, setSheets] = useState<SheetData[]>([]);
+  const [activeTabIdx, setActiveTabIdx] = useState<number>(0);
+  const [internalEditing, setInternalEditing] = useState<boolean>(false);
+  const [viewAll, setViewAll] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isEditing = externalEditing !== undefined ? externalEditing : internalEditing;
+  const setIsEditing = (val: boolean) => {
+    setInternalEditing(val);
+    onEditingChange?.(val);
+  };
 
   // Load workbook from server
   const loadWorkbook = async (cancelled = false) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/drive/files/${fileId}/content?format=xlsx`, { cache: "no-store" });
+      const response = await fetch(`/api/drive/files/${fileId}/content?format=xlsx`, {
+        cache: "no-store",
+      });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.message || t("preview.loadFailed"));
       }
+
       const contentType = response.headers.get("content-type") ?? "";
       let source: ArrayBuffer | string;
       if (contentType.includes("text/csv") || extension === "csv") {
@@ -86,38 +70,80 @@ export function ExcelViewer({
         source = await response.arrayBuffer();
       }
 
-      const XLSX = await import("xlsx");
-      const parsed =
+      const wb =
         typeof source === "string"
           ? XLSX.read(source, { type: "string" })
           : XLSX.read(new Uint8Array(source), { type: "array" });
 
-      const sheetMap: Record<string, SheetData> = {};
-      for (const name of parsed.SheetNames) {
-        const ws = parsed.Sheets[name];
-        const ref = ws["!ref"] || "A1";
-        const range = XLSX.utils.decode_range(ref);
-        const merges = (ws["!merges"] || []) as SheetMerge[];
-        const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, {
+      const parsed: SheetData[] = [];
+
+      for (const name of wb.SheetNames) {
+        const ws = wb.Sheets[name];
+        const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
           header: 1,
           defval: "",
           raw: false,
           blankrows: true,
         });
 
-        sheetMap[name] = {
+        const cleanRows =
+          rows.length > 0
+            ? rows
+            : [
+                ["Center :", `AAST Sheraton ${name}`, "", "", "", "Date: 09 - 10 - 2026", "", "EST Type : 1", "", ""],
+                [],
+                [
+                  "No.",
+                  "Name",
+                  "Proctor Type",
+                  "Mobile",
+                  "IP / EP",
+                  "Room",
+                  "Arrival Signature",
+                  "Time",
+                  "Departure Signature",
+                  "Time",
+                ],
+              ];
+
+        // Auto-fill inherited room values for each proctor row from vertical merges
+        let headerIdx = -1;
+        for (let r = 0; r < Math.min(15, cleanRows.length); r++) {
+          const cell0 = String(cleanRows[r]?.[0] ?? "").trim();
+          const cell1 = String(cleanRows[r]?.[1] ?? "").trim();
+          if (/^No\.?$/i.test(cell0) || /^Name$/i.test(cell1)) {
+            headerIdx = r;
+            break;
+          }
+        }
+        if (headerIdx !== -1) {
+          let activeRoom = "";
+          for (let r = headerIdx + 1; r < cleanRows.length; r++) {
+            const row = cleanRows[r] || [];
+            const cell1 = String(row[1] ?? "").trim();
+            if (/^Head$/i.test(cell1) || /Mohamed\s*Nabil/i.test(cell1)) break;
+            if (!row[0] && !row[1] && !row[2]) continue;
+
+            const currentRoom = String(row[5] ?? "").trim();
+            if (currentRoom) {
+              activeRoom = currentRoom;
+            } else if (activeRoom) {
+              while (row.length <= 5) row.push("");
+              row[5] = activeRoom;
+            }
+          }
+        }
+
+        parsed.push({
           name,
-          rows,
-          merges,
-          range,
-        };
+          rows: cleanRows,
+          merges: ws["!merges"] || [],
+        });
       }
 
       if (cancelled) return;
-      setWorkbook({ sheets: parsed.SheetNames, sheetMap });
-      if (!sheet || !parsed.SheetNames.includes(sheet)) {
-        setSheet(parsed.SheetNames[0] ?? "");
-      }
+      setSheets(parsed);
+      setActiveTabIdx(0);
     } catch (cause) {
       if (!cancelled) setError(cause instanceof Error ? cause.message : t("preview.loadFailed"));
     } finally {
@@ -133,225 +159,201 @@ export function ExcelViewer({
     };
   }, [extension, fileId]);
 
-  const currentSheet = useMemo(() => {
-    if (!workbook || !sheet) return null;
-    return workbook.sheetMap[sheet] ?? null;
-  }, [workbook, sheet]);
+  // Handle cell change
+  const handleCellChange = (sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
+    setSheets((prev) => {
+      const copy = [...prev];
+      const targetSheet = { ...copy[sheetIdx] };
+      const targetRows = targetSheet.rows.map((r) => [...r]);
 
-  const currentRows = useMemo(() => currentSheet?.rows ?? [], [currentSheet]);
+      while (targetRows.length <= rowIdx) {
+        targetRows.push([]);
+      }
+      while (targetRows[rowIdx].length <= colIdx) {
+        targetRows[rowIdx].push("");
+      }
 
-  // Compute column count
-  const columns = useMemo(
-    () => currentRows.reduce((max, row) => Math.max(max, row ? row.length : 0), 0),
-    [currentRows],
-  );
+      targetRows[rowIdx][colIdx] = value;
+      targetSheet.rows = targetRows;
+      copy[sheetIdx] = targetSheet;
+      return copy;
+    });
+  };
 
-  // Compute merges, covered coordinates, and resolved values
-  const { starts, covered, resolvedValues, roomColIdx, headerRowIdx } = useMemo(() => {
-    const coveredSet = new Set<string>();
-    const startsMap = new Map<string, { rowSpan: number; colSpan: number; val: Cell }>();
-    const resolvedMap = new Map<string, Cell>();
+  // Add new row to active tab with sequential numbering
+  const handleAddRow = () => {
+    if (sheets.length === 0) return;
+    setSheets((prev) => {
+      const copy = [...prev];
+      const targetSheet = { ...copy[activeTabIdx] };
+      const targetRows = targetSheet.rows.map((r) => [...r]);
 
-    if (!currentSheet) {
-      return { starts: startsMap, covered: coveredSet, resolvedValues: resolvedMap, roomColIdx: 5, headerRowIdx: 2 };
-    }
+      const maxCols = Math.max(10, ...targetRows.map((r) => r.length));
+      const parsed = parseSheetDetails(targetSheet, buildingName);
+      const newRowNum = parsed.dataRows.length + 1;
+      const newRow: (string | number | null)[] = [
+        newRowNum,
+        "",
+        "Proctor",
+        "",
+        "EP",
+        "",
+        "",
+        ":",
+        "",
+        ":",
+      ];
+      while (newRow.length < maxCols) {
+        newRow.push("");
+      }
 
-    const { rows, merges, range } = currentSheet;
-
-    // Detect header row and room column
-    let detectedHeaderRow = -1;
-    let detectedRoomCol = -1;
-    for (let r = 0; r < Math.min(10, rows.length); r++) {
-      const row = rows[r] || [];
-      for (let c = 0; c < row.length; c++) {
-        const val = String(row[c] ?? "").trim();
-        if (/^Room$/i.test(val)) {
-          detectedHeaderRow = r;
-          detectedRoomCol = c;
+      let insertIdx = targetRows.length;
+      for (let r = targetRows.length - 1; r >= 0; r--) {
+        const val = String(targetRows[r]?.[1] ?? "").trim();
+        if (/^Head$/i.test(val) || /Mohamed\s*Nabil/i.test(val)) {
+          insertIdx = r;
           break;
         }
       }
-      if (detectedHeaderRow !== -1) break;
-    }
-    const finalRoomCol = detectedRoomCol !== -1 ? detectedRoomCol : 5;
-    const finalHeaderRow = detectedHeaderRow !== -1 ? detectedHeaderRow : 2;
 
-    // 1. Process explicit Excel merges from ws['!merges']
-    for (const m of merges) {
-      const sR = m.s.r - range.s.r;
-      const eR = m.e.r - range.s.r;
-      const sC = m.s.c - range.s.c;
-      const eC = m.e.c - range.s.c;
-      if (sR < 0 || sR >= rows.length || sC < 0) continue;
-      const val = rows[sR]?.[sC];
+      targetRows.splice(insertIdx, 0, newRow);
+      targetSheet.rows = targetRows;
+      copy[activeTabIdx] = targetSheet;
+      return copy;
+    });
+    toast.success(locale === "ar" ? "تمت إضافة مراقب جديد للجدول" : "Added new proctor row");
+  };
 
-      startsMap.set(`${sR},${sC}`, {
-        rowSpan: Math.max(1, eR - sR + 1),
-        colSpan: Math.max(1, eC - sC + 1),
-        val,
-      });
+  // Delete row with sequential re-numbering
+  const handleDeleteRow = (rowIdx: number, sheetIdx?: number) => {
+    if (sheets.length === 0) return;
+    const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
+    setSheets((prev) => {
+      const copy = [...prev];
+      const targetSheet = { ...copy[targetIdx] };
+      if (!targetSheet) return prev;
+      const targetRows = targetSheet.rows.filter((_, idx) => idx !== rowIdx);
 
-      for (let r = sR; r <= eR; r++) {
-        for (let c = sC; c <= eC; c++) {
-          resolvedMap.set(`${r},${c}`, val);
-          if (r !== sR || c !== sC) {
-            coveredSet.add(`${r},${c}`);
-          }
+      let headerIdx = -1;
+      for (let r = 0; r < Math.min(10, targetRows.length); r++) {
+        if (/^No\.?$/i.test(String(targetRows[r]?.[0] ?? "").trim())) {
+          headerIdx = r;
+          break;
         }
       }
-    }
-
-    // 2. Room column auto-grouping fallback if merges were not explicitly set for column 5
-    if (finalHeaderRow !== -1 && finalRoomCol !== -1) {
-      let grpStart = -1;
-      let grpVal: Cell = "";
-      for (let r = finalHeaderRow + 1; r < rows.length; r++) {
-        const coord = `${r},${finalRoomCol}`;
-        if (startsMap.has(coord) || coveredSet.has(coord)) {
-          if (grpStart !== -1 && r - grpStart > 1) {
-            startsMap.set(`${grpStart},${finalRoomCol}`, { rowSpan: r - grpStart, colSpan: 1, val: grpVal });
-            for (let k = grpStart; k < r; k++) {
-              resolvedMap.set(`${k},${finalRoomCol}`, grpVal);
-              if (k !== grpStart) coveredSet.add(`${k},${finalRoomCol}`);
-            }
-          }
-          grpStart = -1;
-          grpVal = "";
-          continue;
-        }
-
-        const rawVal = rows[r]?.[finalRoomCol];
-        const strVal = String(rawVal ?? "").trim();
-        const hasProctor = Boolean(String(rows[r]?.[1] ?? "").trim());
-
-        if (strVal !== "") {
-          if (grpStart !== -1 && r - grpStart > 1) {
-            startsMap.set(`${grpStart},${finalRoomCol}`, { rowSpan: r - grpStart, colSpan: 1, val: grpVal });
-            for (let k = grpStart; k < r; k++) {
-              resolvedMap.set(`${k},${finalRoomCol}`, grpVal);
-              if (k !== grpStart) coveredSet.add(`${k},${finalRoomCol}`);
-            }
-          }
-          grpStart = r;
-          grpVal = rawVal;
-          resolvedMap.set(`${r},${finalRoomCol}`, rawVal);
-        } else if (grpStart !== -1 && hasProctor) {
-          resolvedMap.set(`${r},${finalRoomCol}`, grpVal);
-        } else {
-          if (grpStart !== -1 && r - grpStart > 1) {
-            startsMap.set(`${grpStart},${finalRoomCol}`, { rowSpan: r - grpStart, colSpan: 1, val: grpVal });
-            for (let k = grpStart; k < r; k++) {
-              resolvedMap.set(`${k},${finalRoomCol}`, grpVal);
-              if (k !== grpStart) coveredSet.add(`${k},${finalRoomCol}`);
-            }
-          }
-          grpStart = -1;
-          grpVal = "";
+      if (headerIdx !== -1) {
+        let count = 1;
+        for (let r = headerIdx + 1; r < targetRows.length; r++) {
+          const row = targetRows[r];
+          if (!row) continue;
+          const val1 = String(row[1] ?? "").trim();
+          if (/^Head$/i.test(val1) || /Mohamed\s*Nabil/i.test(val1)) break;
+          if (!row[0] && !row[1] && !row[2]) continue;
+          row[0] = count++;
         }
       }
 
-      if (grpStart !== -1 && rows.length - grpStart > 1) {
-        startsMap.set(`${grpStart},${finalRoomCol}`, { rowSpan: rows.length - grpStart, colSpan: 1, val: grpVal });
-        for (let k = grpStart; k < rows.length; k++) {
-          resolvedMap.set(`${k},${finalRoomCol}`, grpVal);
-          if (k !== grpStart) coveredSet.add(`${k},${finalRoomCol}`);
-        }
-      }
+      targetSheet.rows = targetRows;
+      copy[targetIdx] = targetSheet;
+      return copy;
+    });
+    toast.success(
+      locale === "ar"
+        ? "تم حذف المراقب من الجدول بنجاح. اضغط 'حفظ التعديلات' بالأعلى."
+        : "Proctor row removed successfully. Click 'Save Changes' to update file.",
+    );
+  };
+
+  // Delete last proctor row
+  const handleDeleteLastRow = (sheetIdx?: number) => {
+    if (sheets.length === 0) return;
+    const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
+    const targetSheet = sheets[targetIdx];
+    if (!targetSheet) return;
+    const parsed = parseSheetDetails(targetSheet, buildingName);
+    if (parsed.dataRows.length === 0) {
+      toast.error(locale === "ar" ? "لا يوجد مراقبين لحذفهم" : "No proctors to delete");
+      return;
     }
+    const lastRow = parsed.dataRows[parsed.dataRows.length - 1];
+    handleDeleteRow(lastRow.rawRowIdx, targetIdx);
+  };
 
-    return {
-      starts: startsMap,
-      covered: coveredSet,
-      resolvedValues: resolvedMap,
-      roomColIdx: finalRoomCol,
-      headerRowIdx: finalHeaderRow,
-    };
-  }, [currentSheet]);
+  // Add new floor tab
+  const handleAddTab = () => {
+    const floorNum = sheets.length;
+    const newTabName = `${locale === "ar" ? "الدور" : "Floor"} ${floorNum}`;
+    const newRows: (string | number | null)[][] = [
+      ["Center :", `AAST Sheraton Management ${newTabName}`, null, null, null, "Date: 09 - 10 - 2026", null, "EST Type : 1", null, null],
+      [],
+      [
+        "No.",
+        "Name",
+        "Proctor Type",
+        "Mobile",
+        "IP / EP",
+        "Room",
+        "Arrival Signature",
+        "Time",
+        "Departure Signature",
+        "Time",
+      ],
+      [1, "Senior Name", "Senior", "01000000000", "IP", newTabName, null, ":", null, ":"],
+      [2, "Proctor Name 1", "Proctor", "01100000000", "EP", "Room 01", null, ":", null, ":"],
+      [3, "Proctor Name 2", "Proctor", "01200000000", "EP", "Room 02", null, ":", null, ":"],
+      [],
+      [null, "Head", null, null, null, null, null, null, null, null],
+      [null, "Mohamed Nabil", null, null, null, null, null, null, null, null],
+    ];
 
-  // Save changes back to Google Drive / Server
-  const handleSaveSpreadsheet = async () => {
-    if (!workbook || workbook.sheets.length === 0) return;
+    setSheets((prev) => [
+      ...prev,
+      {
+        name: newTabName,
+        rows: newRows,
+      },
+    ]);
+    setActiveTabIdx(sheets.length);
+    toast.success(
+      locale === "ar"
+        ? `تم إضافة تاب جديد باسم "${newTabName}"`
+        : `Added new tab "${newTabName}"`,
+    );
+  };
+
+  // Save changes back to Google Drive / Server with proper column widths and room merges
+  const handleSaveChanges = async () => {
+    if (sheets.length === 0) return;
     setSaving(true);
+
     try {
-      const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();
 
-      for (const name of workbook.sheets) {
-        const s = workbook.sheetMap[name];
-        if (!s) continue;
+      for (const s of sheets) {
+        const ws = XLSX.utils.aoa_to_sheet(s.rows);
 
-        // Ensure rows are cloned
-        const rowsCopy = s.rows.map((r) => [...r]);
+        // Calculate vertical merges for shared Room cells (Col 5)
+        const otherMerges = (s.merges || []).filter((m) => m.s.c !== 5 || m.e.c !== 5);
+        const roomMerges: XLSX.Range[] = [];
+        const parsed = parseSheetDetails(s, buildingName);
+        const { spanMap } = computeRoomSpans(parsed.dataRows);
 
-        // Find header row and room col
-        let hRow = -1;
-        let rCol = 5;
-        for (let r = 0; r < Math.min(10, rowsCopy.length); r++) {
-          const row = rowsCopy[r] || [];
-          for (let c = 0; c < row.length; c++) {
-            if (/^Room$/i.test(String(row[c] ?? "").trim())) {
-              hRow = r;
-              rCol = c;
-              break;
-            }
-          }
-          if (hRow !== -1) break;
-        }
-        if (hRow === -1) hRow = 2;
-
-        const ws = XLSX.utils.aoa_to_sheet(rowsCopy);
-
-        // Keep non-room merges (like Center and Date headers on row 0)
-        const nonRoomMerges = (s.merges || []).filter((m) => {
-          const isRoomMerge = m.s.c === (s.range.s.c + rCol) && m.e.c === (s.range.s.c + rCol) && m.s.r !== m.e.r;
-          return !isRoomMerge;
-        });
-
-        // Compute new Room column vertical merges
-        const newRoomMerges: SheetMerge[] = [];
-        let grpStart = -1;
-        let grpRoom = "";
-
-        for (let r = hRow + 1; r < rowsCopy.length; r++) {
-          const row = rowsCopy[r] || [];
-          const nameVal = String(row[1] ?? "").trim();
-          if (/^Head$/i.test(nameVal) || /Mohamed\s*Nabil/i.test(nameVal)) {
-            break;
-          }
-          if (!row[0] && !row[1] && !row[2]) continue;
-
-          const rVal = String(row[rCol] ?? "").trim();
-
-          if (grpStart === -1) {
-            grpStart = r;
-            grpRoom = rVal;
-          } else if (rVal === grpRoom && rVal !== "") {
-            // continue same room
-          } else {
-            if (r - grpStart > 1) {
-              newRoomMerges.push({
-                s: { r: s.range.s.r + grpStart, c: s.range.s.c + rCol },
-                e: { r: s.range.s.r + r - 1, c: s.range.s.c + rCol },
-              });
-            }
-            grpStart = r;
-            grpRoom = rVal;
+        for (const [startIdx, span] of spanMap.entries()) {
+          if (span > 1 && startIdx + span - 1 < parsed.dataRows.length) {
+            const startRow = parsed.dataRows[startIdx].rawRowIdx;
+            const endRow = parsed.dataRows[startIdx + span - 1].rawRowIdx;
+            roomMerges.push({
+              s: { r: startRow, c: 5 },
+              e: { r: endRow, c: 5 },
+            });
           }
         }
 
-        if (grpStart !== -1 && rowsCopy.length - grpStart > 1) {
-          newRoomMerges.push({
-            s: { r: s.range.s.r + grpStart, c: s.range.s.c + rCol },
-            e: { r: s.range.s.r + rowsCopy.length - 1, c: s.range.s.c + rCol },
-          });
-        }
-
-        const allMerges = [...nonRoomMerges, ...newRoomMerges];
+        const allMerges = [...otherMerges, ...roomMerges];
         if (allMerges.length > 0) {
           ws["!merges"] = allMerges;
         }
 
-        // Set balanced column widths matching the 10 EST columns
         ws["!cols"] = [
           { wch: 6 },  // 1: No.
           { wch: 32 }, // 2: Name
@@ -373,14 +375,17 @@ export function ExcelViewer({
       const res = await fetch(`/api/drive/files/${fileId}/content`, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         },
         body: wbArray,
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || (locale === "ar" ? "فشل حفظ الملف" : "Failed to save file"));
+        throw new Error(
+          errData.message || (locale === "ar" ? "فشل حفظ الملف" : "Failed to save file"),
+        );
       }
 
       toast.success(
@@ -388,829 +393,82 @@ export function ExcelViewer({
           ? "تم حفظ كافة التعديلات في ملف الإكسيل بنجاح!"
           : "Spreadsheet updated and saved successfully!",
       );
-      if (onEditingChange) onEditingChange(false);
-      await loadWorkbook();
+      setIsEditing(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error saving spreadsheet");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
-  // Wire saveRef to parent (PreviewShell)
+  // Wire up the saveRef from preview-shell
   useEffect(() => {
     if (saveRef) {
-      saveRef.current = handleSaveSpreadsheet;
+      saveRef.current = handleSaveChanges;
     }
     return () => {
-      if (saveRef) {
-        saveRef.current = null;
-      }
+      if (saveRef) saveRef.current = null;
     };
-  });
+  }, [sheets, fileId, buildingName]);
 
-  // Handle cell edit
-  const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
-    if (!workbook || !sheet) return;
-    setWorkbook((prev) => {
-      if (!prev) return prev;
-      const targetSheet = prev.sheetMap[sheet];
-      if (!targetSheet) return prev;
+  // Clean Landscape Printing using shared iframe utility
+  const handlePrint = (singleSheet: boolean = false) => {
+    const sheetsToPrint = singleSheet && sheets[activeTabIdx] ? [sheets[activeTabIdx]] : sheets;
+    if (sheetsToPrint.length === 0) return;
 
-      const newRows = targetSheet.rows.map((r) => [...r]);
-      while (newRows.length <= rowIndex) newRows.push([]);
-      while (newRows[rowIndex].length <= colIndex) newRows[rowIndex].push("");
-
-      newRows[rowIndex][colIndex] = value;
-
-      return {
-        ...prev,
-        sheetMap: {
-          ...prev.sheetMap,
-          [sheet]: {
-            ...targetSheet,
-            rows: newRows,
-          },
-        },
-      };
-    });
-  };
-
-  // Add new proctor row
-  const handleAddRow = () => {
-    if (!workbook || !sheet) return;
-    const targetSheet = workbook.sheetMap[sheet];
-    if (!targetSheet) return;
-
-    const rows = targetSheet.rows;
-    // Count existing proctor rows to compute next sequential number
-    let maxNo = 0;
-    for (let r = headerRowIdx + 1; r < rows.length; r++) {
-      const num = parseInt(String(rows[r]?.[0] ?? "").trim(), 10);
-      if (!isNaN(num) && num > maxNo) maxNo = num;
-    }
-    const newNo = maxNo > 0 ? maxNo + 1 : rows.length - headerRowIdx;
-
-    // Pick active room from previous row
-    const prevRoom = String(resolvedValues.get(`${rows.length - 1},${roomColIdx}`) || rows[rows.length - 1]?.[roomColIdx] || "");
-
-    const newRow: Cell[] = [
-      newNo,
-      "",
-      "Proctor",
-      "",
-      "EP",
-      prevRoom || "",
-      "",
-      ":",
-      "",
-      ":",
-    ];
-
-    // Insert before footer Head row if present
-    let insertIdx = rows.length;
-    for (let r = rows.length - 1; r >= 0; r--) {
-      const val = String(rows[r]?.[1] ?? "").trim();
-      if (/^Head$/i.test(val) || /Mohamed\s*Nabil/i.test(val)) {
-        insertIdx = r;
-        break;
-      }
-    }
-
-    setWorkbook((prev) => {
-      if (!prev) return prev;
-      const s = prev.sheetMap[sheet];
-      if (!s) return prev;
-      const newRows = [...s.rows.map((r) => [...r])];
-      newRows.splice(insertIdx, 0, newRow);
-      return {
-        ...prev,
-        sheetMap: {
-          ...prev.sheetMap,
-          [sheet]: { ...s, rows: newRows },
-        },
-      };
-    });
-    toast.success(locale === "ar" ? "تم إضافة سطر مراقب جديد" : "Added new proctor row");
-  };
-
-  // Delete row with sequential re-numbering
-  const handleDeleteRow = (rowIndex: number) => {
-    if (!workbook || !sheet) return;
-    setWorkbook((prev) => {
-      if (!prev) return prev;
-      const s = prev.sheetMap[sheet];
-      if (!s) return prev;
-      const newRows = s.rows.filter((_, idx) => idx !== rowIndex);
-
-      // Re-number sequential No. starting from 1 for data rows
-      let headerIdx = -1;
-      for (let r = 0; r < Math.min(10, newRows.length); r++) {
-        if (/^No\.?$/i.test(String(newRows[r]?.[0] ?? "").trim())) {
-          headerIdx = r;
-          break;
-        }
-      }
-      if (headerIdx !== -1) {
-        let count = 1;
-        for (let r = headerIdx + 1; r < newRows.length; r++) {
-          const row = newRows[r];
-          if (!row) continue;
-          const val1 = String(row[1] ?? "").trim();
-          if (/^Head$/i.test(val1) || /Mohamed\s*Nabil/i.test(val1)) break;
-          if (!row[0] && !row[1] && !row[2]) continue;
-          row[0] = count++;
-        }
-      }
-
-      return {
-        ...prev,
-        sheetMap: {
-          ...prev.sheetMap,
-          [sheet]: { ...s, rows: newRows },
-        },
-      };
-    });
-    toast.success(
+    toast.loading(
       locale === "ar"
-        ? "تم حذف المراقب من الجدول بنجاح. لا تنسَ الضغط على 'حفظ التعديلات' بالأعلى."
-        : "Proctor row removed successfully. Click 'Save' to update file.",
+        ? "جاري فتح نافذة الطباعة بالعرض (A4 Landscape)..."
+        : "Opening A4 Landscape print dialog...",
+      { duration: 1500 },
     );
-  };
 
-  // Delete the last added proctor row
-  const handleDeleteLastRow = () => {
-    if (!workbook || !sheet) return;
-    const targetSheet = workbook.sheetMap[sheet];
-    if (!targetSheet) return;
-    let lastDataRowIdx = -1;
-    for (let r = targetSheet.rows.length - 1; r > headerRowIdx; r--) {
-      const row = targetSheet.rows[r];
-      if (!row) continue;
-      const val1 = String(row[1] ?? "").trim();
-      if (/^Head$/i.test(val1) || /Mohamed\s*Nabil/i.test(val1)) continue;
-      if (!row[0] && !row[1] && !row[2]) continue;
-      lastDataRowIdx = r;
-      break;
-    }
-    if (lastDataRowIdx === -1) {
-      toast.error(locale === "ar" ? "لا يوجد مراقبين لحذفهم" : "No proctors to delete");
-      return;
-    }
-    handleDeleteRow(lastDataRowIdx);
-  };
-
-  // Add new floor sheet tab
-  const handleAddFloorTab = () => {
-    if (!workbook) return;
-    const count = workbook.sheets.length;
-    const newTabName = `${locale === "ar" ? "الدور" : "Floor"} ${count}`;
-    const newRows: Cell[][] = [
-      ["Center :", `AAST Sheraton Management ${newTabName}`, null, null, null, "Date: 09 - 10 - 2026", null, "EST Type : 1", null, null],
-      [],
-      [
-        "No.",
-        "Name",
-        "Proctor Type",
-        "Mobile",
-        "IP / EP",
-        "Room",
-        "Arrival Signature",
-        "Time",
-        "Departure Signature",
-        "Time",
-      ],
-      [1, "Senior Name", "Senior", "01000000000", "IP", newTabName, null, ":", null, ":"],
-      [2, "Proctor Name 1", "Proctor", "01100000000", "EP", "Room 01", null, ":", null, ":"],
-      [],
-      [null, "Head", null, null, null, null, null, null, null, null],
-      [null, "Mohamed Nabil", null, null, null, null, null, null, null, null],
-    ];
-
-    setWorkbook((prev) => {
-      if (!prev) return prev;
-      return {
-        sheets: [...prev.sheets, newTabName],
-        sheetMap: {
-          ...prev.sheetMap,
-          [newTabName]: {
-            name: newTabName,
-            rows: newRows,
-            merges: [],
-            range: { s: { c: 0, r: 0 }, e: { c: 9, r: newRows.length - 1 } },
-          },
-        },
-      };
+    printEstSheetsWithIframe(sheetsToPrint, {
+      buildingName,
+      title: "EST Building Register",
     });
-    setSheet(newTabName);
-    toast.success(locale === "ar" ? `تم إضافة تاب جديد باسم "${newTabName}"` : `Added sheet "${newTabName}"`);
   };
-
-  // Direct clean A4 Landscape print
-  const handlePrintA4Landscape = () => {
-    if (!currentSheet) return;
-    const frame = document.createElement("iframe");
-    frame.style.position = "fixed";
-    frame.style.right = "0";
-    frame.style.bottom = "0";
-    frame.style.width = "0";
-    frame.style.height = "0";
-    frame.style.border = "0";
-    document.body.appendChild(frame);
-
-    const doc = frame.contentWindow?.document;
-    if (!doc) return;
-
-    // Build print HTML
-    const printRowsHtml = currentRows
-      .filter((r) => r && r.some((c) => String(c ?? "").trim() !== ""))
-      .map((row, rIdx) => {
-        const isHeader = rIdx === headerRowIdx;
-        const isMeta = rIdx < headerRowIdx;
-
-        let cellsHtml = "";
-        for (let c = 0; c < columns; c++) {
-          const coord = `${rIdx},${c}`;
-          if (covered.has(coord)) continue;
-
-          const merge = starts.get(coord);
-          const rSpan = merge?.rowSpan ?? 1;
-          const cSpan = merge?.colSpan ?? 1;
-          const raw = row[c];
-          const val = raw !== null && raw !== undefined ? String(raw) : "";
-
-          const isRoom = c === roomColIdx;
-          const isMerged = isRoom && rSpan > 1;
-
-          if (isHeader) {
-            cellsHtml += `<th style="border: 1.5px solid #000; padding: 5px 4px; background: #e2e8f0; font-weight: bold; font-size: 11px; text-align: center;">${val}</th>`;
-          } else if (isMeta) {
-            cellsHtml += `<td colspan="${cSpan}" style="border: none; padding: 4px 6px; font-weight: bold; font-size: 13px;">${val}</td>`;
-          } else {
-            const align = isRoom || c === 0 || c === 4 || c === 7 || c === 9 ? "center" : "left";
-            const bg = isMerged ? "background: #f8fafc;" : "";
-            const extraStyle = isMerged ? "font-weight: bold; font-size: 13px;" : "font-size: 11px;";
-            cellsHtml += `<td rowspan="${rSpan > 1 ? rSpan : 1}" colspan="${cSpan > 1 ? cSpan : 1}" style="border: 1.2px solid #000; padding: 4px 6px; text-align: ${align}; ${bg} ${extraStyle} vertical-align: middle;">${val}</td>`;
-          }
-        }
-        return `<tr>${cellsHtml}</tr>`;
-      })
-      .join("");
-
-    const fullHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${sheet} - Print</title>
-        <style>
-          @page {
-            size: A4 landscape;
-            margin: 0mm !important;
-          }
-          * {
-            box-sizing: border-box;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body {
-            font-family: Arial, Helvetica, sans-serif;
-            margin: 0;
-            padding: 8mm 6mm !important;
-            background: #fff;
-            color: #000;
-          }
-          a[href]:after {
-            content: none !important;
-          }
-          .header-box {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            border-bottom: 2px solid #000;
-            padding-bottom: 6px;
-          }
-          .logo {
-            height: 48px;
-            object-fit: contain;
-          }
-          .title-area {
-            text-align: center;
-            flex: 1;
-          }
-          .title-area h2 {
-            margin: 0;
-            font-size: 16px;
-            font-weight: 800;
-            text-transform: uppercase;
-          }
-          .title-area p {
-            margin: 2px 0 0 0;
-            font-size: 12px;
-            font-weight: bold;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 4px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header-box">
-          <img src="${EST_LOGO_BASE64}" class="logo" alt="EST Logo" />
-          <div class="title-area">
-            <h2>PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</h2>
-            <p>${sheet}</p>
-          </div>
-          <div style="width: 80px; text-align: right; font-size: 11px; font-weight: bold;">
-            A4 Landscape
-          </div>
-        </div>
-        <table>
-          <tbody>
-            ${printRowsHtml}
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
-
-    doc.open();
-    doc.write(fullHtml);
-    doc.close();
-
-    setTimeout(() => {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-      setTimeout(() => {
-        document.body.removeChild(frame);
-      }, 1000);
-    }, 500);
-  };
-
-  const isSearching = Boolean(search.trim());
-  const filteredRows = useMemo(() => {
-    if (!isSearching) return currentRows;
-    const term = search.trim().toLowerCase();
-    return currentRows.filter((row, idx) => {
-      if (idx <= headerRowIdx) return true; // Keep headers visible
-      return row.some((cell, colIdx) => {
-        const val = resolvedValues.get(`${idx},${colIdx}`) ?? cell;
-        return String(val ?? "").toLowerCase().includes(term);
-      });
-    });
-  }, [currentRows, search, isSearching, headerRowIdx, resolvedValues]);
 
   if (loading) {
     return (
-      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-sm text-muted">
-        <Spinner className="size-6 text-accent" />
-        {t("common.loading")}
+      <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+        <Spinner className="size-8 text-emerald-600" />
+        <p className="text-sm font-medium">
+          {locale === "ar" ? "جاري قراءة وتنسيق تابات الإكسيل..." : "Loading and parsing workbook tabs..."}
+        </p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-[40vh] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border p-8 text-center">
-        <p className="text-sm font-semibold text-danger">{error}</p>
-        <a href={`/api/drive/files/${fileId}/content?download=1`} className="btn-secondary">
-          {t("common.download")}
-        </a>
+      <div className="p-8 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">
+        {error}
       </div>
     );
   }
-
-  if (!workbook || workbook.sheets.length === 0) {
-    return <p className="py-16 text-center text-sm text-muted">{t("common.noFiles")}</p>;
-  }
-
-  const padding = density === "compact" ? "px-2 py-1" : density === "comfortable" ? "px-4 py-3" : "px-3 py-2";
 
   return (
-    <div className="space-y-3">
-      {/* Top Sheet Toolbar */}
-      <div className="no-print flex flex-wrap items-center justify-between gap-2">
-        {/* Floor Tabs */}
-        <div className="scrollbar-thin flex max-w-full flex-1 gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1">
-          {workbook.sheets.map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => {
-                setSheet(name);
-                setVisibleRows(ROW_LIMIT);
-              }}
-              className={cn(
-                "whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
-                sheet === name
-                  ? "bg-accent-soft text-accent-strong shadow-xs font-bold"
-                  : "text-muted hover:bg-surface-soft hover:text-foreground",
-              )}
-            >
-              {name}
-            </button>
-          ))}
-          {isEditing && (
-            <button
-              type="button"
-              onClick={handleAddFloorTab}
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-bold text-accent hover:bg-accent-soft transition-colors cursor-pointer"
-              title={locale === "ar" ? "إضافة دور جديد" : "Add floor tab"}
-            >
-              <Plus className="size-3.5" />
-              {locale === "ar" ? "دور جديد" : "Add Floor"}
-            </button>
-          )}
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          {!isEditing && (
-            <div className="relative w-full sm:w-56">
-              <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("preview.searchInSheet")}
-                className="h-9 ps-9 text-xs"
-              />
-            </div>
-          )}
-
-          {/* Inline Edit/View Toggle */}
-          <Button
-            variant={isEditing ? "primary" : "secondary"}
-            onClick={() => onEditingChange?.(!isEditing)}
-            className="h-9 gap-1.5 text-xs font-bold cursor-pointer"
-          >
-            <Pencil className="size-3.5" />
-            {isEditing ? (locale === "ar" ? "معاينة" : "View") : (locale === "ar" ? "تعديل" : "Edit")}
-          </Button>
-
-          {/* Inline Save Button */}
-          {isEditing && (
-            <Button
-              variant="primary"
-              onClick={() => void handleSaveSpreadsheet()}
-              loading={saving}
-              className="h-9 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-            >
-              <Save className="size-3.5" />
-              {locale === "ar" ? "حفظ التعديلات" : "Save"}
-            </Button>
-          )}
-
-          {/* Clean Landscape Print */}
-          {!isEditing && (
-            <Button
-              variant="secondary"
-              onClick={handlePrintA4Landscape}
-              className="h-9 gap-1.5 text-xs font-semibold cursor-pointer"
-              title={locale === "ar" ? "طباعة الورقة الحالية A4 بالعرض بدون هوامش متصفح" : "Print sheet A4 landscape"}
-            >
-              <Printer className="size-3.5" />
-              {locale === "ar" ? "طباعة A4 بالعرض" : "Print A4"}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Editing Alert Banner */}
-      {isEditing && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex size-2 rounded-full bg-amber-500 animate-pulse" />
-            <span>
-              {locale === "ar"
-                ? "وضع التعديل نشط: يمكنك تعديل أسماء المراقبين وأرقام الرومات والهواتف ومواعيد الحضور والانصراف، ثم الضغط على زر حفظ التعديلات بالأعلى."
-                : "Edit Mode Active: You can edit proctors, room assignments, phone numbers and times directly, then click Save."}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={handleAddRow}
-              className="h-7 text-[11px] gap-1 font-bold px-2.5"
-            >
-              <Plus className="size-3" />
-              {locale === "ar" ? "إضافة مراقب" : "Add Proctor"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={handleDeleteLastRow}
-              className="h-7 text-[11px] gap-1 font-bold px-2.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-rose-200 dark:border-rose-800"
-              title={locale === "ar" ? "حذف آخر مراقب تمت إضافته" : "Delete last added proctor"}
-            >
-              <Trash2 className="size-3" />
-              {locale === "ar" ? "حذف آخر مراقب" : "Delete Last"}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => void handleSaveSpreadsheet()}
-              loading={saving}
-              className="h-7 text-[11px] gap-1 font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5"
-            >
-              <Save className="size-3" />
-              {locale === "ar" ? "حفظ" : "Save"}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Spreadsheet Table Container */}
-      <div className="scrollbar-thin max-h-[72vh] overflow-auto rounded-2xl border border-border bg-surface shadow-xs">
-        <table className="sheet-table w-full border-collapse">
-          <thead>
-            <tr>
-              <th className={cn("sticky start-0 z-20 bg-surface-strong text-muted border-b border-border text-center text-xs w-12", padding)}>
-                #
-              </th>
-              {Array.from({ length: columns }).map((_, index) => (
-                <th
-                  key={index}
-                  className={cn(
-                    padding,
-                    "bg-surface-strong text-foreground border-b border-r border-border/80 text-center font-bold text-xs uppercase tracking-wide",
-                  )}
-                >
-                  {columnName(index)}
-                </th>
-              ))}
-              <th className={cn(padding, "bg-surface-strong text-center text-xs font-bold w-16 border-b border-border text-rose-600 dark:text-rose-400 no-print")}>
-                {locale === "ar" ? "حذف" : "Del"}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.slice(0, visibleRows).map((row, rowIndex) => {
-              const isHeaderRow = rowIndex === headerRowIdx;
-              const isMetaRow = rowIndex < headerRowIdx;
-              const isFooterRow =
-                /^Head$/i.test(String(row[1] ?? "").trim()) ||
-                /Mohamed\s*Nabil/i.test(String(row[1] ?? "").trim());
-
-              return (
-                <tr
-                  key={rowIndex}
-                  className={cn(
-                    "hover:bg-surface-soft/40 transition-colors",
-                    isHeaderRow && "bg-surface-strong/80 font-bold border-y-2 border-border",
-                  )}
-                >
-                  {/* Sticky row index column */}
-                  <td
-                    className={cn(
-                      "sticky start-0 z-10 bg-surface text-center text-[11px] font-mono text-muted border-b border-r border-border select-none",
-                      padding,
-                    )}
-                  >
-                    {rowIndex + 1}
-                  </td>
-
-                  {/* Render row cells */}
-                  {Array.from({ length: columns }).map((_, columnIndex) => {
-                    const coord = `${rowIndex},${columnIndex}`;
-
-                    // If not searching, skip cells that are covered by an active rowspan/colspan
-                    if (!isSearching && !isEditing && covered.has(coord)) {
-                      return null;
-                    }
-
-                    const merge = !isSearching && !isEditing ? starts.get(coord) : undefined;
-                    const rowSpan = merge?.rowSpan ?? 1;
-                    const colSpan = merge?.colSpan ?? 1;
-
-                    // Effective cell value (resolving inherited room value when covered)
-                    const rawVal = row[columnIndex];
-                    const effectiveVal =
-                      rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== ""
-                        ? rawVal
-                        : resolvedValues.get(coord) ?? "";
-
-                    const isRoom = columnIndex === roomColIdx;
-                    const isMergedRoom = !isEditing && isRoom && rowSpan > 1;
-
-                    // Edit Mode cell rendering
-                    if (isEditing) {
-                      const isDataRow = rowIndex > headerRowIdx;
-                      return (
-                        <td
-                          key={columnIndex}
-                          className={cn(padding, "border-b border-r border-border/60 p-1")}
-                        >
-                          {isDataRow ? (
-                            columnIndex === 0 ? (
-                              <input
-                                type="text"
-                                value={String(rawVal ?? "")}
-                                onChange={(e) => handleCellChange(rowIndex, columnIndex, e.target.value)}
-                                className="w-full h-8 text-center font-mono text-xs font-bold rounded border border-border bg-surface-soft/50 px-1"
-                              />
-                            ) : columnIndex === 2 ? (
-                              <select
-                                value={String(rawVal || "Proctor")}
-                                onChange={(e) => handleCellChange(rowIndex, columnIndex, e.target.value)}
-                                className="w-full h-8 rounded border border-border bg-surface px-1 text-xs font-semibold cursor-pointer"
-                              >
-                                <option value="Proctor">Proctor</option>
-                                <option value="Senior">Senior</option>
-                                <option value="Roaming">Roaming</option>
-                                <option value="Supervisor">Supervisor</option>
-                                <option value="Head">Head</option>
-                              </select>
-                            ) : columnIndex === 4 ? (
-                              <select
-                                value={String(rawVal || "EP")}
-                                onChange={(e) => handleCellChange(rowIndex, columnIndex, e.target.value)}
-                                className="w-full h-8 rounded border border-border bg-surface px-1 text-xs font-bold cursor-pointer text-center"
-                              >
-                                <option value="EP">EP</option>
-                                <option value="IP">IP</option>
-                              </select>
-                            ) : columnIndex === 5 ? (
-                              // Room column in Edit Mode: populated with inherited room so every proctor has their room clearly editable!
-                              <input
-                                type="text"
-                                value={String(rawVal || effectiveVal || "")}
-                                onChange={(e) => handleCellChange(rowIndex, columnIndex, e.target.value)}
-                                placeholder={locale === "ar" ? "رقم الروم" : "Room"}
-                                className="w-full h-8 text-center font-bold text-xs rounded border-2 border-accent/40 bg-accent-soft/20 px-1 focus:border-accent"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={String(rawVal ?? "")}
-                                onChange={(e) => handleCellChange(rowIndex, columnIndex, e.target.value)}
-                                className={cn(
-                                  "w-full h-8 rounded border border-border bg-surface px-2 text-xs",
-                                  columnIndex === 1 && "font-semibold",
-                                  (columnIndex === 7 || columnIndex === 9) && "text-center font-mono",
-                                )}
-                              />
-                            )
-                          ) : (
-                            <input
-                              type="text"
-                              value={String(rawVal ?? "")}
-                              onChange={(e) => handleCellChange(rowIndex, columnIndex, e.target.value)}
-                              className="w-full h-8 rounded border border-border bg-surface px-2 text-xs font-medium"
-                            />
-                          )}
-                        </td>
-                      );
-                    }
-
-                    // View Mode cell rendering
-                    return (
-                      <td
-                        key={columnIndex}
-                        rowSpan={rowSpan > 1 ? rowSpan : undefined}
-                        colSpan={colSpan > 1 ? colSpan : undefined}
-                        className={cn(
-                          padding,
-                          "border-b border-r border-border/70 text-start transition-colors",
-                          isHeaderRow && "text-center font-bold text-xs bg-surface-strong text-foreground",
-                          isMetaRow && colSpan > 1 && "font-bold text-sm bg-surface-soft/40",
-                          // Merged Room cell: centered vertically and horizontally, clean bold text with subtle background, ZERO dashes!
-                          isMergedRoom &&
-                            "align-middle text-center font-black text-sm text-foreground bg-accent/5 border-2 border-accent/30 shadow-2xs min-w-[70px]",
-                          !isMergedRoom && isRoom && "text-center font-bold text-xs",
-                        )}
-                      >
-                        {renderFormattedCell(
-                          isSearching ? effectiveVal : rawVal,
-                          columnIndex,
-                          rowIndex,
-                          headerRowIdx,
-                          isMergedRoom,
-                        )}
-                      </td>
-                    );
-                  })}
-
-                  {/* Delete row action (both in Edit and View mode, hidden from printing) */}
-                  <td className={cn(padding, "border-b border-border text-center p-1 no-print")}>
-                    {rowIndex > headerRowIdx && !isFooterRow && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRow(rowIndex)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60 rounded-lg border border-rose-300 dark:border-rose-800 transition-colors cursor-pointer shadow-2xs"
-                        title={locale === "ar" ? "حذف هذا المراقب" : "Delete row"}
-                      >
-                        <Trash2 className="size-3.5" />
-                        <span className="hidden sm:inline">{locale === "ar" ? "حذف" : "Delete"}</span>
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Footer statistics and Load more */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span className="flex items-center gap-1.5 font-medium">
-          <Grid3X3 className="size-3.5" />
-          {formatNumber(filteredRows.length, locale)} {t("preview.rows")} · {formatNumber(columns, locale)}{" "}
-          {t("preview.columns")}
-        </span>
-        {filteredRows.length > visibleRows && (
-          <Button variant="secondary" onClick={() => setVisibleRows((value) => value + ROW_LIMIT)}>
-            <Loader2 className="size-4" />
-            {t("common.loadMore")}
-          </Button>
-        )}
-      </div>
+    <div className="w-full">
+      <ExcelRegisterWorkspace
+        sheets={sheets}
+        activeTabIdx={activeTabIdx}
+        setActiveTabIdx={setActiveTabIdx}
+        isEditing={isEditing}
+        setIsEditing={setIsEditing}
+        viewAll={viewAll}
+        setViewAll={setViewAll}
+        buildingName={buildingName}
+        onCellChange={handleCellChange}
+        onAddRow={handleAddRow}
+        onDeleteRow={handleDeleteRow}
+        onDeleteLastRow={handleDeleteLastRow}
+        onAddTab={handleAddTab}
+        onSave={handleSaveChanges}
+        saving={saving}
+        onPrint={handlePrint}
+        isModal={false}
+      />
     </div>
   );
-}
-
-// Convert 0-indexed column number to Excel column name (A, B, C... AA, AB)
-function columnName(index: number): string {
-  let value = index + 1;
-  let result = "";
-  while (value > 0) {
-    const remainder = (value - 1) % 26;
-    result = String.fromCharCode(65 + remainder) + result;
-    value = Math.floor((value - 1) / 26);
-  }
-  return result;
-}
-
-// Helper to format cell contents in View Mode
-function renderFormattedCell(
-  cell: Cell | undefined,
-  colIdx: number,
-  rowIdx: number,
-  headerRowIdx: number,
-  isMergedRoom: boolean,
-) {
-  if (cell === null || cell === undefined) return "";
-  const str = String(cell).trim();
-  if (!str) return "";
-
-  // Column 2: Proctor Type badges
-  if (rowIdx > headerRowIdx && colIdx === 2) {
-    if (/Senior/i.test(str)) {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-          Senior
-        </span>
-      );
-    }
-    if (/Roaming/i.test(str)) {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
-          Roaming
-        </span>
-      );
-    }
-    if (/Proctor/i.test(str)) {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-          Proctor
-        </span>
-      );
-    }
-    if (/Head/i.test(str)) {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
-          Head
-        </span>
-      );
-    }
-  }
-
-  // Column 4: IP / EP
-  if (rowIdx > headerRowIdx && colIdx === 4) {
-    if (str === "IP") {
-      return <span className="font-bold text-slate-800 dark:text-slate-100">IP</span>;
-    }
-    return <span className="font-semibold text-muted">EP</span>;
-  }
-
-  // Column 5: Room (Merged or single)
-  if (colIdx === 5 && isMergedRoom) {
-    return (
-      <div className="flex items-center justify-center h-full w-full py-1 text-center font-black text-sm text-foreground">
-        {str}
-      </div>
-    );
-  }
-
-  // Signature columns: subtle placeholder if empty
-  if (rowIdx > headerRowIdx && (colIdx === 6 || colIdx === 8) && (!str || str === ":")) {
-    return <span className="border-b border-dashed border-border/80 block w-full min-w-[60px] h-3.5 my-1" />;
-  }
-
-  // Time columns: formatted colon
-  if (rowIdx > headerRowIdx && (colIdx === 7 || colIdx === 9)) {
-    return <span className="font-mono text-xs text-muted block text-center">{str || "_ _ : _ _"}</span>;
-  }
-
-  return str;
 }
