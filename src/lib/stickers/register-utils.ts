@@ -47,12 +47,12 @@ export function getRegisterTheme(category: "building_excel" | "control" | "proct
   if (category === "building_excel") {
     return {
       category: "building_excel",
-      nameAr: "شيت المبنى (Excel)",
-      nameEn: "Building Excel Sheet",
-      shortAr: "إكسيل المبنى",
+      nameAr: "ريجستر المبنى (Excel)",
+      nameEn: "Building Register (Excel)",
+      shortAr: "ريجستر المبنى",
       shortEn: "Building Excel",
-      addLabelAr: "+ شيت المبنى (Excel)",
-      addLabelEn: "+ Building Excel",
+      addLabelAr: "+ إضافة ريجستر (Excel)",
+      addLabelEn: "+ Add Register (Excel)",
       ownerAr: "دينا",
       ownerEn: "Dina",
       textClass: "text-emerald-700 dark:text-emerald-300",
@@ -69,11 +69,11 @@ export function getRegisterTheme(category: "building_excel" | "control" | "proct
   if (category === "student") {
     return {
       category: "student",
-      nameAr: "كشف الطلاب",
+      nameAr: "ريجستر الطلاب",
       nameEn: "Student Register",
-      shortAr: "طلاب",
-      shortEn: "Students",
-      addLabelAr: "+ كشف طلاب",
+      shortAr: "ريجستر الطلاب",
+      shortEn: "Student Reg",
+      addLabelAr: "+ إضافة ريجستر (طلاب)",
       addLabelEn: "+ Student Reg",
       ownerAr: "نبيل",
       ownerEn: "Nabil",
@@ -239,21 +239,28 @@ export function getFolderRegisterCategory(params: {
 
   const folderName = folder.name.trim();
 
-  // Explicit Room detection by name (e.g. 204, 205, Room 1, قاعة 5, لجنة 1)
-  if (/^(\d{3,4}[A-Za-z]?|room\s*\d+|قاعة\s*\d+|committee\s*\d+|لجنة\s*\d+)$/i.test(folderName)) {
-    return "student";
-  }
-  if (/room|قاعة|لجنة/i.test(folderName) && !/control|proctor|floor|building/i.test(folderName)) {
-    return "student";
-  }
-
-  // Explicit Floor detection by name -> NO register upload for floors!
-  if (/floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b/i.test(folderName)) {
+  // Explicit Floor detection by name -> ALWAYS null (no register upload for floors)
+  if (
+    /floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b|\bground(\s*floor)?\b|\bأرضي\b/i.test(folderName) ||
+    /^(ground|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)\s*(floor)?$/i.test(folderName)
+  ) {
     return null;
   }
 
+  // Explicit Room detection by name (e.g. 204, 205, Room 1, قاعة 5, لجنة 1)
+  if (/^(\d{1,4}[A-Za-z]?|[A-Za-z]\d{2,4}|room\s*\d+|قاعة\s*\d+|committee\s*\d+|لجنة\s*\d+)$/i.test(folderName)) {
+    return "student";
+  }
+  if (/room|قاعة|لجنة/i.test(folderName) && !/control|proctor|floor|building|management|pharmacy/i.test(folderName)) {
+    return "student";
+  }
+
   // Explicit Building detection by name -> Building Excel!
-  if (/building|مبنى|قسم/i.test(folderName)) {
+  if (
+    /building|مبنى|قسم|faculty|كلية|pharmacy|dentistry|engineering|management|technology|campus|architecture|business|صيدلة|هندسة|إدارة|طب|أسنان/i.test(
+      folderName,
+    )
+  ) {
     return "building_excel";
   }
 

@@ -1375,7 +1375,7 @@ function drawQuarterPlacard(params: {
 
   const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
   const subText = isRoom
-    ? "PROCTOR DOSSIER"
+    ? "ROOM DOSSIER"
     : childRoomsCount > 0
     ? `${childRoomsCount} ROOMS INCLUDED`
     : "SENIOR DOSSIER";
@@ -1455,7 +1455,7 @@ function drawQuarterPlacard(params: {
     borderWidth: 0.5,
   });
 
-  const sigText = isRoom ? "Proctor Sig: __________________   Date: ___/___" : "Senior Sig: __________________   Date: ___/___";
+  const sigText = isRoom ? "Signature: __________________   Date: ___/___" : "Senior Sig: __________________   Date: ___/___";
   const sigSize = 6.2;
   const sigW = font.widthOfTextAtSize(sigText, sigSize);
   page.drawText(sigText, {

@@ -120,3 +120,37 @@ export async function GET(request: Request, context: Context) {
     return jsonError(error);
   }
 }
+
+export async function PUT(request: Request, context: Context) {
+  try {
+    await requireSession(request, { mutating: true });
+    enforceRateLimit(request, "drive:upload-content", 60, 60_000);
+    const { fileId } = await context.params;
+
+    const arrayBuffer = await request.arrayBuffer();
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      throw new AppError("No content provided", { status: 400, code: "invalidRequest" });
+    }
+
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType =
+      request.headers.get("content-type") ||
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    const connection = await getConnection();
+    const connected = connection?.connectionStatus === "connected";
+
+    if (isDemoEnabled() && !connected) {
+      const { setDemoCustomContent } = await import("@/lib/demo");
+      setDemoCustomContent(fileId, buffer, contentType, "xlsx");
+      return Response.json({ success: true, fileId, size: buffer.length });
+    }
+
+    const { drive } = await getDriveContextWithRoot();
+    const { updateFileContent } = await import("@/lib/drive");
+    const updated = await updateFileContent(drive, fileId, buffer, contentType);
+    return Response.json({ success: true, fileId: updated.id, size: buffer.length });
+  } catch (error) {
+    return jsonError(error);
+  }
+}

@@ -432,6 +432,25 @@ export async function updateFile(
   return response.data;
 }
 
+export async function updateFileContent(
+  drive: drive_v3.Drive,
+  fileId: string,
+  content: Buffer,
+  mimeType: string,
+) {
+  const { Readable } = await import("node:stream");
+  const response = await drive.files.update({
+    fileId,
+    media: {
+      mimeType,
+      body: Readable.from(content),
+    },
+    fields: DRIVE_FILE_FIELDS,
+    supportsAllDrives: true,
+  });
+  return response.data;
+}
+
 export async function deleteFile(drive: drive_v3.Drive, fileId: string) {
   await drive.files.delete({ fileId, supportsAllDrives: true });
 }

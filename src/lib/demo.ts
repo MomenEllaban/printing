@@ -517,7 +517,16 @@ export function buildDemoSvg(): Buffer {
   return Buffer.from(svg, "utf8");
 }
 
+const customDemoBuffers = new Map<string, { buffer: Buffer; mimeType: string; extension: string }>();
+
+export function setDemoCustomContent(id: string, buffer: Buffer, mimeType: string, extension: string) {
+  customDemoBuffers.set(id, { buffer, mimeType, extension });
+}
+
 export function demoContent(id: string): { buffer: Buffer; mimeType: string; extension: string } | null {
+  if (customDemoBuffers.has(id)) {
+    return customDemoBuffers.get(id)!;
+  }
   const record = getDemoRecord(id);
   if (!record) return null;
   if (record.content === "pdf") {

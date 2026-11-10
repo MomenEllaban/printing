@@ -527,13 +527,13 @@ describe("generateStickerPdf", () => {
   it("Provides distinct visual themes and owners for each register category", () => {
     const excelTheme = getRegisterTheme("building_excel");
     expect(excelTheme.category).toBe("building_excel");
-    expect(excelTheme.nameAr).toBe("شيت المبنى (Excel)");
+    expect(excelTheme.nameAr).toBe("ريجستر المبنى (Excel)");
     expect(excelTheme.ownerAr).toBe("دينا");
     expect(excelTheme.textClass).toContain("emerald");
 
     const studentTheme = getRegisterTheme("student");
     expect(studentTheme.category).toBe("student");
-    expect(studentTheme.nameAr).toBe("كشف الطلاب");
+    expect(studentTheme.nameAr).toBe("ريجستر الطلاب");
     expect(studentTheme.ownerAr).toBe("نبيل");
     expect(studentTheme.textClass).toContain("purple");
   });
