@@ -20,6 +20,7 @@ import { cn } from "@/lib/cn";
 import * as XLSX from "xlsx";
 import type { DriveItem } from "@/lib/types";
 import { EST_LOGO_BASE64 } from "@/lib/stickers/est-logo-base64";
+import { computeRoomSpans, type RoomSpanResult } from "@/lib/stickers/building-excel";
 
 interface ExcelViewerModalProps {
   open: boolean;
@@ -57,6 +58,8 @@ interface ParsedSheetMeta {
   dataRows: ParsedProctorRow[];
   headName: string;
 }
+
+export type { RoomSpanResult };
 
 function parseSheetDetails(
   sheet: SheetData,
@@ -426,50 +429,25 @@ export function ExcelViewerModal({
         const ws = XLSX.utils.aoa_to_sheet(s.rows);
 
         // Calculate vertical merges for shared Room cells (Col 5)
-        const merges: XLSX.Range[] = s.merges ? [...s.merges] : [];
+        const otherMerges = (s.merges || []).filter((m) => m.s.c !== 5 || m.e.c !== 5);
+        const roomMerges: XLSX.Range[] = [];
         const parsed = parseSheetDetails(s, buildingName);
+        const { spanMap } = computeRoomSpans(parsed.dataRows, s.merges);
 
-        if (parsed.dataRows.length > 0) {
-          let runStart = -1;
-          let currentRoom = "";
-
-          for (let i = 0; i < parsed.dataRows.length; i++) {
-            const rowItem = parsed.dataRows[i];
-            const roomVal = rowItem.room.trim();
-            const actualRowIdx = rowItem.rawRowIdx;
-
-            if (roomVal && roomVal === currentRoom) {
-              // Continue run
-            } else {
-              if (runStart !== -1 && i - 1 > runStart) {
-                const startRow = parsed.dataRows[runStart].rawRowIdx;
-                const endRow = parsed.dataRows[i - 1].rawRowIdx;
-                merges.push({
-                  s: { r: startRow, c: 5 },
-                  e: { r: endRow, c: 5 },
-                });
-              }
-              if (roomVal) {
-                runStart = i;
-                currentRoom = roomVal;
-              } else {
-                runStart = -1;
-                currentRoom = "";
-              }
-            }
-          }
-          if (runStart !== -1 && parsed.dataRows.length - 1 > runStart) {
-            const startRow = parsed.dataRows[runStart].rawRowIdx;
-            const endRow = parsed.dataRows[parsed.dataRows.length - 1].rawRowIdx;
-            merges.push({
+        for (const [startIdx, span] of spanMap.entries()) {
+          if (span > 1 && startIdx + span - 1 < parsed.dataRows.length) {
+            const startRow = parsed.dataRows[startIdx].rawRowIdx;
+            const endRow = parsed.dataRows[startIdx + span - 1].rawRowIdx;
+            roomMerges.push({
               s: { r: startRow, c: 5 },
               e: { r: endRow, c: 5 },
             });
           }
         }
 
-        if (merges.length > 0) {
-          ws["!merges"] = merges;
+        const allMerges = [...otherMerges, ...roomMerges];
+        if (allMerges.length > 0) {
+          ws["!merges"] = allMerges;
         }
 
         // Column widths for the exact 10 columns:
@@ -477,10 +455,10 @@ export function ExcelViewerModal({
         ws["!cols"] = [
           { wch: 6 },  // 1: No.
           { wch: 32 }, // 2: Name
-          { wch: 22 }, // 3: Proctor Type
-          { wch: 16 }, // 4: Mobile
-          { wch: 10 }, // 5: IP / EP
-          { wch: 12 }, // 6: Room
+          { wch: 14 }, // 3: Proctor Type (reduced)
+          { wch: 15 }, // 4: Mobile
+          { wch: 9 },  // 5: IP / EP
+          { wch: 10 }, // 6: Room
           { wch: 20 }, // 7: Arrival Signature
           { wch: 10 }, // 8: Time (Arrival)
           { wch: 20 }, // 9: Departure Signature
@@ -533,7 +511,7 @@ export function ExcelViewerModal({
     document.body.removeChild(a);
   };
 
-  // Official A4 Landscape Printing with EST Logo & Header
+  // Official A4 Landscape Printing with EST Logo, Proctor Header, & Merged Room Cells
   const handlePrint = (singleSheet: boolean = false) => {
     const sheetsToPrint = singleSheet && sheets[activeTabIdx] ? [sheets[activeTabIdx]] : sheets;
     if (sheetsToPrint.length === 0) return;
@@ -553,12 +531,18 @@ export function ExcelViewerModal({
     const sheetsHtml = sheetsToPrint
       .map((s, idx) => {
         const parsed = parseSheetDetails(s, buildingName);
+        const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows, s.merges);
+        const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
 
         const rowsHtml = parsed.dataRows
-          .map((row) => {
-            const isSenior = /Senior/i.test(row.proctorType);
-            const isHead = /Head/i.test(row.proctorType);
-            const isRoaming = /Roaming/i.test(row.proctorType);
+          .map((row, rIdx) => {
+            const roomSpan = spanMap.get(rIdx);
+            const shouldRenderRoomCell = roomSpan !== undefined;
+            const roomDisplay = resolvedRoomMap.get(rIdx) || row.room || "";
+
+            const roomCellHtml = shouldRenderRoomCell
+              ? `<td rowspan="${roomSpan}" class="col-room">${roomDisplay}</td>`
+              : "";
 
             return `
               <tr>
@@ -567,7 +551,7 @@ export function ExcelViewerModal({
                 <td class="col-type"><span class="badge ${row.proctorType.toLowerCase().replace(/\s+/g, "-")}">${row.proctorType}</span></td>
                 <td class="col-mobile font-mono">${row.mobile}</td>
                 <td class="col-ipep text-center font-bold">${row.ipEp}</td>
-                <td class="col-room font-bold">${row.room}</td>
+                ${roomCellHtml}
                 <td class="col-sig">${row.arrivalSignature ? row.arrivalSignature : '<div class="sig-line"></div>'}</td>
                 <td class="col-time text-center">${row.arrivalTime === ":" ? "__ : __" : (row.arrivalTime || "__ : __")}</td>
                 <td class="col-sig">${row.departureSignature ? row.departureSignature : '<div class="sig-line"></div>'}</td>
@@ -585,15 +569,17 @@ export function ExcelViewerModal({
                 <img src="data:image/jpeg;base64,${EST_LOGO_BASE64}" alt="EST Logo" class="est-logo-img" />
               </div>
               <div class="header-center">
-                <h1 class="est-title">EGYPTIAN SCHOLASTIC TEST (EST)</h1>
-                <h2 class="est-subtitle">PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</h2>
-                <div class="center-banner">${parsed.center}</div>
+                <div class="est-register-title">PROCTOR ATTENDANCE & ASSIGNMENT REGISTER</div>
+                <div class="center-banner">
+                  <span class="center-label">Center :</span>
+                  <span class="center-val">${centerClean}</span>
+                </div>
               </div>
               <div class="header-meta">
                 <div class="meta-box">
-                  <div><strong>Date:</strong> ${parsed.date}</div>
-                  <div><strong>EST Type:</strong> ${parsed.estType}</div>
-                  <div><strong>Sheet:</strong> <span class="tab-highlight">${s.name}</span></div>
+                  <div><span class="meta-lbl">Date:</span> <span class="meta-val">${parsed.date}</span></div>
+                  <div><span class="meta-lbl">EST Type:</span> <span class="meta-val">${parsed.estType}</span></div>
+                  <div><span class="meta-lbl">Sheet:</span> <span class="tab-highlight">${s.name}</span></div>
                 </div>
               </div>
             </div>
@@ -645,7 +631,20 @@ export function ExcelViewerModal({
           <style>
             @page {
               size: A4 landscape;
-              margin: 7mm 8mm 7mm 8mm;
+              margin: 0mm !important;
+            }
+            @media print {
+              @page {
+                size: A4 landscape;
+                margin: 0mm !important;
+              }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
             }
             * {
               box-sizing: border-box;
@@ -656,12 +655,13 @@ export function ExcelViewerModal({
               font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
               color: #000;
               background: #fff;
-              font-size: 8.5pt;
+              font-size: 8pt;
               line-height: 1.25;
             }
             .sheet-page {
               width: 100%;
-              padding: 2px 0;
+              box-sizing: border-box;
+              padding: 8mm 10mm 6mm 10mm;
             }
             .page-break {
               page-break-after: always;
@@ -671,12 +671,12 @@ export function ExcelViewerModal({
               display: flex;
               align-items: center;
               justify-content: space-between;
-              border-bottom: 2.5px solid #0f172a;
+              border-bottom: 2px solid #0f172a;
               padding-bottom: 5px;
               margin-bottom: 7px;
             }
             .header-logo {
-              width: 120px;
+              width: 125px;
               display: flex;
               align-items: center;
             }
@@ -690,42 +690,55 @@ export function ExcelViewerModal({
               text-align: center;
               padding: 0 10px;
             }
-            .est-title {
-              margin: 0;
+            .est-register-title {
+              margin: 0 0 3px;
               font-size: 13pt;
               font-weight: 900;
               letter-spacing: 0.5px;
               color: #0f172a;
-            }
-            .est-subtitle {
-              margin: 2px 0 3px;
-              font-size: 8.5pt;
-              font-weight: 700;
-              letter-spacing: 1px;
-              color: #475569;
+              text-transform: uppercase;
             }
             .center-banner {
-              display: inline-block;
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
               font-size: 9pt;
-              font-weight: 800;
               color: #0f172a;
-              background: #f1f5f9;
-              padding: 2px 10px;
+              background: #f8fafc;
+              padding: 2.5px 12px;
               border-radius: 4px;
-              border: 1px solid #cbd5e1;
+              border: 1.5px solid #0f172a;
+            }
+            .center-label {
+              font-weight: 900;
+              color: #0f172a;
+            }
+            .center-val {
+              font-weight: 700;
+              color: #0f172a;
             }
             .header-meta {
-              width: 160px;
+              width: 175px;
               text-align: right;
             }
             .meta-box {
               background: #f8fafc;
-              border: 1px solid #94a3b8;
+              border: 1.5px solid #0f172a;
               border-radius: 4px;
-              padding: 4px 8px;
-              font-size: 8pt;
+              padding: 3px 8px;
+              font-size: 7.5pt;
               line-height: 1.35;
               text-align: left;
+            }
+            .meta-lbl {
+              font-weight: 800;
+              color: #0f172a;
+              display: inline-block;
+              min-width: 58px;
+            }
+            .meta-val {
+              font-weight: 600;
+              color: #334155;
             }
             .tab-highlight {
               font-weight: 800;
@@ -734,49 +747,55 @@ export function ExcelViewerModal({
             .exam-table {
               width: 100%;
               border-collapse: collapse;
-              margin: 0 0 8px;
+              table-layout: fixed;
+              margin: 0 0 6px;
             }
             .exam-table th,
             .exam-table td {
               border: 1px solid #0f172a !important;
-              padding: 5px 4px;
+              padding: 4px 3px;
               vertical-align: middle;
-              min-height: 28px;
+              min-height: 27px;
             }
             .exam-table th {
               background-color: #f1f5f9 !important;
               color: #0f172a;
-              font-size: 8pt;
+              font-size: 7.5pt;
               font-weight: 800;
               text-transform: uppercase;
+              text-align: center;
+              letter-spacing: 0.2px;
+            }
+            .exam-table th.col-name {
               text-align: start;
-              letter-spacing: 0.3px;
+              padding-inline-start: 6px;
             }
             .exam-table tr:nth-child(even) td {
               background-color: #fafafa;
             }
-            .col-no { width: 4%; text-align: center !important; font-weight: bold; }
-            .col-name { width: 25%; font-weight: 600; font-size: 8.5pt; }
-            .col-type { width: 12%; font-size: 8pt; }
-            .col-mobile { width: 12%; font-size: 8pt; letter-spacing: 0.3px; }
-            .col-ipep { width: 5.5%; text-align: center; }
-            .col-room { width: 7.5%; text-align: center; font-size: 9pt; }
-            .col-sig { width: 14%; text-align: center; min-width: 90px; }
-            .col-time { width: 5%; text-align: center; font-family: monospace; font-size: 7.5pt; color: #1e293b; }
+            .col-no { width: 3.5%; text-align: center !important; font-weight: bold; }
+            .col-name { width: 23.5%; font-weight: 600; font-size: 8pt; padding-inline-start: 6px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .col-type { width: 8%; text-align: center !important; font-size: 7pt; }
+            .col-mobile { width: 10.5%; text-align: center !important; font-size: 7.5pt; letter-spacing: 0.2px; font-family: monospace; }
+            .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; }
+            .col-room { width: 6.5%; text-align: center !important; font-size: 8.5pt; font-weight: 800; vertical-align: middle !important; background: #fff !important; }
+            .col-sig { width: 15%; text-align: center; }
+            .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 7.5pt; color: #1e293b; white-space: nowrap !important; letter-spacing: 0.5px; }
 
             .sig-line {
               border-bottom: 1px dashed #94a3b8;
-              height: 16px;
-              margin: 2px 6px;
+              height: 14px;
+              margin: 1px 4px;
             }
 
             .badge {
               display: inline-block;
-              padding: 1px 5px;
-              font-size: 7.5pt;
+              padding: 1px 4px;
+              font-size: 6.5pt;
               font-weight: 700;
               border-radius: 3px;
               border: 1px solid #94a3b8;
+              white-space: nowrap;
             }
             .senior { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
             .roaming { background: #e0f2fe; color: #0369a1; border-color: #38bdf8; }
@@ -788,9 +807,9 @@ export function ExcelViewerModal({
               justify-content: space-between;
               align-items: center;
               margin-top: 6px;
-              padding-top: 5px;
+              padding-top: 4px;
               border-top: 1.5px solid #0f172a;
-              font-size: 8pt;
+              font-size: 7.5pt;
             }
             .footer-left { width: 30%; }
             .footer-center { width: 45%; }
@@ -1120,6 +1139,9 @@ export function ExcelViewerModal({
                 }
 
                 // Official High-Fidelity Formatted View with EST Logo, Header & 10 Columns
+                const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
+                const { spanMap, resolvedRoomMap } = computeRoomSpans(parsed.dataRows, sheet.merges);
+
                 return (
                   <div
                     key={sheet.name}
@@ -1136,19 +1158,26 @@ export function ExcelViewerModal({
                             className="h-14 w-auto object-contain rounded drop-shadow-xs"
                           />
                           <div>
-                            <h3 className="text-sm font-black tracking-wide text-slate-900 dark:text-white uppercase">
-                              Egyptian Scholastic Test (EST)
-                            </h3>
-                            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
+                            <h3 className="text-sm sm:text-base font-black tracking-wider text-slate-900 dark:text-white uppercase">
                               Proctor Attendance & Assignment Register
-                            </p>
+                            </h3>
+                            <div className="mt-1 flex items-center gap-1.5 text-xs">
+                              <span className="font-extrabold px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px]">
+                                Center :
+                              </span>
+                              <span className="font-bold text-slate-800 dark:text-slate-200">
+                                {centerClean}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Center & Building Badge */}
-                        <div className="text-center px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
-                          <div className="text-xs font-black">{parsed.center}</div>
-                          <div className="text-[11px] font-semibold opacity-90">{sheet.name}</div>
+                        {/* Sheet Tab Badge */}
+                        <div className="text-center px-3.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
+                          <div className="text-xs font-black">{sheet.name}</div>
+                          <div className="text-[10px] font-semibold opacity-90">
+                            {locale === "ar" ? "تاب معتمد" : "Official Sheet"}
+                          </div>
                         </div>
 
                         {/* Meta Box */}
@@ -1173,9 +1202,9 @@ export function ExcelViewerModal({
                           <tr className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-b border-slate-300 dark:border-slate-700 font-extrabold text-[11px] uppercase tracking-wide">
                             <th className="w-10 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">No.</th>
                             <th className="py-2.5 px-3 text-start border-e border-slate-300 dark:border-slate-700">Name</th>
-                            <th className="w-32 py-2.5 px-3 text-start border-e border-slate-300 dark:border-slate-700">Proctor Type</th>
-                            <th className="w-28 py-2.5 px-2 text-start border-e border-slate-300 dark:border-slate-700">Mobile</th>
-                            <th className="w-16 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">IP / EP</th>
+                            <th className="w-28 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Proctor Type</th>
+                            <th className="w-28 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Mobile</th>
+                            <th className="w-14 py-2.5 px-1 text-center border-e border-slate-300 dark:border-slate-700">IP / EP</th>
                             <th className="w-20 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Room</th>
                             <th className="w-32 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Arrival Signature</th>
                             <th className="w-16 py-2.5 px-2 text-center border-e border-slate-300 dark:border-slate-700">Time</th>
@@ -1189,9 +1218,9 @@ export function ExcelViewerModal({
                             const isRoaming = /Roaming/i.test(r.proctorType);
                             const isHead = /Head/i.test(r.proctorType);
 
-                            // Check if current room is shared with previous row
-                            const prevRow = rowIdx > 0 ? parsed.dataRows[rowIdx - 1] : null;
-                            const isSharedRoom = prevRow && prevRow.room && prevRow.room === r.room;
+                            const roomSpan = spanMap.get(rowIdx);
+                            const shouldRenderRoomCell = roomSpan !== undefined;
+                            const roomDisplay = resolvedRoomMap.get(rowIdx) || r.room || "";
 
                             return (
                               <tr
@@ -1208,7 +1237,7 @@ export function ExcelViewerModal({
                                 <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-slate-100 border-e border-slate-200 dark:border-slate-800">
                                   {r.name}
                                 </td>
-                                <td className="py-2.5 px-3 border-e border-slate-200 dark:border-slate-800">
+                                <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800">
                                   <span
                                     className={cn(
                                       "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold",
@@ -1224,7 +1253,7 @@ export function ExcelViewerModal({
                                     {r.proctorType}
                                   </span>
                                 </td>
-                                <td className="py-2.5 px-2 font-mono text-[11px] text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800">
+                                <td className="py-2.5 px-2 font-mono text-[11px] text-center text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800">
                                   {r.mobile}
                                 </td>
                                 <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800">
@@ -1232,23 +1261,29 @@ export function ExcelViewerModal({
                                     {r.ipEp || "EP"}
                                   </span>
                                 </td>
-                                <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800">
-                                  {r.room ? (
-                                    <span
-                                      className={cn(
-                                        "font-extrabold text-xs px-2 py-0.5 rounded",
-                                        isSharedRoom
-                                          ? "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700"
-                                          : "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
-                                      )}
-                                      title={isSharedRoom ? "Shared room with previous proctor" : undefined}
-                                    >
-                                      {r.room}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">-</span>
-                                  )}
-                                </td>
+
+                                {shouldRenderRoomCell && (
+                                  <td
+                                    rowSpan={roomSpan}
+                                    className="py-2.5 px-2 text-center align-middle border-e border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70"
+                                  >
+                                    {roomDisplay ? (
+                                      <div className="flex flex-col items-center justify-center gap-1">
+                                        <span className="font-extrabold text-xs px-2.5 py-1 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs">
+                                          {roomDisplay}
+                                        </span>
+                                        {roomSpan > 1 && (
+                                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full">
+                                            {roomSpan} {locale === "ar" ? "مراقبين" : "proctors"}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground">-</span>
+                                    )}
+                                  </td>
+                                )}
+
                                 <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800 min-w-[90px]">
                                   {r.arrivalSignature ? (
                                     <span className="font-mono text-xs">{r.arrivalSignature}</span>
@@ -1256,7 +1291,7 @@ export function ExcelViewerModal({
                                     <div className="border-b border-dashed border-slate-300 dark:border-slate-700 h-4 mx-2" />
                                   )}
                                 </td>
-                                <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800">
+                                <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800 whitespace-nowrap">
                                   {r.arrivalTime === ":" ? "__ : __" : (r.arrivalTime || "__ : __")}
                                 </td>
                                 <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800 min-w-[90px]">
@@ -1266,7 +1301,7 @@ export function ExcelViewerModal({
                                     <div className="border-b border-dashed border-slate-300 dark:border-slate-700 h-4 mx-2" />
                                   )}
                                 </td>
-                                <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                                <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-slate-400 whitespace-nowrap">
                                   {r.departureTime === ":" ? "__ : __" : (r.departureTime || "__ : __")}
                                 </td>
                               </tr>

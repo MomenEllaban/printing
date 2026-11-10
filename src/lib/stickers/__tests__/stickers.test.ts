@@ -4,7 +4,7 @@ import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
 import { generateProctorRegisterPdf } from "../proctor-register-pdf";
 import { generateControlRegisterPdf } from "../control-register-pdf";
 import { generateStudentRegisterPdf } from "../student-register-pdf";
-import { generateBuildingExcelWorkbook } from "../building-excel";
+import { generateBuildingExcelWorkbook, computeRoomSpans } from "../building-excel";
 import {
   getFolderRegisterCategory,
   isBuildingExcelFile,
@@ -599,6 +599,62 @@ describe("generateStickerPdf", () => {
     expect(dataRow1[5]).toBe("Ground"); // Room
     expect(dataRow1[7]).toBe(":"); // Arrival Time
     expect(dataRow1[9]).toBe(":"); // Departure Time
+
+    // Verify template sets Room column merges (ws['!merges'])
+    expect(wsGround["!merges"]).toBeDefined();
+    const groundMerges = wsGround["!merges"] || [];
+    const roomMerges = groundMerges.filter((m) => m.s.c === 5);
+    expect(roomMerges.length).toBeGreaterThan(0);
+  });
+
+  describe("computeRoomSpans (Room Cell Merging in Modal and Print)", () => {
+    it("Correctly computes rowspan when rooms are shared across consecutive rows", () => {
+      const mockRows = [
+        { no: 1, name: "Safwat", proctorType: "Senior", mobile: "010", ipEp: "IP", room: "Ground", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 3 },
+        { no: 2, name: "Mohamed", proctorType: "Roaming", mobile: "011", ipEp: "EP", room: "", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 4 },
+        { no: 3, name: "Abdel Rahman", proctorType: "Senior", mobile: "012", ipEp: "IP", room: "", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 5 },
+        { no: 4, name: "Mahmoud", proctorType: "Proctor", mobile: "010", ipEp: "EP", room: "2", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 6 },
+        { no: 5, name: "Shaimaa", proctorType: "Proctor", mobile: "011", ipEp: "EP", room: "", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 7 },
+        { no: 6, name: "Reham", proctorType: "Proctor", mobile: "012", ipEp: "EP", room: "", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 8 },
+        { no: 7, name: "Tolba", proctorType: "Proctor", mobile: "015", ipEp: "EP", room: "3", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 9 },
+      ];
+
+      const { spanMap, resolvedRoomMap } = computeRoomSpans(mockRows);
+
+      // Row 0 starts Ground group spanning 3 rows (indices 0, 1, 2)
+      expect(spanMap.get(0)).toBe(3);
+      expect(spanMap.has(1)).toBe(false); // skipped
+      expect(spanMap.has(2)).toBe(false); // skipped
+      expect(resolvedRoomMap.get(0)).toBe("Ground");
+      expect(resolvedRoomMap.get(1)).toBe("Ground");
+      expect(resolvedRoomMap.get(2)).toBe("Ground");
+
+      // Row 3 starts Room 2 group spanning 3 rows (indices 3, 4, 5)
+      expect(spanMap.get(3)).toBe(3);
+      expect(spanMap.has(4)).toBe(false); // skipped
+      expect(spanMap.has(5)).toBe(false); // skipped
+      expect(resolvedRoomMap.get(3)).toBe("2");
+      expect(resolvedRoomMap.get(4)).toBe("2");
+      expect(resolvedRoomMap.get(5)).toBe("2");
+
+      // Row 6 starts Room 3 group spanning 1 row
+      expect(spanMap.get(6)).toBe(1);
+      expect(resolvedRoomMap.get(6)).toBe("3");
+    });
+
+    it("Honors sheet !merges if provided directly from workbook", () => {
+      const mockRows = [
+        { no: 1, name: "P1", proctorType: "Proctor", mobile: "010", ipEp: "EP", room: "101", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 10 },
+        { no: 2, name: "P2", proctorType: "Proctor", mobile: "011", ipEp: "EP", room: "", arrivalSignature: "", arrivalTime: ":", departureSignature: "", departureTime: ":", rawRowIdx: 11 },
+      ];
+      const merges = [{ s: { r: 10, c: 5 }, e: { r: 11, c: 5 } }];
+
+      const { spanMap, resolvedRoomMap } = computeRoomSpans(mockRows, merges);
+      expect(spanMap.get(0)).toBe(2);
+      expect(spanMap.has(1)).toBe(false);
+      expect(resolvedRoomMap.get(0)).toBe("101");
+      expect(resolvedRoomMap.get(1)).toBe("101");
+    });
   });
 
   describe("Stickers 4-Up Layout for Rooms and Floors", () => {
