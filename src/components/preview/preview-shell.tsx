@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -9,7 +9,9 @@ import {
   Download,
   ExternalLink,
   FileQuestion,
+  Pencil,
   Printer,
+  Save,
   Star,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -79,8 +81,22 @@ export function PreviewShell({
 
   const [favorite, setFavorite] = useState(initialFavorite);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveExcelRef = useRef<(() => Promise<void>) | null>(null);
   const back = dir === "rtl" ? <ArrowRight className="size-4" /> : <ArrowLeft className="size-4" />;
   const printable = kind !== "unsupported" && item.extension !== "doc";
+
+  const handleSaveExcel = async () => {
+    if (saveExcelRef.current) {
+      setIsSaving(true);
+      try {
+        await saveExcelRef.current();
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
 
   const toggleFavorite = async () => {
     setFavoriteBusy(true);
@@ -130,6 +146,33 @@ export function PreviewShell({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {kind === "excel" && (
+            <Button
+              variant={isEditing ? "primary" : "secondary"}
+              onClick={() => setIsEditing(!isEditing)}
+              className="gap-1.5 cursor-pointer font-bold"
+              title={
+                isEditing
+                  ? (locale === "ar" ? "العودة لوضع المعاينة" : "Switch to View Mode")
+                  : (locale === "ar" ? "تعديل بيانات الإكسيل" : "Edit Excel")
+              }
+            >
+              <Pencil className="size-4" />
+              {isEditing ? (locale === "ar" ? "معاينة" : "View") : (locale === "ar" ? "تعديل" : "Edit")}
+            </Button>
+          )}
+          {kind === "excel" && isEditing && (
+            <Button
+              variant="primary"
+              onClick={() => void handleSaveExcel()}
+              loading={isSaving}
+              className="gap-1.5 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+              title={locale === "ar" ? "حفظ كافة التعديلات في ملف الإكسيل" : "Save all changes to Excel"}
+            >
+              <Save className="size-4" />
+              {locale === "ar" ? "حفظ التعديلات" : "Save Changes"}
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => void toggleFavorite()} loading={favoriteBusy}>
             <Star className={favorite ? "size-4 fill-current text-amber-500" : "size-4"} />
             {favorite ? t("common.unfavorite") : t("common.favorite")}
@@ -156,7 +199,14 @@ export function PreviewShell({
         <PdfViewer fileId={item.id} initialZoom={previewSettings.pdfDefaultZoom} initialFit={previewSettings.pdfFitMode} />
       )}
       {kind === "excel" && (
-        <ExcelViewer fileId={item.id} extension={item.extension} density={previewSettings.excelDisplayMode} />
+        <ExcelViewer
+          fileId={item.id}
+          extension={item.extension}
+          density={previewSettings.excelDisplayMode}
+          isEditing={isEditing}
+          onEditingChange={setIsEditing}
+          saveRef={saveExcelRef}
+        />
       )}
       {kind === "word" && <DocxViewer fileId={item.id} extension={item.extension} />}
       {kind === "image" && <ImageViewer fileId={item.id} name={item.name} />}
