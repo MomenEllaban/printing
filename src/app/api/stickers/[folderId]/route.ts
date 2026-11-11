@@ -165,6 +165,7 @@ export async function GET(request: Request, context: Context) {
         governorate: stickerContent.governorate,
         floor: stickerContent.floor,
         folderFiles,
+        examName: stickerContent.examName,
       })
       : null;
 
@@ -174,6 +175,9 @@ export async function GET(request: Request, context: Context) {
       stickerContent.mathCount = roomCounts.mathCount;
       stickerContent.essayCount = roomCounts.essayCount;
       stickerContent.hasEssay = roomCounts.hasEssay;
+      stickerContent.subjects = roomCounts.subjects;
+      stickerContent.breakdownText = roomCounts.breakdownText;
+      stickerContent.examType = roomCounts.examType;
     }
 
     let pdfBytes: Uint8Array;
@@ -185,6 +189,7 @@ export async function GET(request: Request, context: Context) {
         litCount: roomCounts?.litCount,
         mathCount: roomCounts?.mathCount,
         essayCount: roomCounts?.essayCount,
+        subjects: roomCounts?.subjects ?? stickerContent.subjects,
       });
       safeFilename = `Exam-Stickers-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
     } else {

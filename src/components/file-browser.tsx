@@ -881,10 +881,10 @@ export function FileBrowser({
       const toastId = toast.loading(
         action === "show"
           ? (locale === "ar"
-            ? `جاري تجهيز معاينة استيكرات الامتحانات (EST I) للقاعة "${target.name || "EST"}"...`
+            ? `جاري تجهيز معاينة استيكرات الامتحانات للقاعة "${target.name || "EST"}"...`
             : `Loading exam stickers preview for "${target.name || "EST"}"...`)
           : (locale === "ar"
-            ? `جاري تجهيز استيكرات الامتحانات (EST I) للقاعة "${target.name || "EST"}" للطباعة...`
+            ? `جاري تجهيز استيكرات الامتحانات للقاعة "${target.name || "EST"}" للطباعة...`
             : `Preparing exam stickers for "${target.name || "EST"}" for printing...`),
       );
 
@@ -910,15 +910,15 @@ export function FileBrowser({
           setPreviewStickerState({
             open: true,
             url: objectUrl,
-            title: `EST I Exam Stickers - ${target.name || "Room"}`,
+            title: `EST Exam Stickers - ${target.name || "Room"}`,
             customTitle:
               locale === "ar"
-                ? `استيكرات الامتحانات (EST I) — قاعة ${target.name || ""}`
-                : `EST I Exam Stickers — Room ${target.name || ""}`,
+                ? `استيكرات الامتحانات — قاعة ${target.name || ""}`
+                : `EST Exam Stickers — Room ${target.name || ""}`,
             customDescription:
               locale === "ar"
-                ? "ملصقات أوراق الامتحان الرسمية (نسختان لكل مادة: Literacy, Math, و Essay إن وجدت) — مقاس ربع صفحة A4."
-                : "Official exam paper dossiers (2 copies per subject: Literacy, Math, and Essay if applicable) — Quarter A4.",
+                ? "ملصقات أوراق الامتحان الرسمية (نسختان لكل مادة) — مقاس ربع صفحة A4."
+                : "Official exam paper dossiers (2 copies per subject) — Quarter A4.",
           });
           toast.success(
             locale === "ar" ? "تم فتح معاينة استيكرات الامتحانات بنجاح" : "Exam stickers preview opened",
@@ -1546,22 +1546,22 @@ export function FileBrowser({
             title:
               type === "exam"
                 ? locale === "ar"
-                  ? `استيكرات الامتحانات (EST I) — (${targetFolders.length} مجلد)`
-                  : `EST I Exam Stickers (${targetFolders.length} Folders)`
+                  ? `استيكرات الامتحانات — (${targetFolders.length} مجلد)`
+                  : `Exam Stickers (${targetFolders.length} Folders)`
                 : locale === "ar"
                 ? `استيكرات مجمعة (${targetFolders.length} مجلد)`
                 : `Batch Stickers (${targetFolders.length} Folders)`,
             customTitle:
               type === "exam"
                 ? locale === "ar"
-                  ? `استيكرات الامتحانات الرسمية (EST I) — ${targetFolders.length} مجلد`
-                  : `Official EST I Exam Stickers — ${targetFolders.length} Folders`
+                  ? `استيكرات الامتحانات الرسمية — ${targetFolders.length} مجلد`
+                  : `Official Exam Stickers — ${targetFolders.length} Folders`
                 : undefined,
             customDescription:
               type === "exam"
                 ? locale === "ar"
-                  ? "نسختان لكل مادة: Literacy, Math, و Essay (إن وجدت) بمقاس ربع صفحة A4."
-                  : "2 copies per subject: Literacy, Math, and Essay (if applicable) at quarter-A4 size."
+                  ? "نسختان لكل مادة بمقاس ربع صفحة A4."
+                  : "2 copies per subject at quarter-A4 size."
                 : undefined,
           });
           toast.success(
@@ -2069,6 +2069,50 @@ export function FileBrowser({
                   <Loader2 className="size-3.5 animate-spin text-indigo-600" />
                 ) : (
                   <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                )}
+                <span>{locale === "ar" ? "طباعة" : "Print"}</span>
+              </button>
+            </div>
+          )}
+          {isCurrentFolderRoom && currentFolder && (
+            <div className="inline-flex items-center rounded-xl border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-xs">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 border-e border-amber-500/25 select-none">
+                <Files className="size-3.5 text-amber-600 dark:text-amber-400" />
+                <span className="hidden sm:inline">{locale === "ar" ? "استيكرات الامتحانات" : "Exam Stickers"}</span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => handleShowExamStickers(e, currentFolder)}
+                disabled={busyExamStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all"
+                title={
+                  locale === "ar"
+                    ? `معاينة استيكرات الامتحانات لقاعة "${currentFolder.name}" (عرض)`
+                    : `Preview exam stickers for "${currentFolder.name}" (Show)`
+                }
+              >
+                {busyExamStickerId === currentFolder.id && examStickerAction === "show" ? (
+                  <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <Eye className="size-3.5 text-amber-600 dark:text-amber-400" />
+                )}
+                <span>{locale === "ar" ? "معاينة" : "Show"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintExamStickers(e, currentFolder)}
+                disabled={busyExamStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all"
+                title={
+                  locale === "ar"
+                    ? `طباعة استيكرات الامتحانات لقاعة "${currentFolder.name}" مباشرة (Print)`
+                    : `Print exam stickers for "${currentFolder.name}" directly`
+                }
+              >
+                {busyExamStickerId === currentFolder.id && examStickerAction === "print" ? (
+                  <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
                 )}
                 <span>{locale === "ar" ? "طباعة" : "Print"}</span>
               </button>
@@ -3120,8 +3164,8 @@ export function FileBrowser({
                   className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 rounded-s-lg border-e border-amber-500/25 transition-all cursor-pointer"
                   title={
                     locale === "ar"
-                      ? "طباعة استيكرات الامتحانات (EST I) للمجلدات المحددة أو القاعة"
-                      : "Print EST I Exam Stickers for selected folders or room"
+                      ? "طباعة استيكرات الامتحانات للمجلدات المحددة أو القاعة"
+                      : "Print Exam Stickers for selected folders or room"
                   }
                 >
                   <Files className="size-3.5 text-amber-600 dark:text-amber-400" />
@@ -3139,8 +3183,8 @@ export function FileBrowser({
                   className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                   title={
                     locale === "ar"
-                      ? "معاينة استيكرات الامتحانات (EST I) للمجلدات أو القاعة (Show)"
-                      : "Preview exam stickers (EST I) for folders or room (Show)"
+                      ? "معاينة استيكرات الامتحانات للمجلدات أو القاعة (Show)"
+                      : "Preview exam stickers for folders or room (Show)"
                   }
                   aria-label="Preview Exam Stickers"
                 >
@@ -3158,8 +3202,8 @@ export function FileBrowser({
                   className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                   title={
                     locale === "ar"
-                      ? "طباعة استيكرات الامتحانات (EST I) للمجلدات أو القاعة مباشرة (Print)"
-                      : "Print exam stickers (EST I) for folders or room directly"
+                      ? "طباعة استيكرات الامتحانات للمجلدات أو القاعة مباشرة (Print)"
+                      : "Print exam stickers for folders or room directly"
                   }
                   aria-label="Print Exam Stickers"
                 >
@@ -3536,7 +3580,7 @@ function ItemMenu({
                     }}
                   >
                     <Files className="size-4" />
-                    <span>{locale === "ar" ? "معاينة استيكرات الامتحانات (EST I)" : "Preview Exam Stickers (EST I)"}</span>
+                    <span>{locale === "ar" ? "معاينة استيكرات الامتحانات" : "Preview Exam Stickers"}</span>
                   </button>
                   {onPrintExamStickers && (
                     <button
@@ -3549,7 +3593,7 @@ function ItemMenu({
                       }}
                     >
                       <Printer className="size-4" />
-                      <span>{locale === "ar" ? "طباعة استيكرات الامتحانات (EST I)" : "Print Exam Stickers (EST I)"}</span>
+                      <span>{locale === "ar" ? "طباعة استيكرات الامتحانات" : "Print Exam Stickers"}</span>
                     </button>
                   )}
                 </>
@@ -4058,7 +4102,7 @@ function TreeRow({
                         </button>
                       </div>
 
-                      {/* Button 2: Exam Stickers (EST I) - 2 copies per subject */}
+                      {/* Button 2: Exam Stickers (EST 1 & EST 2) - 2 copies per subject */}
                       {isRoomFolder && onShowExamStickers && onPrintExamStickers && (
                         <div className="inline-flex items-center rounded-lg border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-2xs">
                           <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-amber-800 dark:text-amber-200 border-e border-amber-500/25 select-none">
@@ -4075,8 +4119,8 @@ function TreeRow({
                             className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                             title={
                               locale === "ar"
-                                ? `معاينة استيكرات الامتحانات (EST I) للقاعة "${item.name}" (عرض)`
-                                : `Preview exam stickers (EST I) for "${item.name}" (Show)`
+                                ? `معاينة استيكرات الامتحانات للقاعة "${item.name}" (عرض)`
+                                : `Preview exam stickers for "${item.name}" (Show)`
                             }
                             aria-label="Preview Exam Stickers"
                           >
@@ -4094,8 +4138,8 @@ function TreeRow({
                             className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                             title={
                               locale === "ar"
-                                ? `طباعة استيكرات الامتحانات (EST I) للقاعة "${item.name}" مباشرة (Print)`
-                                : `Print exam stickers (EST I) for "${item.name}" directly (Print)`
+                                ? `طباعة استيكرات الامتحانات للقاعة "${item.name}" مباشرة (Print)`
+                                : `Print exam stickers for "${item.name}" directly`
                             }
                             aria-label="Print Exam Stickers"
                           >

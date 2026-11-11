@@ -8,7 +8,9 @@ import {
 } from "../sticker-pdf";
 import {
   parseEst1FileName,
+  parseEstRoomFileName,
   formatEst1FileName,
+  formatEst2FileName,
   getRoomExamCounts,
 } from "../est-room-data";
 import { generateProctorRegisterPdf } from "../proctor-register-pdf";
@@ -529,6 +531,9 @@ describe("generateStickerPdf", () => {
       expect(isProctorRegisterFile({ id: "4", name: "كشف مراقبين الدور الثاني.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isStudentRegisterFile({ id: "5", name: "Student_Register_204.pdf", mimeType: "application/pdf" })).toBe(true);
       expect(isStudentRegisterFile({ id: "6", name: "كشف لجان وقاعات الطلاب.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isStudentRegisterFile({ id: "7", name: "M102 _ MATH1-25 _ MATH2-25 _ BIO-25 _ CHEM-20.pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isStudentRegisterFile({ id: "8", name: "E426 _ LIT-33 _ MATH-33 _ ESSAY-YES-12 .pdf", mimeType: "application/pdf" })).toBe(true);
+      expect(isStudentRegisterFile({ id: "9", name: "M105 _ chem-20 _ phy-15.pdf", mimeType: "application/pdf" })).toBe(true);
     });
   });
 
@@ -799,6 +804,48 @@ describe("generateStickerPdf", () => {
         expect(parseEst1FileName("Proctor Attendance.xlsx")).toBeNull();
         expect(parseEst1FileName("Control Register.pdf")).toBeNull();
       });
+
+      it("parses EST 2 room file name with multiple subjects (Math 1, Math 2, Bio, Chem)", () => {
+        const parsed = parseEstRoomFileName("M102 _ MATH1-25 _ MATH2-25 _ BIO-25 _ CHEM-20.pdf");
+        expect(parsed).not.toBeNull();
+        expect(parsed?.room).toBe("M102");
+        expect(parsed?.examType).toBe("EST 2");
+        expect(parsed?.totalStudents).toBe(25);
+        expect(parsed?.breakdownText).toBe("MATH1: 25  |  MATH2: 25  |  BIO: 25  |  CHEM: 20");
+        expect(parsed?.subjects).toHaveLength(4);
+        expect(parsed?.subjects[0]).toMatchObject({ code: "MATH1", count: 25, displayName: "EST II – Math 1", copies: 2 });
+        expect(parsed?.subjects[1]).toMatchObject({ code: "MATH2", count: 25, displayName: "EST II – Math 2", copies: 2 });
+        expect(parsed?.subjects[2]).toMatchObject({ code: "BIO", count: 25, displayName: "EST II – Biology", copies: 2 });
+        expect(parsed?.subjects[3]).toMatchObject({ code: "CHEM", count: 20, displayName: "EST II – Chemistry", copies: 2 });
+      });
+
+      it("parses EST 2 with case-insensitivity and arbitrary subject subsets (e.g. only chem and phy)", () => {
+        const parsed = parseEstRoomFileName("m105 _ chem-20 _ phy-15.pdf");
+        expect(parsed).not.toBeNull();
+        expect(parsed?.room).toBe("m105");
+        expect(parsed?.examType).toBe("EST 2");
+        expect(parsed?.totalStudents).toBe(20);
+        expect(parsed?.breakdownText).toBe("CHEM: 20  |  PHY: 15");
+        expect(parsed?.subjects).toHaveLength(2);
+        expect(parsed?.subjects[0]).toMatchObject({ code: "CHEM", count: 20, displayName: "EST II – Chemistry" });
+        expect(parsed?.subjects[1]).toMatchObject({ code: "PHY", count: 15, displayName: "EST II – Physics" });
+      });
+
+      it("parses single subject EST 2 room (e.g. only bio)", () => {
+        const parsed = parseEstRoomFileName("R201 _ Bio-28.pdf");
+        expect(parsed).not.toBeNull();
+        expect(parsed?.room).toBe("R201");
+        expect(parsed?.examType).toBe("EST 2");
+        expect(parsed?.totalStudents).toBe(28);
+        expect(parsed?.breakdownText).toBe("BIO: 28");
+        expect(parsed?.subjects).toHaveLength(1);
+        expect(parsed?.subjects[0]).toMatchObject({ code: "BIO", count: 28, displayName: "EST II – Biology" });
+      });
+
+      it("formats valid EST 2 room file name", () => {
+        const formatted = formatEst2FileName("M102", { MATH1: 25, MATH2: 25, BIO: 25, CHEM: 20 });
+        expect(formatted).toBe("M102 | MATH1-25 | MATH2-25 | BIO-25 | CHEM-20.pdf");
+      });
     });
 
     describe("getRoomExamCounts", () => {
@@ -894,7 +941,7 @@ describe("generateStickerPdf", () => {
       });
     });
 
-    describe("EST I Exam Stickers Generation", () => {
+    describe("Exam Stickers Generation (EST 1 & EST 2)", () => {
       it("generates exactly 4 stickers (1 A4 page, 2 Lit + 2 Math) when room has NO Essay", async () => {
         const content = buildStickerContent(
           ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "204"],
@@ -928,22 +975,60 @@ describe("generateStickerPdf", () => {
         expect(pdfDoc.getPageCount()).toBe(2);
       });
 
-      it("batch generates exam stickers for multiple rooms", async () => {
+      it("generates exactly 8 stickers (2 A4 pages, 2 copies for each of 4 subjects) for EST 2 room (M102)", async () => {
+        const content = buildStickerContent(
+          ["December 2026", "EST 2", "Alexandria", "Momen Center", "Momen Building", "Floor 2", "M102"],
+          {
+            childFiles: ["M102 _ MATH1-25 _ MATH2-25 _ BIO-25 _ CHEM-20.pdf"],
+          }
+        );
+        expect(content.totalStudents).toBe(25);
+        expect(content.breakdownText).toBe("MATH1: 25  |  MATH2: 25  |  BIO: 25  |  CHEM: 20");
+        expect(content.subjects).toHaveLength(4);
+
+        const pdfBytes = await generateExamStickersPdf({
+          content,
+        });
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // 4 subjects x 2 copies = 8 stickers = 2 A4 pages
+        expect(pdfDoc.getPageCount()).toBe(2);
+      });
+
+      it("generates exactly 2 stickers (1 A4 page) for EST 2 room with single subject (e.g. CHEM-20)", async () => {
+        const content = buildStickerContent(
+          ["December 2026", "EST 2", "Alexandria", "Momen Center", "Momen Building", "Floor 2", "M105"],
+          {
+            childFiles: ["M105 _ chem-20.pdf"],
+          }
+        );
+        expect(content.totalStudents).toBe(20);
+        expect(content.breakdownText).toBe("CHEM: 20");
+        expect(content.subjects).toHaveLength(1);
+
+        const pdfBytes = await generateExamStickersPdf({
+          content,
+        });
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // 1 subject x 2 copies = 2 stickers = 1 A4 page
+        expect(pdfDoc.getPageCount()).toBe(1);
+      });
+
+      it("batch generates exam stickers for multiple rooms across EST 1 and EST 2", async () => {
         const content1 = buildStickerContent(
           ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "E426"],
           { childFiles: ["E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf"] }
         );
         const content2 = buildStickerContent(
-          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "204"],
-          { childFiles: ["204 | LIT-30 | MATH-30 | ESSAY-NO-0.pdf"] }
+          ["EST 2", "Alexandria", "Momen Center", "Momen Building", "Floor 2", "M102"],
+          { childFiles: ["M102 _ MATH1-25 _ MATH2-25 _ BIO-25 _ CHEM-20.pdf"] }
         );
 
         const pdfBytes = await generateBatchExamStickersPdf({
           contents: [content1, content2],
         });
         const pdfDoc = await PDFDocument.load(pdfBytes);
-        // 6 stickers (E426) + 4 stickers (204) = 10 stickers total -> 3 A4 pages (4 + 4 + 2)
-        expect(pdfDoc.getPageCount()).toBe(3);
+        // E426 (6 stickers = 2 pages) + M102 (8 stickers = 2 pages) = 4 A4 pages total
+        expect(pdfDoc.getPageCount()).toBe(4);
       });
     });
   });

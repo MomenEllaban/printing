@@ -175,23 +175,36 @@ export function isControlRegisterFile(item: { id?: string; name: string; isFolde
 export {
   EST1_ROOM_FILE_REGEX,
   parseEst1FileName,
+  parseEstRoomFileName,
   formatEst1FileName,
+  formatEst2FileName,
   getRoomExamCounts,
   type Est1RoomExamCounts,
+  type RoomSubjectCount,
+  type EstSubjectKey,
 } from "./est-room-data";
+
+import { parseEstRoomFileName } from "./est-room-data";
 
 /**
  * Checks whether an item is a valid Student Register PDF.
- * Recognizes traditional names as well as the official EST I room file format:
- * `ROOM | LIT-XX | MATH-YY | ESSAY-YES/NO-ZZ.pdf`
+ * Recognizes traditional names as well as the official EST room file formats (EST 1 and EST 2):
+ * - EST 1: `ROOM | LIT-XX | MATH-YY | ESSAY-YES/NO-ZZ.pdf`
+ * - EST 2: `ROOM | MATH1-XX | MATH2-YY | BIO-ZZ | CHEM-WW | PHY-VV.pdf`
  */
 export function isStudentRegisterFile(item: { id?: string; name: string; isFolder?: boolean; mimeType?: string }): boolean {
   if (item.isFolder) return false;
   const isPdf = item.mimeType === "application/pdf" || item.name.toLowerCase().endsWith(".pdf");
   if (!isPdf) return false;
+
+  // Direct match using universal parser for EST 1 & EST 2
+  if (parseEstRoomFileName(item.name)) {
+    return true;
+  }
+
   return (
     /student\s*register|كشف\s*طلاب|كشف\s*الطلاب|كشف\s*لجان|لجنة/i.test(item.name) ||
-    /LIT-\d+.*MATH-\d+/i.test(item.name) ||
+    /LIT-\d+|MATH\d?-\d+|BIO-\d+|CHEM-\d+|PHY-\d+/i.test(item.name) ||
     item.name.toLowerCase().includes("student")
   );
 }

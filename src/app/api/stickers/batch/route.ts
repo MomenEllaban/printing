@@ -7,7 +7,7 @@ import { getDemoBreadcrumbs, getDemoDescendants, isDemoEnabled } from "@/lib/dem
 import { getSettings } from "@/lib/settings";
 import { buildStickerContent, type StickerContent, type StickerSubfolderInfo } from "@/lib/stickers/sticker-content";
 import { generateBatchStickerPdf, generateBatchExamStickersPdf } from "@/lib/stickers/sticker-pdf";
-import { getRoomExamCounts } from "@/lib/stickers/est-room-data";
+import { getRoomExamCounts, type RoomSubjectCount } from "@/lib/stickers/est-room-data";
 import { AppError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -160,12 +160,16 @@ export async function POST(request: Request) {
               governorate: content.governorate,
               floor: content.floor,
               folderFiles,
+              examName: content.examName,
             });
             content.totalStudents = counts.totalStudents;
             content.litCount = counts.litCount;
             content.mathCount = counts.mathCount;
             content.essayCount = counts.essayCount;
             content.hasEssay = counts.hasEssay;
+            content.subjects = counts.subjects;
+            content.breakdownText = counts.breakdownText;
+            content.examType = counts.examType;
           }
 
           contents.push(content);
@@ -188,6 +192,7 @@ export async function POST(request: Request) {
         litCount?: number;
         mathCount?: number;
         essayCount?: number;
+        subjects?: RoomSubjectCount[];
       }> = [];
 
       for (const c of contents) {
@@ -197,6 +202,7 @@ export async function POST(request: Request) {
             litCount: c.litCount,
             mathCount: c.mathCount,
             essayCount: c.essayCount,
+            subjects: c.subjects,
           });
         }
       }
@@ -207,6 +213,7 @@ export async function POST(request: Request) {
         litCount: c.litCount,
         mathCount: c.mathCount,
         essayCount: c.essayCount,
+        subjects: c.subjects,
       }));
 
       const pdfBytes = await generateBatchExamStickersPdf({

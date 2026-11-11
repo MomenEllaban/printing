@@ -3,6 +3,7 @@ import path from "path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { buildStickerContent, type StickerContent } from "./sticker-content";
+import { type RoomSubjectCount } from "./est-room-data";
 import { EST_LOGO_BASE64 } from "./est-logo-base64";
 
 export interface StickerPdfOptions {
@@ -321,9 +322,12 @@ function drawA4PlacardPage(params: {
       const rightColX = bodyStartX + leftColWidth + 16;
 
       const examBreakdown =
-        typeof content.litCount === "number" || typeof content.mathCount === "number"
+        content.breakdownText ||
+        (content.subjects && content.subjects.length > 0
+          ? content.subjects.map((s) => `${s.code}: ${s.count}`).join("  |  ")
+          : typeof content.litCount === "number" || typeof content.mathCount === "number"
           ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
-          : undefined;
+          : undefined);
 
       renderHeroCard({
         page,
@@ -379,9 +383,12 @@ function drawA4PlacardPage(params: {
       const checklistHeight = remainingHeight - heroHeight - 12;
 
       const examBreakdown =
-        typeof content.litCount === "number" || typeof content.mathCount === "number"
+        content.breakdownText ||
+        (content.subjects && content.subjects.length > 0
+          ? content.subjects.map((s) => `${s.code}: ${s.count}`).join("  |  ")
+          : typeof content.litCount === "number" || typeof content.mathCount === "number"
           ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
-          : undefined;
+          : undefined);
 
       renderHeroCard({
         page,
@@ -1433,9 +1440,12 @@ function drawQuarterPlacard(params: {
   // Hero bottom sub-banner (displays total students & per-exam breakdown for rooms)
   const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
   const examBreakdown =
-    isRoom && (typeof content.litCount === "number" || typeof content.mathCount === "number")
+    content.breakdownText ||
+    (content.subjects && content.subjects.length > 0
+      ? content.subjects.map((s) => `${s.code}: ${s.count}`).join("  |  ")
+      : isRoom && (typeof content.litCount === "number" || typeof content.mathCount === "number")
       ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
-      : undefined;
+      : undefined);
 
   const subH = isRoom && examBreakdown ? 30 : 17;
   const subY = bodyBottom + 2;
@@ -1655,7 +1665,7 @@ export interface ExamStickerItem {
   building?: string;
   floor?: string;
   subject: string;
-  subjectCode: "LIT" | "MATH" | "ESSAY";
+  subjectCode: string;
   studentCount: number;
   copyIndex: number;
   totalCopies: number;
@@ -1666,6 +1676,7 @@ export interface GenerateExamStickersPdfOptions {
   litCount?: number;
   mathCount?: number;
   essayCount?: number;
+  subjects?: RoomSubjectCount[];
 }
 
 export interface BatchExamStickersPdfOptions {
@@ -1674,6 +1685,7 @@ export interface BatchExamStickersPdfOptions {
     litCount?: number;
     mathCount?: number;
     essayCount?: number;
+    subjects?: RoomSubjectCount[];
   }>;
   contents?: StickerContent[];
 }
@@ -2037,104 +2049,73 @@ function drawQuarterExamSticker(params: {
 
 /**
  * Builds the list of ExamStickerItems for a room:
- * - 2 identical copies for Literacy
- * - 2 identical copies for Math
- * - 2 identical copies for Essay ONLY if essayCount > 0
+ * - 2 identical copies for each subject assigned to the room
+ * - Supports arbitrary combinations of subjects for both EST 1 and EST 2
+ * - For EST 1: Literacy, Math, and Essay (only if essayCount > 0)
+ * - For EST 2: Math 1, Math 2, Biology, Chemistry, Physics (any subset)
  */
-function buildExamStickerItemsForRoom(params: {
+export function buildExamStickerItemsForRoom(params: {
   content: StickerContent;
-  litCount: number;
-  mathCount: number;
-  essayCount: number;
+  litCount?: number;
+  mathCount?: number;
+  essayCount?: number;
+  subjects?: RoomSubjectCount[];
 }): ExamStickerItem[] {
-  const { content, litCount, mathCount, essayCount } = params;
+  const { content } = params;
   const room = content.room || "Room";
   const items: ExamStickerItem[] = [];
 
-  // 1. Literacy (2 copies)
-  items.push({
-    room,
-    examName: content.examName,
-    governorate: content.governorate,
-    center: content.center,
-    building: content.building,
-    floor: content.floor,
-    subject: "EST I – Literacy",
-    subjectCode: "LIT",
-    studentCount: litCount,
-    copyIndex: 1,
-    totalCopies: 2,
-  });
-  items.push({
-    room,
-    examName: content.examName,
-    governorate: content.governorate,
-    center: content.center,
-    building: content.building,
-    floor: content.floor,
-    subject: "EST I – Literacy",
-    subjectCode: "LIT",
-    studentCount: litCount,
-    copyIndex: 2,
-    totalCopies: 2,
-  });
+  const rawExamName = content.examName || "EST";
+  const isEst2 = /EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(rawExamName) || content.examType === "EST 2";
+  const defaultExamPrefix = isEst2 ? "EST II" : "EST I";
 
-  // 2. Math (2 copies)
-  items.push({
-    room,
-    examName: content.examName,
-    governorate: content.governorate,
-    center: content.center,
-    building: content.building,
-    floor: content.floor,
-    subject: "EST I – Math",
-    subjectCode: "MATH",
-    studentCount: mathCount,
-    copyIndex: 1,
-    totalCopies: 2,
-  });
-  items.push({
-    room,
-    examName: content.examName,
-    governorate: content.governorate,
-    center: content.center,
-    building: content.building,
-    floor: content.floor,
-    subject: "EST I – Math",
-    subjectCode: "MATH",
-    studentCount: mathCount,
-    copyIndex: 2,
-    totalCopies: 2,
-  });
+  // Use dynamic subjects from params or content
+  let subjects = params.subjects || content.subjects;
 
-  // 3. Essay (2 copies ONLY if room has students taking Essay)
-  if (essayCount > 0) {
-    items.push({
-      room,
-      examName: content.examName,
-      governorate: content.governorate,
-      center: content.center,
-      building: content.building,
-      floor: content.floor,
-      subject: "EST I – Essay",
-      subjectCode: "ESSAY",
-      studentCount: essayCount,
-      copyIndex: 1,
-      totalCopies: 2,
-    });
-    items.push({
-      room,
-      examName: content.examName,
-      governorate: content.governorate,
-      center: content.center,
-      building: content.building,
-      floor: content.floor,
-      subject: "EST I – Essay",
-      subjectCode: "ESSAY",
-      studentCount: essayCount,
-      copyIndex: 2,
-      totalCopies: 2,
-    });
+  if (!subjects || subjects.length === 0) {
+    // If no explicit subjects array, synthesize from litCount / mathCount / essayCount
+    const litCount = params.litCount ?? content.litCount ?? 25;
+    const mathCount = params.mathCount ?? content.mathCount ?? 25;
+    const essayCount = params.essayCount ?? content.essayCount ?? 0;
+
+    subjects = [
+      { code: "LIT", name: "Literacy", displayName: `${defaultExamPrefix} – Literacy`, count: litCount, copies: 2 },
+      { code: "MATH", name: "Math", displayName: `${defaultExamPrefix} – Math`, count: mathCount, copies: 2 },
+    ];
+    if (essayCount > 0) {
+      subjects.push({
+        code: "ESSAY",
+        name: "Essay",
+        displayName: `${defaultExamPrefix} – Essay`,
+        count: essayCount,
+        copies: 2,
+      });
+    }
+  }
+
+  // Generate 2 copies for each subject
+  for (const sub of subjects) {
+    if (sub.code === "ESSAY" && sub.count <= 0) continue;
+    if (sub.count <= 0) continue;
+
+    const totalCopies = sub.copies || 2;
+    const subjectTitle = sub.displayName || `${defaultExamPrefix} – ${sub.name}`;
+
+    for (let c = 1; c <= totalCopies; c++) {
+      items.push({
+        room,
+        examName: content.examName,
+        governorate: content.governorate,
+        center: content.center,
+        building: content.building,
+        floor: content.floor,
+        subject: subjectTitle,
+        subjectCode: sub.code,
+        studentCount: sub.count,
+        copyIndex: c,
+        totalCopies,
+      });
+    }
   }
 
   return items;
@@ -2199,11 +2180,8 @@ function drawA4FourUpExamStickersPage(params: {
 }
 
 /**
- * Generates an official EST I Exam Stickers PDF for a single room.
- * Produces:
- * - 2 copies of EST I – Literacy
- * - 2 copies of EST I – Math
- * - 2 copies of EST I – Essay (only if essayCount > 0)
+ * Generates an official Exam Stickers PDF for a single room (EST 1 & EST 2).
+ * Produces 2 copies for each applicable subject.
  * Each sticker occupies exactly one-quarter of an A4 page (4-up on A4 Landscape).
  */
 export async function generateExamStickersPdf(
@@ -2217,6 +2195,7 @@ export async function generateExamStickersPdf(
   const litCount = options.litCount ?? content.litCount ?? 25;
   const mathCount = options.mathCount ?? content.mathCount ?? 25;
   const essayCount = options.essayCount ?? content.essayCount ?? 0;
+  const subjects = options.subjects ?? content.subjects;
 
   return generateBatchExamStickersPdf({
     rooms: [
@@ -2225,13 +2204,14 @@ export async function generateExamStickersPdf(
         litCount,
         mathCount,
         essayCount,
+        subjects,
       },
     ],
   });
 }
 
 /**
- * Generates unified multi-page EST I Exam Stickers PDF for multiple rooms.
+ * Generates unified multi-page Exam Stickers PDF for multiple rooms.
  * Each room's exam stickers start on a fresh page.
  */
 export async function generateBatchExamStickersPdf(
@@ -2244,6 +2224,7 @@ export async function generateBatchExamStickersPdf(
       litCount: c.litCount,
       mathCount: c.mathCount,
       essayCount: c.essayCount,
+      subjects: c.subjects,
     })) ??
     [];
   if (rooms.length === 0) {
@@ -2260,12 +2241,14 @@ export async function generateBatchExamStickersPdf(
     const litCount = r.litCount ?? r.content.litCount ?? 25;
     const mathCount = r.mathCount ?? r.content.mathCount ?? 25;
     const essayCount = r.essayCount ?? r.content.essayCount ?? 0;
+    const subjects = r.subjects ?? r.content.subjects;
 
     const items = buildExamStickerItemsForRoom({
       content: r.content,
       litCount,
       mathCount,
       essayCount,
+      subjects,
     });
 
     // Chunk items 4 per page

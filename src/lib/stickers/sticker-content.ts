@@ -1,5 +1,5 @@
 import { getReferenceSubfolderInfo } from "./est-reference-data";
-import { getRoomExamCounts } from "./est-room-data";
+import { getRoomExamCounts, type RoomSubjectCount } from "./est-room-data";
 
 export type StickerLevel = "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom";
 
@@ -21,6 +21,8 @@ export interface StickerSubfolderInfo {
   mathCount?: number;
   essayCount?: number;
   hasEssay?: boolean;
+  subjects?: RoomSubjectCount[];
+  breakdownText?: string;
 }
 
 export interface StickerContent {
@@ -40,7 +42,10 @@ export interface StickerContent {
   childLabel?: string;
   childNames?: string[];
   totalRooms?: number;
-  // Room candidate counts (EST I)
+  // Room candidate counts & breakdown (EST 1 & EST 2)
+  examType?: "EST 1" | "EST 2" | "EST";
+  subjects?: RoomSubjectCount[];
+  breakdownText?: string;
   totalStudents?: number;
   litCount?: number;
   mathCount?: number;
@@ -175,9 +180,12 @@ export function buildStickerContent(
   let mathCount = subfolderInfo?.mathCount;
   let essayCount = subfolderInfo?.essayCount;
   let hasEssay = subfolderInfo?.hasEssay;
+  let subjects = subfolderInfo?.subjects;
+  let breakdownText = subfolderInfo?.breakdownText;
+  let examType: "EST 1" | "EST 2" | "EST" | undefined;
 
   if (level === "room" && room) {
-    if (typeof totalStudents !== "number") {
+    if (typeof totalStudents !== "number" || !subjects || subjects.length === 0) {
       const folderFiles = subfolderInfo?.childFiles?.map((f) =>
         typeof f === "string" ? { name: f } : f
       );
@@ -188,12 +196,16 @@ export function buildStickerContent(
         governorate,
         floor,
         folderFiles,
+        examName,
       });
       totalStudents = counts.totalStudents;
       litCount = counts.litCount;
       mathCount = counts.mathCount;
       essayCount = counts.essayCount;
       hasEssay = counts.hasEssay;
+      subjects = counts.subjects;
+      breakdownText = counts.breakdownText;
+      examType = counts.examType;
     }
   }
 
@@ -213,6 +225,9 @@ export function buildStickerContent(
     childLabel,
     childNames,
     totalRooms,
+    examType,
+    subjects,
+    breakdownText,
     totalStudents,
     litCount,
     mathCount,
