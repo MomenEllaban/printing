@@ -240,15 +240,14 @@ export async function generateBuildingCartonStickerPdf(
 
   // Body Layout
   const bodyTop = locRibbonY - 12;
-  const footerH = 50;
-  const bodyBottom = cardY + footerH + 14;
+  const bodyBottom = cardY + 12;
   const bodyH = bodyTop - bodyBottom;
-  const leftW = 270;
+  const leftW = 260;
   const rightW = cardW - 24 - leftW - 12;
   const leftX = cardX + 12;
   const rightX = leftX + leftW + 12;
 
-  // Left Column: Statistics & Security Seal
+  // Left Column: Overview & Specifications
   page.drawRectangle({
     x: leftX,
     y: bodyBottom,
@@ -267,17 +266,17 @@ export async function generateBuildingCartonStickerPdf(
     height: 25,
     color: COLOR_CHARCOAL,
   });
-  page.drawText("CARTON SPECIFICATIONS & SECURITY", {
-    x: leftX + 12,
+  page.drawText("CARTON SPECIFICATIONS", {
+    x: leftX + 14,
     y: bodyBottom + bodyH - 18,
     size: 8.5,
     font,
     color: COLOR_GOLD,
   });
 
-  // Stat Card 1: Total Rooms
-  const statBoxH = 54;
-  const stat1Y = bodyBottom + bodyH - 26 - statBoxH - 10;
+  // Stat Card: Total Rooms
+  const statBoxH = 68;
+  const stat1Y = bodyBottom + bodyH - 26 - statBoxH - 12;
   page.drawRectangle({
     x: leftX + 10,
     y: stat1Y,
@@ -288,78 +287,62 @@ export async function generateBuildingCartonStickerPdf(
     borderWidth: 0.8,
   });
   page.drawText("TOTAL ENCLOSED ROOM PACKETS:", {
-    x: leftX + 18,
-    y: stat1Y + statBoxH - 14,
-    size: 7.5,
+    x: leftX + 16,
+    y: stat1Y + statBoxH - 18,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
   const roomsText = `${options.totalRooms ?? (options.roomNames ? options.roomNames.length : 0)} ROOMS`;
   page.drawText(roomsText, {
-    x: leftX + 18,
-    y: stat1Y + 12,
-    size: 20,
+    x: leftX + 16,
+    y: stat1Y + 16,
+    size: 24,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Stat Card 2: Total Students
-  const stat2Y = stat1Y - statBoxH - 8;
+  // Info Card: Building & Exam Info
+  const infoBoxY = bodyBottom + 12;
+  const infoBoxH = stat1Y - infoBoxY - 12;
   page.drawRectangle({
     x: leftX + 10,
-    y: stat2Y,
+    y: infoBoxY,
     width: leftW - 20,
-    height: statBoxH,
+    height: infoBoxH,
     color: COLOR_LIGHT_BG,
     borderColor: COLOR_BORDER,
     borderWidth: 0.8,
   });
-  page.drawText("TOTAL ASSIGNED CANDIDATES:", {
-    x: leftX + 18,
-    y: stat2Y + statBoxH - 14,
-    size: 7.5,
+
+  page.drawText("LOGISTICS DISTRIBUTION UNIT", {
+    x: leftX + 16,
+    y: infoBoxY + infoBoxH - 18,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
-  const studentsText = `${options.totalStudents ?? "VERIFIED"} CANDIDATES`;
-  page.drawText(studentsText, {
-    x: leftX + 18,
-    y: stat2Y + 12,
-    size: 19,
+
+  page.drawText(examLabel, {
+    x: leftX + 16,
+    y: infoBoxY + infoBoxH - 42,
+    size: 16,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Security Seal Box
-  const sealY = bodyBottom + 10;
-  const sealH = stat2Y - sealY - 8;
-  page.drawRectangle({
-    x: leftX + 10,
-    y: sealY,
-    width: leftW - 20,
-    height: sealH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_GOLD,
-    borderWidth: 1.2,
-  });
-  page.drawText("SECURITY SEAL NUMBER:", {
+  page.drawText(`BUILDING: ${options.building || "Building HQ"}`, {
     x: leftX + 16,
-    y: sealY + sealH - 16,
-    size: 7.5,
+    y: infoBoxY + infoBoxH - 64,
+    size: 10,
     font,
     color: COLOR_CHARCOAL,
   });
-  page.drawText(options.securitySeal || "SEAL: [ ___________________________ ]", {
+
+  page.drawText(`SESSION: ${sessionText}`, {
     x: leftX + 16,
-    y: sealY + (sealH - 24) / 2 + 2,
-    size: 11,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-  page.drawText("CHECK SEAL INTEGRITY BEFORE OPENING IN CONTROL ROOM", {
-    x: leftX + 16,
-    y: sealY + 8,
-    size: 6.5,
+    y: infoBoxY + 16,
+    size: 9,
     font,
     color: COLOR_MUTED,
   });
@@ -397,12 +380,12 @@ export async function generateBuildingCartonStickerPdf(
     : Array.from({ length: Math.min(options.totalRooms || 12, 30) }, (_, i) => `Room ${i + 1}`);
 
   const gridAreaTop = bodyBottom + bodyH - 36;
-  const gridAreaBottom = bodyBottom + 10;
+  const gridAreaBottom = bodyBottom + 12;
   const gridAreaH = gridAreaTop - gridAreaBottom;
   const cols = rooms.length > 18 ? 5 : rooms.length > 10 ? 4 : 3;
   const rows = Math.ceil(rooms.length / cols);
   const cellW = (rightW - 24 - (cols - 1) * 8) / cols;
-  const cellH = Math.min(36, (gridAreaH - (rows - 1) * 6) / rows);
+  const cellH = Math.min(42, (gridAreaH - (rows - 1) * 6) / rows);
 
   for (let idx = 0; idx < rooms.length; idx++) {
     const col = idx % cols;
@@ -422,89 +405,30 @@ export async function generateBuildingCartonStickerPdf(
 
     // Checkbox square
     page.drawRectangle({
-      x: cx + 5,
-      y: cy + (cellH - 11) / 2,
-      width: 11,
-      height: 11,
+      x: cx + 6,
+      y: cy + (cellH - 12) / 2,
+      width: 12,
+      height: 12,
       color: COLOR_WHITE,
       borderColor: COLOR_CHARCOAL,
       borderWidth: 0.8,
     });
 
     const roomText = rooms[idx];
-    let rSize = 10;
+    let rSize = 10.5;
     let rW = font.widthOfTextAtSize(roomText, rSize);
-    if (rW > cellW - 24) {
-      rSize = Math.max(7, ((cellW - 24) / rW) * rSize);
+    if (rW > cellW - 26) {
+      rSize = Math.max(7, ((cellW - 26) / rW) * rSize);
       rW = font.widthOfTextAtSize(roomText, rSize);
     }
     page.drawText(roomText, {
-      x: cx + 20,
+      x: cx + 22,
       y: cy + (cellH - rSize) / 2 + 1,
       size: rSize,
       font,
       color: COLOR_CHARCOAL,
     });
   }
-
-  // Footer: Chain of Custody & Sign-offs
-  const footY = cardY + 8;
-  page.drawRectangle({
-    x: cardX + 12,
-    y: footY,
-    width: cardW - 24,
-    height: footerH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.8,
-  });
-
-  const footColW = (cardW - 24) / 3;
-
-  page.drawText("PACKED & VERIFIED BY:", {
-    x: cardX + 20,
-    y: footY + footerH - 15,
-    size: 7.5,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("Name: ____________________________", {
-    x: cardX + 20,
-    y: footY + 12,
-    size: 8.5,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("DISPATCH DATE & TIME:", {
-    x: cardX + 12 + footColW + 10,
-    y: footY + footerH - 15,
-    size: 7.5,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("Date: _____ / _____ / 2026   Time: ____:____", {
-    x: cardX + 12 + footColW + 10,
-    y: footY + 12,
-    size: 8.5,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("BUILDING RECEPTION & SIGNATURE:", {
-    x: cardX + 12 + footColW * 2 + 10,
-    y: footY + footerH - 15,
-    size: 7.5,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("Signature: ________________________", {
-    x: cardX + 12 + footColW * 2 + 10,
-    y: footY + 12,
-    size: 8.5,
-    font,
-    color: COLOR_CHARCOAL,
-  });
 
   return await pdfDoc.save();
 }
@@ -650,9 +574,10 @@ export async function generateExamBagChecklistPdf(
   });
 
   // Subjects Checklist Table
-  const tableTop = instrY - 12;
-  const tableH = isEst2 ? 290 : 210;
-  const tableY = tableTop - tableH;
+  const tableTop = instrY - 14;
+  const tableBottom = cardY + 28;
+  const tableH = tableTop - tableBottom;
+  const tableY = tableBottom;
 
   page.drawRectangle({
     x: cardX + 10,
@@ -665,7 +590,7 @@ export async function generateExamBagChecklistPdf(
   });
 
   // Table Header Row
-  const thH = 26;
+  const thH = 30;
   const thY = tableY + tableH - thH;
   page.drawRectangle({
     x: cardX + 11,
@@ -675,10 +600,10 @@ export async function generateExamBagChecklistPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("PACKED", { x: cardX + 20, y: thY + 9, size: 8, font, color: COLOR_GOLD });
-  page.drawText("EXAMINATION SUBJECT", { x: cardX + 80, y: thY + 9, size: 8, font, color: COLOR_GOLD });
-  page.drawText("ENVELOPES COUNT", { x: cardX + 310, y: thY + 9, size: 8, font, color: COLOR_GOLD });
-  page.drawText("VERIFIED BY", { x: cardX + 430, y: thY + 9, size: 8, font, color: COLOR_GOLD });
+  page.drawText("PACKED", { x: cardX + 22, y: thY + 11, size: 9, font, color: COLOR_GOLD });
+  page.drawText("EXAMINATION SUBJECT", { x: cardX + 90, y: thY + 11, size: 9, font, color: COLOR_GOLD });
+  page.drawText("ENVELOPES COUNT", { x: cardX + 330, y: thY + 11, size: 9, font, color: COLOR_GOLD });
+  page.drawText("STATUS", { x: cardX + 460, y: thY + 11, size: 9, font, color: COLOR_GOLD });
 
   const subjects = isEst2
     ? [
@@ -716,13 +641,13 @@ export async function generateExamBagChecklistPdf(
       page.drawLine({
         start: { x: cardX + 11, y: ry + rowH },
         end: { x: cardX + cardW - 11, y: ry + rowH },
-        thickness: 0.5,
+        thickness: 0.8,
         color: COLOR_BORDER,
       });
     }
 
     // Checkbox Square (Large and clear for pen check)
-    const cbSize = 14;
+    const cbSize = 18;
     page.drawRectangle({
       x: cardX + 26,
       y: ry + (rowH - cbSize) / 2,
@@ -730,140 +655,53 @@ export async function generateExamBagChecklistPdf(
       height: cbSize,
       color: COLOR_WHITE,
       borderColor: COLOR_CHARCOAL,
-      borderWidth: 1.2,
+      borderWidth: 1.4,
     });
 
     // Subject title
     page.drawText(sub.title, {
-      x: cardX + 80,
-      y: ry + (rowH - 10) / 2 + 1,
-      size: 10,
+      x: cardX + 90,
+      y: ry + (rowH - 12) / 2 + 1,
+      size: 12,
       font,
       color: COLOR_CHARCOAL,
     });
 
     // Envelopes fill-in box
-    page.drawText("[ ______ ] Envelopes", {
-      x: cardX + 310,
-      y: ry + (rowH - 10) / 2 + 1,
-      size: 9.5,
+    page.drawText("[ ________ ] Envelopes", {
+      x: cardX + 330,
+      y: ry + (rowH - 11) / 2 + 1,
+      size: 11,
       font,
       color: COLOR_CHARCOAL,
     });
 
     // Verified checkbox
     page.drawRectangle({
-      x: cardX + 430,
-      y: ry + (rowH - 12) / 2,
-      width: 12,
-      height: 12,
+      x: cardX + 460,
+      y: ry + (rowH - 14) / 2,
+      width: 14,
+      height: 14,
       color: COLOR_WHITE,
       borderColor: COLOR_CHARCOAL,
-      borderWidth: 0.8,
+      borderWidth: 1,
     });
     page.drawText("Verified", {
-      x: cardX + 448,
-      y: ry + (rowH - 8) / 2 + 1,
-      size: 8,
+      x: cardX + 482,
+      y: ry + (rowH - 9) / 2 + 1,
+      size: 9,
       font,
       color: COLOR_MUTED,
     });
   }
 
-  // Security Seal & Chain of Custody Section
-  const secY = tableY - 145;
-  const secH = 135;
-
-  page.drawRectangle({
-    x: cardX + 10,
-    y: secY,
-    width: cardW - 20,
-    height: secH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 1,
-  });
-
-  page.drawRectangle({
-    x: cardX + 11,
-    y: secY + secH - 24,
-    width: cardW - 22,
-    height: 23,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("SECURITY SEAL & DISPATCH CHAIN OF CUSTODY", {
-    x: cardX + 18,
-    y: secY + secH - 17,
-    size: 8.5,
-    font,
-    color: COLOR_GOLD,
-  });
-
-  const sealLineY = secY + secH - 52;
-  page.drawText("TRANSIT BAG SECURITY SEAL NUMBER:", {
-    x: cardX + 18,
-    y: sealLineY + 12,
-    size: 8,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-  page.drawRectangle({
-    x: cardX + 18,
-    y: sealLineY - 12,
-    width: cardW - 56,
-    height: 22,
-    color: COLOR_WHITE,
-    borderColor: COLOR_GOLD,
-    borderWidth: 1,
-  });
-  page.drawText(options.securitySeal || "SEAL: [ __________________________________________________ ]", {
-    x: cardX + 26,
-    y: sealLineY - 6,
-    size: 9.5,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Signatures Row
-  const sigY = secY + 10;
-  const sigColW = (cardW - 36) / 2;
-
-  page.drawText("PACKED & DISPATCHED BY:", {
-    x: cardX + 18,
-    y: sigY + 28,
-    size: 7.5,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("Name: ____________________  Sign: _________", {
-    x: cardX + 18,
-    y: sigY + 10,
-    size: 8,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("RECEIVED & UNBROKEN SEAL VERIFIED BY:", {
-    x: cardX + 18 + sigColW,
-    y: sigY + 28,
-    size: 7.5,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("Name: ____________________  Sign: _________", {
-    x: cardX + 18 + sigColW,
-    y: sigY + 10,
-    size: 8,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Footer Warning Note
-  page.drawText("CONFIDENTIAL & STRICTLY CONTROLLED — DO NOT OPEN OUTSIDE SECURE CONTROL ROOM", {
-    x: cardX + (cardW - 380) / 2,
+  // Footer Note
+  const footerNote = "CONFIDENTIAL & STRICTLY CONTROLLED — TRANSIT BAG MANIFEST";
+  const noteW = font.widthOfTextAtSize(footerNote, 7.5);
+  page.drawText(footerNote, {
+    x: cardX + (cardW - noteW) / 2,
     y: cardY + 10,
-    size: 7,
+    size: 7.5,
     font,
     color: COLOR_MUTED,
   });
@@ -1019,8 +857,9 @@ export async function generateCleanSkinMasterPdf(
 
   // Emergency Dispatch Log Table (Ready for manual pen writing)
   const logTableTop = locY - 14;
-  const logTableH = 430;
-  const logTableY = logTableTop - logTableH;
+  const logTableBottom = cardY + 16;
+  const logTableH = logTableTop - logTableBottom;
+  const logTableY = logTableBottom;
 
   page.drawRectangle({
     x: cardX + 8,
@@ -1033,7 +872,7 @@ export async function generateCleanSkinMasterPdf(
   });
 
   // Table Title Bar
-  const thH = 24;
+  const thH = 26;
   const thY = logTableY + logTableH - thH;
   page.drawRectangle({
     x: cardX + 9,
@@ -1045,14 +884,14 @@ export async function generateCleanSkinMasterPdf(
 
   page.drawText("EMERGENCY DISPATCH LOG SHEET", {
     x: cardX + 16,
-    y: thY + 8,
+    y: thY + 9,
     size: 8.5,
     font,
     color: COLOR_GOLD,
   });
 
   // Table Column Headers
-  const colHeaderH = 22;
+  const colHeaderH = 24;
   const colHeaderY = thY - colHeaderH;
   page.drawRectangle({
     x: cardX + 9,
@@ -1064,16 +903,15 @@ export async function generateCleanSkinMasterPdf(
     borderWidth: 0.5,
   });
 
-  page.drawText("#", { x: cardX + 14, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("TIME", { x: cardX + 32, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("ROOM", { x: cardX + 90, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("SUBJECT", { x: cardX + 160, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("COPIES", { x: cardX + 270, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("REASON (DEFECT / EXTRA)", { x: cardX + 320, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("PROCTOR SIGNATURE", { x: cardX + 445, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+  page.drawText("#", { x: cardX + 16, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
+  page.drawText("TIME", { x: cardX + 45, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
+  page.drawText("ROOM", { x: cardX + 115, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
+  page.drawText("SUBJECT", { x: cardX + 200, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
+  page.drawText("COPIES", { x: cardX + 345, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
+  page.drawText("REASON (DEFECT / EXTRA / NOTES)", { x: cardX + 420, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
 
-  // 12 Blank Rows for manual logging
-  const numRows = 12;
+  // 15 Blank Rows for manual logging
+  const numRows = 15;
   const rowH = (colHeaderY - logTableY) / numRows;
 
   for (let r = 0; r < numRows; r++) {
@@ -1089,51 +927,13 @@ export async function generateCleanSkinMasterPdf(
 
     // Row Number
     page.drawText(`${r + 1}`, {
-      x: cardX + 14,
-      y: ry + (rowH - 7) / 2 + 1,
-      size: 7,
+      x: cardX + 16,
+      y: ry + (rowH - 8) / 2 + 1,
+      size: 7.5,
       font,
       color: COLOR_MUTED,
     });
   }
-
-  // Footer Signatures
-  const footY = cardY + 8;
-  const footH = logTableY - footY - 6;
-
-  page.drawRectangle({
-    x: cardX + 8,
-    y: footY,
-    width: cardW - 16,
-    height: footH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.8,
-  });
-
-  page.drawText("CHIEF PROCTOR CLOSEOUT STATEMENT:", {
-    x: cardX + 16,
-    y: footY + footH - 16,
-    size: 7.5,
-    font,
-    color: COLOR_MUTED,
-  });
-
-  page.drawText("Total Emergency Copies Dispatched: [ ______ ]        Remaining Unused Returned: [ ______ ]", {
-    x: cardX + 16,
-    y: footY + footH - 30,
-    size: 8,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("Chief Proctor Name: ____________________________    Signature: ____________________________", {
-    x: cardX + 16,
-    y: footY + 10,
-    size: 8,
-    font,
-    color: COLOR_CHARCOAL,
-  });
 
   return await pdfDoc.save();
 }
@@ -1512,9 +1312,9 @@ function drawQuarterCleanSkinSticker(params: {
     color: COLOR_CHARCOAL,
   });
 
-  // Quantity Box (Left blank for pen writing as requested)
-  const countBoxH = 46;
-  const countBoxY = subjectBoxY - countBoxH - 5;
+  // Quantity Box (Spacious & centered for manual pen writing)
+  const countBoxY = bodyBottom + 8;
+  const countBoxH = subjectBoxY - countBoxY - 8;
 
   page.drawRectangle({
     x: rightX + 6,
@@ -1523,49 +1323,24 @@ function drawQuarterCleanSkinSticker(params: {
     height: countBoxH,
     color: COLOR_WHITE,
     borderColor: COLOR_GOLD,
-    borderWidth: 1.2,
+    borderWidth: 1.4,
   });
 
   page.drawText("PACKET QUANTITY (WRITE BY HAND):", {
-    x: rightX + 12,
-    y: countBoxY + countBoxH - 12,
-    size: 6.2,
+    x: rightX + 14,
+    y: countBoxY + countBoxH - 16,
+    size: 7,
     font,
     color: COLOR_MUTED,
   });
 
   // Underlined area for writing count
   const manualCountText = "COUNT: [  ____________  ]  COPIES";
-  const manualW = font.widthOfTextAtSize(manualCountText, 12);
+  const manualW = font.widthOfTextAtSize(manualCountText, 13);
   page.drawText(manualCountText, {
     x: rightX + 6 + (rightW - 12 - manualW) / 2,
-    y: countBoxY + 12,
-    size: 12,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Dispatch details
-  const verifyY = bodyBottom + 4;
-  page.drawLine({
-    start: { x: rightX + 6, y: countBoxY - 4 },
-    end: { x: rightX + rightW - 6, y: countBoxY - 4 },
-    thickness: 0.5,
-    color: COLOR_BORDER,
-  });
-
-  page.drawText("DISPATCHED TO ROOM: [ ______ ]    TIME: ____:____", {
-    x: rightX + 8,
-    y: verifyY + 12,
-    size: 6.2,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("CHIEF PROCTOR SIGNATURE: ________________________", {
-    x: rightX + 8,
-    y: verifyY + 2,
-    size: 6.2,
+    y: countBoxY + (countBoxH - 24) / 2 + 2,
+    size: 13,
     font,
     color: COLOR_CHARCOAL,
   });

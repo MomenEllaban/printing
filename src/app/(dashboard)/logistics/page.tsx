@@ -366,8 +366,8 @@ export default function LogisticsHubPage() {
           </div>
         </div>
 
-        {/* Secondary Details: Session Date, Box Count, Security Seal */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-3 border-t border-border/50 text-xs">
+        {/* Secondary Details: Session Date, Box Count */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-3 border-t border-border/50 text-xs">
           <div>
             <span className="font-semibold text-muted block mb-1">
               {isAr ? "تاريخ الدورة / Session:" : "Session Date:"}
@@ -406,19 +406,6 @@ export default function LogisticsHubPage() {
                 className="w-full h-9 px-3 text-xs font-medium rounded-lg border border-border bg-surface"
               />
             </div>
-          </div>
-
-          <div>
-            <span className="font-semibold text-muted block mb-1">
-              {isAr ? "رقم القفل الأمني (اختياري):" : "Security Seal # (Optional):"}
-            </span>
-            <input
-              type="text"
-              value={securitySeal}
-              onChange={(e) => setSecuritySeal(e.target.value)}
-              placeholder="e.g. EST-SEAL-88492"
-              className="w-full h-9 px-3 text-xs font-medium rounded-lg border border-border bg-surface"
-            />
           </div>
         </div>
 
