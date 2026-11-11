@@ -722,12 +722,13 @@ export async function generateCleanSkinMasterPdf(
   const font = await loadStickerFont(pdfDoc);
   const logoImg = await loadLogoImage(pdfDoc);
 
-  // A4 Portrait: 595.28 x 841.89 pt
+  // A4 Portrait: 595.28 x 841.89 pt (Strictly single-page with safe print margins)
   const width = 595.28;
   const height = 841.89;
   const page = pdfDoc.addPage([width, height]);
 
-  const margin = 20;
+  // Safe 24pt margins to ensure 100% single-page output across all printers
+  const margin = 24;
   const cardX = margin;
   const cardY = margin;
   const cardW = width - margin * 2;
@@ -741,33 +742,37 @@ export async function generateCleanSkinMasterPdf(
     height: cardH,
     color: COLOR_WHITE,
     borderColor: COLOR_EMERGENCY_RED,
-    borderWidth: 2.5,
+    borderWidth: 2,
   });
 
   page.drawRectangle({
-    x: cardX + 3.5,
-    y: cardY + 3.5,
-    width: cardW - 7,
-    height: cardH - 7,
+    x: cardX + 3,
+    y: cardY + 3,
+    width: cardW - 6,
+    height: cardH - 6,
     borderColor: COLOR_GOLD,
     borderWidth: 1,
   });
 
   // Emergency Header Banner
-  const headerH = 75;
+  const headerH = 68;
   const headerY = cardY + cardH - headerH - 8;
+  const innerCardW = cardW - 12;
+  const innerCardX = cardX + 6;
 
   page.drawRectangle({
-    x: cardX + 5,
+    x: innerCardX,
     y: headerY,
-    width: cardW - 10,
+    width: innerCardW,
     height: headerH,
     color: COLOR_EMERGENCY_LIGHT,
+    borderColor: COLOR_EMERGENCY_RED,
+    borderWidth: 0.6,
   });
 
-  const logoH = 46;
+  const logoH = 42;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
-  const logoX = cardX + 16;
+  const logoX = innerCardX + 12;
   const logoY = headerY + (headerH - logoH) / 2;
 
   if (logoImg) {
@@ -779,23 +784,23 @@ export async function generateCleanSkinMasterPdf(
     });
   }
 
-  const textStartX = logoImg ? logoX + logoW + 14 : cardX + 16;
+  const textStartX = logoImg ? logoX + logoW + 12 : innerCardX + 14;
   const rawExam = options.examName || "EST";
   const isEst2 = /EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(rawExam);
   const examLabel = isEst2 ? "EST II" : "EST I";
 
   page.drawText(`${examLabel} — OFFICIAL EMERGENCY RESERVE (CLEAN SKIN)`, {
     x: textStartX,
-    y: headerY + 46,
-    size: 12.5,
+    y: headerY + 44,
+    size: 11.5,
     font,
     color: COLOR_EMERGENCY_RED,
   });
 
   page.drawText("EMERGENCY & RESERVE EXAM PAPERS PACKET — CONTROL MASTER CUSTODY", {
     x: textStartX,
-    y: headerY + 28,
-    size: 9.5,
+    y: headerY + 27,
+    size: 8.5,
     font,
     color: COLOR_CHARCOAL,
   });
@@ -803,137 +808,229 @@ export async function generateCleanSkinMasterPdf(
   page.drawText("STRICTLY CONFIDENTIAL — FOR EMERGENCY REPLACEMENTS ONLY", {
     x: textStartX,
     y: headerY + 12,
-    size: 7.5,
+    size: 7,
     font,
     color: COLOR_MUTED,
   });
 
   // Warning Banner
-  const warnY = headerY - 30;
+  const warnH = 22;
+  const warnY = headerY - warnH - 6;
   page.drawRectangle({
-    x: cardX + 8,
+    x: innerCardX,
     y: warnY,
-    width: cardW - 16,
-    height: 24,
+    width: innerCardW,
+    height: warnH,
     color: COLOR_CHARCOAL,
   });
 
   const warnText = "ATTENTION: DO NOT OPEN EXCEPT UPON CHIEF PROCTOR APPROVAL FOR ACTIVE INCIDENTS";
   const warnW = font.widthOfTextAtSize(warnText, 7.5);
   page.drawText(warnText, {
-    x: cardX + 8 + (cardW - 16 - warnW) / 2,
-    y: warnY + 7.5,
+    x: innerCardX + (innerCardW - warnW) / 2,
+    y: warnY + 7,
     size: 7.5,
     font,
     color: COLOR_GOLD,
   });
 
   // Location details
-  const locY = warnY - 44;
+  const locH = 34;
+  const locY = warnY - locH - 6;
   page.drawRectangle({
-    x: cardX + 8,
+    x: innerCardX,
     y: locY,
-    width: cardW - 16,
-    height: 38,
+    width: innerCardW,
+    height: locH,
     color: COLOR_LIGHT_BG,
     borderColor: COLOR_BORDER,
-    borderWidth: 0.8,
+    borderWidth: 0.75,
   });
 
   page.drawText(`GOVERNORATE: ${options.governorate || "Alexandria"}    •    CENTER: ${options.center || "Main Center"}`, {
-    x: cardX + 16,
-    y: locY + 22,
-    size: 8.5,
+    x: innerCardX + 12,
+    y: locY + 19,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(`BUILDING: ${options.building || "Building HQ"}    •    SESSION: ${options.date || "December 2026"}`, {
-    x: cardX + 16,
-    y: locY + 8,
-    size: 9.5,
+    x: innerCardX + 12,
+    y: locY + 7,
+    size: 9,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Emergency Dispatch Log Table (Ready for manual pen writing)
-  const logTableTop = locY - 14;
-  const logTableBottom = cardY + 16;
-  const logTableH = logTableTop - logTableBottom;
-  const logTableY = logTableBottom;
+  // Emergency Dispatch Log Table (Structured Grid with Vertical & Horizontal Borders)
+  const footerH = 16;
+  const tableTop = locY - 8;
+  const tableBottom = cardY + 8 + footerH;
+  const tableH = tableTop - tableBottom;
+  const tableX = innerCardX;
+  const tableW = innerCardW;
+  const tableY = tableBottom;
 
+  // Outer Table Box
   page.drawRectangle({
-    x: cardX + 8,
-    y: logTableY,
-    width: cardW - 16,
-    height: logTableH,
+    x: tableX,
+    y: tableY,
+    width: tableW,
+    height: tableH,
     color: COLOR_WHITE,
     borderColor: COLOR_CHARCOAL,
     borderWidth: 1.2,
   });
 
   // Table Title Bar
-  const thH = 26;
-  const thY = logTableY + logTableH - thH;
+  const thH = 22;
+  const thY = tableTop - thH;
   page.drawRectangle({
-    x: cardX + 9,
+    x: tableX,
     y: thY,
-    width: cardW - 18,
-    height: thH - 1,
+    width: tableW,
+    height: thH,
     color: COLOR_CHARCOAL,
   });
 
   page.drawText("EMERGENCY DISPATCH LOG SHEET", {
-    x: cardX + 16,
-    y: thY + 9,
+    x: tableX + 12,
+    y: thY + 7,
     size: 8.5,
     font,
     color: COLOR_GOLD,
   });
 
-  // Table Column Headers
-  const colHeaderH = 24;
-  const colHeaderY = thY - colHeaderH;
-  page.drawRectangle({
-    x: cardX + 9,
-    y: colHeaderY,
-    width: cardW - 18,
-    height: colHeaderH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
+  const subTitle = "[ MANUAL INCIDENT DISPATCH RECORD ]";
+  const subTitleW = font.widthOfTextAtSize(subTitle, 7);
+  page.drawText(subTitle, {
+    x: tableX + tableW - subTitleW - 12,
+    y: thY + 7.5,
+    size: 7,
+    font,
+    color: COLOR_GOLD,
   });
 
-  page.drawText("#", { x: cardX + 16, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
-  page.drawText("TIME", { x: cardX + 45, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
-  page.drawText("ROOM", { x: cardX + 115, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
-  page.drawText("SUBJECT", { x: cardX + 200, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
-  page.drawText("COPIES", { x: cardX + 345, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
-  page.drawText("REASON (DEFECT / EXTRA / NOTES)", { x: cardX + 420, y: colHeaderY + 8, size: 8, font, color: COLOR_CHARCOAL });
+  // Table Column Definitions (Sum matches tableW exactly)
+  const colHeaderH = 22;
+  const colHeaderY = thY - colHeaderH;
 
-  // 15 Blank Rows for manual logging
-  const numRows = 15;
-  const rowH = (colHeaderY - logTableY) / numRows;
+  const w0 = 28;  // #
+  const w1 = 52;  // TIME
+  const w2 = 60;  // ROOM
+  const w3 = 135; // SUBJECT
+  const w4 = 52;  // COPIES
+  const w5 = tableW - (w0 + w1 + w2 + w3 + w4); // REASON / NOTES (~208.28pt)
+
+  const colWidths = [w0, w1, w2, w3, w4, w5];
+  const colX = [
+    tableX,
+    tableX + w0,
+    tableX + w0 + w1,
+    tableX + w0 + w1 + w2,
+    tableX + w0 + w1 + w2 + w3,
+    tableX + w0 + w1 + w2 + w3 + w4,
+    tableX + tableW,
+  ];
+
+  // Column Header Background
+  page.drawRectangle({
+    x: tableX,
+    y: colHeaderY,
+    width: tableW,
+    height: colHeaderH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 0.8,
+  });
+
+  // Column Headers Text (Properly centered & padded)
+  const drawCenteredHeader = (text: string, startX: number, colW: number) => {
+    const textW = font.widthOfTextAtSize(text, 7.5);
+    page.drawText(text, {
+      x: startX + (colW - textW) / 2,
+      y: colHeaderY + 7,
+      size: 7.5,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+  };
+
+  drawCenteredHeader("#", colX[0], w0);
+  drawCenteredHeader("TIME", colX[1], w1);
+  drawCenteredHeader("ROOM", colX[2], w2);
+  page.drawText("SUBJECT", { x: colX[3] + 10, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+  drawCenteredHeader("COPIES", colX[4], w4);
+  page.drawText("REASON / NOTES (DEFECT / EXTRA)", { x: colX[5] + 10, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+
+  // 18 Spacious Rows with Zebra Striping and Full Grid Lines
+  const numRows = 18;
+  const availableRowsH = colHeaderY - tableBottom;
+  const rowH = availableRowsH / numRows;
 
   for (let r = 0; r < numRows; r++) {
     const ry = colHeaderY - (r + 1) * rowH;
 
-    // Row line
+    // Zebra striping on even rows
+    if (r % 2 === 1) {
+      page.drawRectangle({
+        x: tableX + 0.5,
+        y: ry + 0.5,
+        width: tableW - 1,
+        height: rowH - 0.5,
+        color: COLOR_LIGHT_BG,
+      });
+    }
+
+    // Row horizontal line
     page.drawLine({
-      start: { x: cardX + 9, y: ry },
-      end: { x: cardX + cardW - 9, y: ry },
+      start: { x: tableX, y: ry },
+      end: { x: tableX + tableW, y: ry },
       thickness: 0.5,
       color: COLOR_BORDER,
     });
 
-    // Row Number
-    page.drawText(`${r + 1}`, {
-      x: cardX + 16,
-      y: ry + (rowH - 8) / 2 + 1,
+    // Row Number (centered in # column)
+    const rowNumStr = String(r + 1);
+    const numW = font.widthOfTextAtSize(rowNumStr, 7.5);
+    page.drawText(rowNumStr, {
+      x: colX[0] + (w0 - numW) / 2,
+      y: ry + (rowH - 7.5) / 2 + 1,
       size: 7.5,
       font,
       color: COLOR_MUTED,
     });
   }
+
+  // Draw Vertical Column Lines from Table Header through All Rows
+  for (let i = 1; i < colX.length - 1; i++) {
+    page.drawLine({
+      start: { x: colX[i], y: thY },
+      end: { x: colX[i], y: tableBottom },
+      thickness: 0.6,
+      color: COLOR_BORDER,
+    });
+  }
+
+  // Bottom Footer Bar (Page 1 of 1 Indicator)
+  const footerY = cardY + 7;
+  page.drawText("EST OFFICIAL LOGISTICS • EMERGENCY RESERVE MASTER LOG • CONTROL ROOM CUSTODY ONLY", {
+    x: cardX + 12,
+    y: footerY,
+    size: 6.5,
+    font,
+    color: COLOR_MUTED,
+  });
+
+  const pageInfo = "PAGE 1 OF 1";
+  const pageInfoW = font.widthOfTextAtSize(pageInfo, 6.5);
+  page.drawText(pageInfo, {
+    x: cardX + cardW - pageInfoW - 12,
+    y: footerY,
+    size: 6.5,
+    font,
+    color: COLOR_CHARCOAL,
+  });
 
   return await pdfDoc.save();
 }
