@@ -273,6 +273,9 @@ export function FileBrowser({
 
   const [uploadOpen, setUploadOpen] = useState(Boolean(autoOpenUpload));
   const [uploadTargetFolder, setUploadTargetFolder] = useState<{ id: string; name: string } | null>(null);
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
+  const [emptyDropDragging, setEmptyDropDragging] = useState(false);
+  const emptyDropInputRef = useRef<HTMLInputElement>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderTargetParent, setNewFolderTargetParent] = useState<{ id: string; name: string } | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
@@ -2474,45 +2477,121 @@ export function FileBrowser({
           ))}
         </div>
       ) : displayItems.length === 0 && !loading ? (
-        <EmptyState
-          icon={<Search className="size-6" />}
-          title={
-            printFilter !== "all"
-              ? printFilter === "pending"
-                ? t("print.filterPending")
-                : t("print.filterPrinted")
-              : debouncedSearch
-                ? t("files.searchEmptyTitle")
-                : mode === "favorites"
-                  ? t("favorites.emptyTitle")
-                  : mode === "recent"
-                    ? t("recent.emptyTitle")
-                    : t("files.emptyTitle")
-          }
-          description={
-            printFilter !== "all"
-              ? t("files.searchEmptyHint")
-              : debouncedSearch
+        printFilter !== "all" || debouncedSearch || mode === "favorites" || mode === "recent" ? (
+          <EmptyState
+            icon={<Search className="size-6" />}
+            title={
+              printFilter !== "all"
+                ? printFilter === "pending"
+                  ? t("print.filterPending")
+                  : t("print.filterPrinted")
+                : debouncedSearch
+                  ? t("files.searchEmptyTitle")
+                  : mode === "favorites"
+                    ? t("favorites.emptyTitle")
+                    : t("recent.emptyTitle")
+            }
+            description={
+              printFilter !== "all"
                 ? t("files.searchEmptyHint")
-                : mode === "favorites"
-                  ? t("favorites.emptyHint")
-                  : mode === "recent"
-                    ? t("recent.emptyHint")
-                    : t("files.emptyHint")
-          }
-          action={
-            printFilter !== "all" ? (
-              <Button variant="secondary" onClick={() => setPrintFilter("all")}>
-                {t("print.filterAll")}
-              </Button>
-            ) : !demoActive && mode !== "favorites" && mode !== "recent" ? (
-              <Button onClick={() => setUploadOpen(true)}>
-                <UploadCloud className="size-4" />
-                {t("common.upload")}
-              </Button>
-            ) : undefined
-          }
-        />
+                : debouncedSearch
+                  ? t("files.searchEmptyHint")
+                  : mode === "favorites"
+                    ? t("favorites.emptyHint")
+                    : t("recent.emptyHint")
+            }
+            action={
+              printFilter !== "all" ? (
+                <Button variant="secondary" onClick={() => setPrintFilter("all")}>
+                  {t("print.filterAll")}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          /* Direct Drag & Drop Zone for empty folder - immediate upload with no extra buttons */
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!demoActive) setEmptyDropDragging(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setEmptyDropDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setEmptyDropDragging(false);
+              if (demoActive) return;
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const filesList = Array.from(e.dataTransfer.files);
+                setPendingUploadFiles(filesList);
+                setUploadTargetFolder(null);
+                setUploadOpen(true);
+              }
+            }}
+            onClick={() => {
+              if (!demoActive) emptyDropInputRef.current?.click();
+            }}
+            className={cn(
+              "group relative flex flex-col items-center justify-center rounded-3xl border-2 border-dashed p-8 sm:p-14 text-center transition-all cursor-pointer",
+              emptyDropDragging
+                ? "border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 scale-[1.01]"
+                : "border-border/80 bg-surface/40 hover:border-emerald-500/60 hover:bg-surface-soft hover:shadow-md",
+              demoActive && "opacity-60 cursor-not-allowed",
+            )}
+          >
+            <div
+              className={cn(
+                "mb-4 flex size-16 items-center justify-center rounded-2xl transition-transform duration-200",
+                emptyDropDragging
+                  ? "bg-emerald-500 text-white scale-110"
+                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110",
+              )}
+            >
+              <CloudUpload className="size-8" />
+            </div>
+
+            <p className="text-base sm:text-lg font-bold text-foreground">
+              {emptyDropDragging ? (
+                t("upload.dragActive")
+              ) : (
+                <>
+                  <span>{t("common.dropFiles")}</span>{" "}
+                  <span className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-500/50 group-hover:decoration-emerald-500 transition-colors">
+                    {t("common.browse")}
+                  </span>
+                </>
+              )}
+            </p>
+
+            <p className="mt-2 text-xs text-muted max-w-sm">
+              {locale === "ar"
+                ? "اسحب ملفات PDF أو Excel أو أي مستندات هنا لرفعها مباشرة داخل هذا المجلد"
+                : "Drop PDF, Excel, or any files here to upload directly into this folder"}
+            </p>
+
+            <input
+              ref={emptyDropInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept={allowedExtensions.map((ext) => `.${ext}`).join(",")}
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  const filesList = Array.from(e.target.files);
+                  setPendingUploadFiles(filesList);
+                  setUploadTargetFolder(null);
+                  setUploadOpen(true);
+                  e.target.value = "";
+                }
+              }}
+            />
+          </div>
+        )
       ) : effectiveView === "grid" ? (
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {displayItems.map((item) => {
@@ -2944,6 +3023,7 @@ export function FileBrowser({
         onClose={() => {
           setUploadOpen(false);
           setUploadTargetFolder(null);
+          setPendingUploadFiles(null);
         }}
         targetFolderId={uploadTargetFolder?.id ?? (mode === "all" ? folderId : null)}
         targetFolderName={uploadTargetFolder?.name ?? (mode === "all" ? currentFolder?.name ?? null : null)}
@@ -2951,6 +3031,7 @@ export function FileBrowser({
         maxUploadSizeMb={maxUploadSizeMb}
         allowedExtensions={allowedExtensions}
         allowMultiple={allowMultiple}
+        initialFiles={pendingUploadFiles}
         onUploaded={() => {
           if (uploadTargetFolder?.id) {
             setExpandedFolderIds((prev) => new Set(prev).add(uploadTargetFolder.id));

@@ -33,6 +33,7 @@ interface UploadDialogProps {
   allowedExtensions: string[];
   allowMultiple: boolean;
   onUploaded: () => void;
+  initialFiles?: FileList | File[] | null;
 }
 
 function extensionOf(name: string): string {
@@ -50,6 +51,7 @@ export function UploadDialog({
   allowedExtensions,
   allowMultiple,
   onUploaded,
+  initialFiles,
 }: UploadDialogProps) {
   const { t, locale } = useI18n();
   const { activeProfile } = useActiveProfile();
@@ -121,6 +123,12 @@ export function UploadDialog({
     },
     [allowMultiple, allowed, maxBytes, t],
   );
+
+  useEffect(() => {
+    if (open && initialFiles && initialFiles.length > 0) {
+      addFiles(initialFiles);
+    }
+  }, [open, initialFiles, addFiles]);
 
   const uploadOne = useCallback(
     (item: QueueItem): Promise<boolean> =>
