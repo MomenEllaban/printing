@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/components/locale-provider";
-import { parseSchoolFolderName, OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
+import { parseSchoolFolderName, OFFICIAL_EST_SCHOOLS, getFloorSortWeight } from "@/lib/stickers/est-reference-data";
 import { parseEstRoomFileName } from "@/lib/stickers/est-room-data";
 import { isFloorFolderName } from "@/lib/stickers/register-utils";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
@@ -61,6 +61,9 @@ export default function LogisticsHubPage() {
   const searchParams = useSearchParams();
   const urlFolderId = searchParams.get("folderId") || undefined;
   const urlBuilding = searchParams.get("building") || undefined;
+  const urlExam = searchParams.get("exam") || undefined;
+  const urlCycle = searchParams.get("cycle") || undefined;
+  const [urlHandled, setUrlHandled] = useState<boolean>(false);
 
   // 1. Session / Cycle
   const [sessions, setSessions] = useState<DriveFolderOption[]>([]);
@@ -101,6 +104,16 @@ export default function LogisticsHubPage() {
   const [liveFloors, setLiveFloors] = useState<LiveFloorData[]>([]);
   const [loadingFloors, setLoadingFloors] = useState<boolean>(false);
   const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
+
+  // True whenever any part of the asynchronous Drive data loading chain is active
+  const isAnyLoading =
+    loadingSessions ||
+    loadingExams ||
+    loadingDestinations ||
+    loadingSchools ||
+    loadingCenters ||
+    loadingBuildings ||
+    loadingFloors;
 
   // Manual Dispatch Overrides
   const [boxNumber, setBoxNumber] = useState<number>(1);
@@ -260,86 +273,108 @@ export default function LogisticsHubPage() {
             floorFolders = allFolders.filter((f) => f.parentId === targetFolderId);
           }
 
-          floorFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+          // GROUP BY FLOOR NAME to merge duplicate floor folders in Google Drive into ONE single floor
+          const floorMap = new Map<string, { floorName: string; folderIds: string[] }>();
+          for (const fl of floorFolders) {
+            const key = fl.name.trim().toLowerCase();
+            const existing = floorMap.get(key) || { floorName: fl.name.trim(), folderIds: [] };
+            existing.folderIds.push(fl.id);
+            floorMap.set(key, existing);
+          }
 
-          if (floorFolders.length > 0) {
-            const computedFloors: LiveFloorData[] = floorFolders.map((fl) => {
-              // Subfolders under this floor
-              const roomFolders = allFolders.filter((f) => f.parentId === fl.id);
-              // Direct files under this floor
-              const directFiles = allFiles.filter((file) => file.parentId === fl.id);
+          const uniqueFloorEntries = Array.from(floorMap.values());
+          uniqueFloorEntries.sort((a, b) => getFloorSortWeight(a.floorName) - getFloorSortWeight(b.floorName));
 
-              const rms: LiveFloorData["rooms"] = [];
+          if (uniqueFloorEntries.length > 0) {
+            const computedFloors: LiveFloorData[] = uniqueFloorEntries.map((fe) => {
+              const roomsMap = new Map<string, { room: string; studentCount: number; subjectsText?: string }>();
 
-              // Case A: Room folders exist
-              for (const rf of roomFolders) {
-                const rFiles = allFiles.filter((file) => file.parentId === rf.id);
-                let stdCount = 25;
-                let subjText: string | undefined;
+              for (const flId of fe.folderIds) {
+                // Subfolders under this floor folder
+                const roomFolders = allFolders.filter((f) => f.parentId === flId);
+                for (const rf of roomFolders) {
+                  const rName = rf.name.trim();
+                  if (!rName) continue;
+                  const rKey = rName.toLowerCase();
+                  if (!roomsMap.has(rKey)) {
+                    const rFiles = allFiles.filter((file) => file.parentId === rf.id);
+                    let stdCount = 25;
+                    let subjText: string | undefined;
 
-                for (const rfFile of rFiles) {
-                  const parsed = parseEstRoomFileName(rfFile.name);
-                  if (parsed) {
-                    stdCount = parsed.totalStudents;
-                    subjText = parsed.breakdownText;
-                    break;
+                    for (const rfFile of rFiles) {
+                      const parsed = parseEstRoomFileName(rfFile.name);
+                      if (parsed) {
+                        stdCount = parsed.totalStudents;
+                        subjText = parsed.breakdownText;
+                        break;
+                      }
+                    }
+
+                    roomsMap.set(rKey, {
+                      room: rName,
+                      studentCount: stdCount,
+                      subjectsText: subjText,
+                    });
                   }
                 }
 
-                rms.push({
-                  room: rf.name,
-                  studentCount: stdCount,
-                  subjectsText: subjText,
-                });
-              }
-
-              // Case B: Direct files inside floor (e.g. room files)
-              for (const df of directFiles) {
-                const parsed = parseEstRoomFileName(df.name);
-                const roomName = parsed?.room || df.name.replace(/\.[^/.]+$/, "");
-                if (!rms.some((r) => r.room.toLowerCase() === roomName.toLowerCase())) {
-                  rms.push({
-                    room: roomName,
-                    studentCount: parsed?.totalStudents || 25,
-                    subjectsText: parsed?.breakdownText,
-                  });
+                // Direct files under this floor folder
+                const directFiles = allFiles.filter((file) => file.parentId === flId);
+                for (const df of directFiles) {
+                  const parsed = parseEstRoomFileName(df.name);
+                  const roomName = (parsed?.room || df.name.replace(/\.[^/.]+$/, "")).trim();
+                  if (!roomName) continue;
+                  const rKey = roomName.toLowerCase();
+                  if (!roomsMap.has(rKey)) {
+                    roomsMap.set(rKey, {
+                      room: roomName,
+                      studentCount: parsed?.totalStudents || 25,
+                      subjectsText: parsed?.breakdownText,
+                    });
+                  }
                 }
               }
 
-              // Case C: School fallback if room folders are empty in Drive
-              if (rms.length === 0 && targetType === "school") {
+              // School fallback if rooms are still empty in Drive for an official school
+              if (roomsMap.size === 0 && targetType === "school") {
                 const official = OFFICIAL_EST_SCHOOLS.find(
                   (s) =>
                     s.schoolName.toLowerCase() === (buildingName || "").toLowerCase() ||
-                    s.fullFolderName.toLowerCase() === (buildingName || "").toLowerCase(),
+                    s.fullFolderName.toLowerCase() === (buildingName || "").toLowerCase() ||
+                    (buildingName || "").toLowerCase().includes(s.schoolName.toLowerCase()),
                 );
                 const officialFloor = official?.floors.find(
-                  (ofl) => ofl.floorName.toLowerCase() === fl.name.toLowerCase(),
+                  (ofl) => ofl.floorName.toLowerCase() === fe.floorName.toLowerCase(),
                 );
                 if (officialFloor) {
                   for (const rm of officialFloor.rooms) {
-                    rms.push({ room: rm, studentCount: 25 });
+                    roomsMap.set(rm.toLowerCase(), { room: rm, studentCount: 25 });
                   }
                 }
               }
 
-              rms.sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+              const sortedRooms = Array.from(roomsMap.values()).sort((a, b) =>
+                a.room.localeCompare(b.room, undefined, { numeric: true }),
+              );
 
               return {
-                floor: fl.name,
-                rooms: rms,
-                totalStudents: rms.reduce((sum, r) => sum + r.studentCount, 0),
+                floor: fe.floorName,
+                rooms: sortedRooms,
+                totalStudents: sortedRooms.reduce((sum, r) => sum + r.studentCount, 0),
               };
             });
 
-            setLiveFloors(computedFloors);
+            // Filter out empty floors if other valid floors exist
+            const validFloors = computedFloors.filter((f) => f.rooms.length > 0);
+            setLiveFloors(validFloors.length > 0 ? validFloors : computedFloors);
           } else {
             // Full fallback to official schools definitions if no folders in Drive yet
             if (targetType === "school") {
               const official = OFFICIAL_EST_SCHOOLS.find(
                 (s) =>
                   s.schoolName.toLowerCase() === (buildingName || "").toLowerCase() ||
-                  s.fullFolderName.toLowerCase() === (buildingName || "").toLowerCase(),
+                  s.fullFolderName.toLowerCase() === (buildingName || "").toLowerCase() ||
+                  (buildingName || "").toLowerCase().includes(s.schoolName.toLowerCase()),
               );
               if (official) {
                 setLiveFloors(
@@ -394,9 +429,18 @@ export default function LogisticsHubPage() {
 
           setBuildings(bList);
           if (bList.length > 0) {
-            setSelectedBuildingId(bList[0].id);
-            setSelectedBuildingName(bList[0].name);
-            void loadTargetHierarchy(bList[0].id, "building", cityName, bList[0].name);
+            const targetBuilding = urlFolderId
+              ? bList.find(
+                  (b) =>
+                    b.id === urlFolderId ||
+                    b.name.toLowerCase() === (urlBuilding || "").toLowerCase() ||
+                    (urlBuilding || "").toLowerCase().includes(b.name.toLowerCase()),
+                ) || bList[0]
+              : bList[0];
+
+            setSelectedBuildingId(targetBuilding.id);
+            setSelectedBuildingName(targetBuilding.name);
+            void loadTargetHierarchy(targetBuilding.id, "building", cityName, targetBuilding.name);
           }
         }
       } catch (err) {
@@ -489,13 +533,23 @@ export default function LogisticsHubPage() {
 
         setSchools(loadedSchools);
         if (loadedSchools.length > 0) {
-          setSelectedSchoolId(loadedSchools[0].id);
-          setSelectedSchool(loadedSchools[0]);
+          const targetSchool = urlFolderId
+            ? loadedSchools.find(
+                (s) =>
+                  s.id === urlFolderId ||
+                  s.name.toLowerCase() === (urlBuilding || "").toLowerCase() ||
+                  s.fullFolderName.toLowerCase() === (urlBuilding || "").toLowerCase() ||
+                  (urlBuilding || "").toLowerCase().includes(s.name.toLowerCase()),
+              ) || loadedSchools[0]
+            : loadedSchools[0];
+
+          setSelectedSchoolId(targetSchool.id);
+          setSelectedSchool(targetSchool);
           void loadTargetHierarchy(
-            loadedSchools[0].id,
+            targetSchool.id,
             "school",
-            loadedSchools[0].governorate,
-            loadedSchools[0].name,
+            targetSchool.governorate,
+            targetSchool.name,
           );
         }
       } catch (err) {
@@ -553,14 +607,34 @@ export default function LogisticsHubPage() {
           setDestinations(destList);
 
           if (destList.length > 0) {
-            const first = destList[0];
-            setSelectedDestId(first.id);
-            setSelectedDest(first);
+            const parsedSchool = urlBuilding ? parseSchoolFolderName(urlBuilding) : null;
+            const isSchoolFromUrl = Boolean(
+              parsedSchool?.isOfficialSchool ||
+              (urlBuilding && OFFICIAL_EST_SCHOOLS.some(
+                (s) =>
+                  s.schoolName.toLowerCase() === urlBuilding.toLowerCase() ||
+                  s.fullFolderName.toLowerCase() === urlBuilding.toLowerCase() ||
+                  urlBuilding.toLowerCase().includes(s.schoolName.toLowerCase()),
+              )),
+            );
 
-            if (first.isSchools) {
-              void loadSchools(first.id);
-            } else if (first.cityName) {
-              void loadCenters(first.id, first.cityName);
+            let selected = destList[0];
+            if (isSchoolFromUrl) {
+              selected = destList.find((d) => d.isSchools) || destList[0];
+            } else if (urlBuilding) {
+              const matchedCity = destList.find(
+                (d) => !d.isSchools && d.cityName && urlBuilding.toLowerCase().includes(d.cityName.toLowerCase()),
+              );
+              if (matchedCity) selected = matchedCity;
+            }
+
+            setSelectedDestId(selected.id);
+            setSelectedDest(selected);
+
+            if (selected.isSchools) {
+              void loadSchools(selected.id);
+            } else if (selected.cityName) {
+              void loadCenters(selected.id, selected.cityName);
             }
           }
         }
@@ -760,17 +834,46 @@ export default function LogisticsHubPage() {
         <button
           type="button"
           onClick={() => handleLogisticsAction("bundle", "print")}
-          disabled={Boolean(busyAction) || loadingFloors}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2.5 text-sm font-bold shadow-md shadow-indigo-500/25 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+          disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2.5 text-sm font-bold shadow-md shadow-indigo-500/25 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
         >
           {busyAction === "bundle-print" ? (
             <Loader2 className="size-4 animate-spin" />
+          ) : isAnyLoading ? (
+            <Loader2 className="size-4 animate-spin opacity-80" />
           ) : (
             <Printer className="size-4" />
           )}
-          <span>{isAr ? "طباعة الحزمة الكاملة للمبنى 🖨️" : "Print Complete Building Bundle 🖨️"}</span>
+          <span>
+            {isAnyLoading && !busyAction
+              ? isAr
+                ? "جاري تحميل البيانات..."
+                : "Loading Data..."
+              : isAr
+              ? "طباعة الحزمة الكاملة للمبنى 🖨️"
+              : "Print Complete Building Bundle 🖨️"}
+          </span>
         </button>
       </div>
+
+      {/* Real-time Global Loading & Drive Sync Banner */}
+      {isAnyLoading && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 animate-pulse text-xs font-semibold shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <Loader2 className="size-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+            <span>
+              {isAr
+                ? "جاري قراءة البيانات اللوجستية وتوزيع القاعات المباشر من Google Drive..."
+                : "Loading logistics metadata and live room structure from Google Drive..."}
+            </span>
+          </div>
+          <span className="text-[11px] font-mono opacity-80">
+            {loadingFloors
+              ? isAr ? "جاري معالجة القاعات والأدوار..." : "Resolving rooms & floors..."
+              : isAr ? "جاري فحص المجلدات..." : "Scanning folders..."}
+          </span>
+        </div>
+      )}
 
       {/* Dynamic Drive Selector Bar */}
       <div className="card p-4 sm:p-5 border border-border shadow-xs bg-surface-soft/40 backdrop-blur-xs space-y-4">
@@ -1005,19 +1108,28 @@ export default function LogisticsHubPage() {
               )}
             </span>
             <span className="text-muted/60">•</span>
-            <span className="font-bold flex items-center gap-1">
-              <Layers className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>{totalFloorsCount} {isAr ? "أدوار" : "Floors"}</span>
-            </span>
-            <span className="text-muted/60">•</span>
-            <span className="font-bold flex items-center gap-1">
-              <Boxes className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>{totalRoomsCount} {isAr ? "قاعات / لجان" : "Rooms"}</span>
-            </span>
-            <span className="text-muted/60">•</span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400">
-              {totalCandidatesCount} {isAr ? "طالب مسجل" : "Assigned Candidates"}
-            </span>
+            {loadingFloors ? (
+              <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
+                <Loader2 className="size-3.5 animate-spin" />
+                <span>{isAr ? "جاري قراءة الأدوار والقاعات..." : "Reading floors & rooms..."}</span>
+              </span>
+            ) : (
+              <>
+                <span className="font-bold flex items-center gap-1">
+                  <Layers className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>{totalFloorsCount} {isAr ? "أدوار" : "Floors"}</span>
+                </span>
+                <span className="text-muted/60">•</span>
+                <span className="font-bold flex items-center gap-1">
+                  <Boxes className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>{totalRoomsCount} {isAr ? "قاعات / لجان" : "Rooms"}</span>
+                </span>
+                <span className="text-muted/60">•</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {totalCandidatesCount} {isAr ? "طالب مسجل" : "Assigned Candidates"}
+                </span>
+              </>
+            )}
           </div>
 
           <button
@@ -1033,7 +1145,7 @@ export default function LogisticsHubPage() {
               }
             }}
             disabled={loadingFloors}
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
             title={isAr ? "إعادة قراءة محتويات المجلد من الدرايف" : "Refresh from Drive"}
           >
             <RefreshCw className={cn("size-3", loadingFloors && "animate-spin")} />
@@ -1041,8 +1153,26 @@ export default function LogisticsHubPage() {
           </button>
         </div>
 
-        {/* Live Floors and Rooms Chips Preview */}
-        {liveFloors.length > 0 && (
+        {/* Live Floors and Rooms Chips Preview or Loading Skeleton */}
+        {loadingFloors ? (
+          <div className="pt-3 border-t border-border/40">
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 text-center">
+              <div className="flex flex-col items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400">
+                <Loader2 className="size-6 animate-spin" />
+                <span className="text-xs font-bold">
+                  {isAr
+                    ? "جاري تجميع وتوحيد بيانات الأدوار والقاعات من الدرايف..."
+                    : "Fetching, deduplicating, and aggregating live floors and rooms from Google Drive..."}
+                </span>
+                <span className="text-[11px] text-muted">
+                  {isAr
+                    ? "يتم فرز القاعات تصاعدياً ومنع تكرار أي أدوار"
+                    : "Rooms are naturally sorted and duplicate floor folders merged automatically"}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : liveFloors.length > 0 ? (
           <div className="pt-2 border-t border-border/40">
             <span className="text-[11px] font-bold text-muted block mb-2">
               {isAr ? "دليل الأدوار والقاعات المستخرج تلقائياً من الدرايف:" : "Directory Extracted from Drive:"}
@@ -1073,6 +1203,12 @@ export default function LogisticsHubPage() {
                 </div>
               ))}
             </div>
+          </div>
+        ) : (
+          <div className="pt-2 border-t border-border/40 text-center py-3 text-xs text-muted">
+            {isAr
+              ? "لم يتم العثور على قاعات أو أدوار في هذا المجلد حالياً"
+              : "No floors or rooms found for the selected building."}
           </div>
         )}
       </div>
@@ -1110,28 +1246,40 @@ export default function LogisticsHubPage() {
             <button
               type="button"
               onClick={() => handleLogisticsAction("carton", "show")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "carton-show" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Eye className="size-3.5" />
               )}
-              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "جاري التحميل..." : "Loading..."
+                  : isAr ? "معاينة PDF" : "Preview PDF"}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => handleLogisticsAction("carton", "print")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "carton-print" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Printer className="size-3.5" />
               )}
-              <span>{isAr ? "طباعة فورية" : "Print Placard"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "تحميل..." : "Loading..."
+                  : isAr ? "طباعة فورية" : "Print Placard"}
+              </span>
             </button>
           </div>
         </div>
@@ -1167,28 +1315,40 @@ export default function LogisticsHubPage() {
             <button
               type="button"
               onClick={() => handleLogisticsAction("bag", "show")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "bag-show" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Eye className="size-3.5" />
               )}
-              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "جاري التحميل..." : "Loading..."
+                  : isAr ? "معاينة PDF" : "Preview PDF"}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => handleLogisticsAction("bag", "print")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "bag-print" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Printer className="size-3.5" />
               )}
-              <span>{isAr ? "طباعة البيان" : "Print Checklist"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "تحميل..." : "Loading..."
+                  : isAr ? "طباعة البيان" : "Print Checklist"}
+              </span>
             </button>
           </div>
         </div>
@@ -1224,28 +1384,40 @@ export default function LogisticsHubPage() {
             <button
               type="button"
               onClick={() => handleLogisticsAction("clean_skin_master", "show")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "clean_skin_master-show" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Eye className="size-3.5" />
               )}
-              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "جاري التحميل..." : "Loading..."
+                  : isAr ? "معاينة PDF" : "Preview PDF"}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => handleLogisticsAction("clean_skin_master", "print")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "clean_skin_master-print" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Printer className="size-3.5" />
               )}
-              <span>{isAr ? "طباعة البلاكار" : "Print Emergency Placard"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "تحميل..." : "Loading..."
+                  : isAr ? "طباعة البلاكار" : "Print Emergency Placard"}
+              </span>
             </button>
           </div>
         </div>
@@ -1281,28 +1453,40 @@ export default function LogisticsHubPage() {
             <button
               type="button"
               onClick={() => handleLogisticsAction("clean_skin_subjects", "show")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "clean_skin_subjects-show" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Eye className="size-3.5" />
               )}
-              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "جاري التحميل..." : "Loading..."
+                  : isAr ? "معاينة PDF" : "Preview PDF"}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => handleLogisticsAction("clean_skin_subjects", "print")}
-              disabled={Boolean(busyAction)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               {busyAction === "clean_skin_subjects-print" ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
               ) : (
                 <Printer className="size-3.5" />
               )}
-              <span>{isAr ? "طباعة الستيكرات" : "Print Stickers"}</span>
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "تحميل..." : "Loading..."
+                  : isAr ? "طباعة الستيكرات" : "Print Stickers"}
+              </span>
             </button>
           </div>
         </div>

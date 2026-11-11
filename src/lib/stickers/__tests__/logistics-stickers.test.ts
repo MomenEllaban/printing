@@ -5,6 +5,7 @@ import {
   generateCleanSkinMasterPdf,
   generateCleanSkinSubjectStickersPdf,
   generateCompleteLogisticsBundlePdf,
+  normalizeFloorsData,
 } from "../logistics-stickers-pdf";
 
 describe("Logistics Stickers PDF Generator", () => {
@@ -21,6 +22,89 @@ describe("Logistics Stickers PDF Generator", () => {
     totalBoxes: 3,
     securitySeal: "SEAL-987654",
   };
+
+  it("merges duplicate floors and deduplicates rooms in normalizeFloorsData", () => {
+    // Simulated duplicate input from multiple Drive folders
+    const duplicatedFloors = [
+      {
+        floor: "3rd Floor",
+        rooms: ["AD3A", "AD4A", "AD5A", "AD6A", "AD7A", "AD8A", "AD9A"],
+      },
+      {
+        floor: "4th Floor",
+        rooms: ["AD10A", "AD10C", "AD10D", "AD11A", "AD11B", "AD11C", "AD12A", "AD12B"],
+      },
+      {
+        // Duplicate 4th Floor in reverse order
+        floor: "4th Floor",
+        rooms: ["AD12B", "AD12A", "AD11C", "AD11B", "AD11A", "AD10D", "AD10C", "AD10A"],
+      },
+      {
+        // Duplicate 3rd Floor in reverse order
+        floor: "3rd Floor",
+        rooms: ["AD9A", "AD8A", "AD7A", "AD6A", "AD5A", "AD4A", "AD3A"],
+      },
+    ];
+
+    const normalized = normalizeFloorsData({
+      ...baseData,
+      building: "Tiba Modern International Schools (Dakahlia)",
+      floors: duplicatedFloors,
+    });
+
+    // Must be exactly 2 unique floors! NOT 4 floors!
+    expect(normalized).toHaveLength(2);
+    expect(normalized[0].floor).toBe("3rd Floor");
+    expect(normalized[1].floor).toBe("4th Floor");
+
+    // 3rd floor must have exactly 7 rooms in natural ascending order
+    expect(normalized[0].rooms).toHaveLength(7);
+    expect(normalized[0].rooms.map((r) => (typeof r === "string" ? r : r.room))).toEqual([
+      "AD3A",
+      "AD4A",
+      "AD5A",
+      "AD6A",
+      "AD7A",
+      "AD8A",
+      "AD9A",
+    ]);
+    expect(normalized[0].totalStudents).toBe(175); // 7 * 25
+
+    // 4th floor must have exactly 8 rooms in natural ascending order
+    expect(normalized[1].rooms).toHaveLength(8);
+    expect(normalized[1].rooms.map((r) => (typeof r === "string" ? r : r.room))).toEqual([
+      "AD10A",
+      "AD10C",
+      "AD10D",
+      "AD11A",
+      "AD11B",
+      "AD11C",
+      "AD12A",
+      "AD12B",
+    ]);
+    expect(normalized[1].totalStudents).toBe(200); // 8 * 25
+
+    // Total rooms: 15, Total candidates: 375 (NOT 30 rooms or 750 candidates)
+    const totalRooms = normalized.reduce((sum, f) => sum + f.rooms.length, 0);
+    const totalStudents = normalized.reduce((sum, f) => sum + f.totalStudents, 0);
+    expect(totalRooms).toBe(15);
+    expect(totalStudents).toBe(375);
+  });
+
+  it("canonical resolution for official school Tiba Modern from building name alone", () => {
+    const normalized = normalizeFloorsData({
+      ...baseData,
+      building: "Tiba Modern International Schools (Dakahlia)",
+    });
+
+    expect(normalized).toHaveLength(2);
+    expect(normalized[0].floor).toBe("3rd Floor");
+    expect(normalized[1].floor).toBe("4th Floor");
+    expect(normalized[0].rooms).toHaveLength(7);
+    expect(normalized[1].rooms).toHaveLength(8);
+    expect(normalized.reduce((s, f) => s + f.rooms.length, 0)).toBe(15);
+    expect(normalized.reduce((s, f) => s + f.totalStudents, 0)).toBe(375);
+  });
 
   it("generates Building Carton Sticker PDF (A4 Landscape)", async () => {
     const pdfBytes = await generateBuildingCartonStickerPdf(baseData);

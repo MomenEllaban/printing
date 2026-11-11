@@ -403,6 +403,23 @@ export const OFFICIAL_ROOMS_SET = new Set<string>(
 );
 
 /**
+ * Logical sorting weight for floor names to guarantee standard building floor order:
+ * Basement (0) -> Ground (10) -> Mezzanine (15) -> 1st (21) -> 2nd (22) -> 3rd (23) ...
+ */
+export function getFloorSortWeight(floorName?: string | null): number {
+  if (!floorName) return 999;
+  const clean = floorName.toLowerCase().trim();
+  if (/basement|بدروم|تسوية/i.test(clean)) return 0;
+  if (/ground|أرضي/i.test(clean)) return 10;
+  if (/mezzanine|ميزانين/i.test(clean)) return 15;
+  const match = clean.match(/(\d+)/);
+  if (match) {
+    return 20 + parseInt(match[1], 10);
+  }
+  return 100;
+}
+
+/**
  * Builds standard EST reference rows for all official schools.
  * Supports lookups by either clean school name or full folder name with governorate.
  */
@@ -412,22 +429,10 @@ function buildOfficialReferenceRows(): EstReferenceRow[] {
   for (const school of OFFICIAL_EST_SCHOOLS) {
     for (const fl of school.floors) {
       for (const room of fl.rooms) {
-        // Standard clean name
+        // Index each room once with full folder name and clean test center name
         rows.push({
           governorate: school.governorate,
           testCenter: school.schoolName,
-          building: school.schoolName,
-          floor: fl.floorName,
-          room,
-          studentsEst1: 25,
-          studentsWithoutEssay: 25,
-          studentsWithEssay: 0,
-        });
-
-        // Also index under full folder name (with parentheses) for 100% Drive folder match
-        rows.push({
-          governorate: school.governorate,
-          testCenter: school.fullFolderName,
           building: school.fullFolderName,
           floor: fl.floorName,
           room,
@@ -490,8 +495,16 @@ export function getReferenceSubfolderInfo(params: {
 
   if (params.level === "building" && rawBuilding) {
     const matching = EST_REFERENCE_DATA.filter((r) => {
-      const matchB = norm(r.building) === rawBuilding || norm(r.building) === cleanBuilding;
-      const matchC = !center || norm(r.testCenter) === center || norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
+      const rowClean = norm(stripGovernorateFromName(r.building));
+      const matchB =
+        norm(r.building) === rawBuilding ||
+        norm(r.building) === cleanBuilding ||
+        rowClean === cleanBuilding ||
+        (cleanBuilding.length > 3 && (rowClean.includes(cleanBuilding) || cleanBuilding.includes(rowClean)));
+      const matchC =
+        !center ||
+        norm(r.testCenter) === center ||
+        norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
       const matchG = !gov || norm(r.governorate) === gov;
       return matchB && matchC && matchG;
     });
@@ -507,9 +520,18 @@ export function getReferenceSubfolderInfo(params: {
 
   if (params.level === "floor" && floor) {
     const matching = EST_REFERENCE_DATA.filter((r) => {
+      const rowClean = norm(stripGovernorateFromName(r.building));
       const matchF = norm(r.floor) === floor;
-      const matchB = !rawBuilding || norm(r.building) === rawBuilding || norm(r.building) === cleanBuilding;
-      const matchC = !center || norm(r.testCenter) === center || norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
+      const matchB =
+        !rawBuilding ||
+        norm(r.building) === rawBuilding ||
+        norm(r.building) === cleanBuilding ||
+        rowClean === cleanBuilding ||
+        (cleanBuilding.length > 3 && (rowClean.includes(cleanBuilding) || cleanBuilding.includes(rowClean)));
+      const matchC =
+        !center ||
+        norm(r.testCenter) === center ||
+        norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
       const matchG = !gov || norm(r.governorate) === gov;
       return matchF && matchB && matchC && matchG;
     });

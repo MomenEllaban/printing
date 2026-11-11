@@ -3,7 +3,7 @@ import path from "path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { EST_LOGO_BASE64 } from "./est-logo-base64";
-import { EST_REFERENCE_DATA } from "./est-reference-data";
+import { EST_REFERENCE_DATA, OFFICIAL_EST_SCHOOLS, getFloorSortWeight } from "./est-reference-data";
 
 export interface RoomDetail {
   room: string;
@@ -79,13 +79,66 @@ export interface NormalizedFloor {
 }
 
 /**
- * Normalizes floors and rooms data for building stickers.
- * Prioritizes explicit floors from Drive / options, then reference data, then room patterns.
+ * Normalizes, deduplicates, and sorts floors and rooms data for building stickers.
+ * Guarantees:
+ * 1. No duplicate floors (merges multiple folders with the same floor name).
+ * 2. No duplicate rooms within each floor.
+ * 3. Natural ascending alphanumeric room order (e.g. AD3A, AD4A, ... AD9A).
+ * 4. Standard building logical floor order (Ground -> 1st -> 2nd -> 3rd -> 4th...).
+ * 5. Accurate total candidate count strictly matching enclosed rooms.
  */
 export function normalizeFloorsData(options: LogisticsStickerOptions): NormalizedFloor[] {
-  // 1. If explicit floors are provided, normalize and return them
+  const cleanAndSortFloors = (rawFloors: NormalizedFloor[]): NormalizedFloor[] => {
+    const floorMap = new Map<
+      string,
+      { floor: string; roomsMap: Map<string, { room: string; studentCount?: number; subjectsText?: string }> }
+    >();
+
+    for (const f of rawFloors) {
+      const flKey = f.floor.trim().toLowerCase();
+      let entry = floorMap.get(flKey);
+      if (!entry) {
+        entry = {
+          floor: f.floor.trim(),
+          roomsMap: new Map(),
+        };
+        floorMap.set(flKey, entry);
+      }
+
+      for (const r of f.rooms as any[]) {
+        const rName = (typeof r === "string" ? r : r?.room || "").trim();
+        if (!rName) continue;
+        const rKey = rName.toLowerCase();
+        if (!entry.roomsMap.has(rKey)) {
+          const sCount =
+            typeof r === "object" && r !== null && typeof r.studentCount === "number" && r.studentCount > 0
+              ? r.studentCount
+              : 25;
+          const sText = typeof r === "object" && r !== null ? r.subjectsText : undefined;
+          entry.roomsMap.set(rKey, { room: rName, studentCount: sCount, subjectsText: sText });
+        }
+      }
+    }
+
+    const mergedFloors: NormalizedFloor[] = Array.from(floorMap.values()).map((entry) => {
+      const sortedRooms = Array.from(entry.roomsMap.values()).sort((a, b) =>
+        a.room.localeCompare(b.room, undefined, { numeric: true }),
+      );
+      const totalStudents = sortedRooms.reduce((sum, r) => sum + (r.studentCount || 25), 0);
+      return {
+        floor: entry.floor,
+        rooms: sortedRooms,
+        totalStudents,
+      };
+    });
+
+    mergedFloors.sort((a, b) => getFloorSortWeight(a.floor) - getFloorSortWeight(b.floor));
+    return mergedFloors;
+  };
+
+  // 1. If explicit floors are provided, normalize, deduplicate, and sort them
   if (options.floors && options.floors.length > 0) {
-    return options.floors.map((f) => {
+    const rawFloors: NormalizedFloor[] = options.floors.map((f) => {
       const normalizedRooms = f.rooms.map((r) => {
         if (typeof r === "string") return { room: r };
         return r;
@@ -99,9 +152,32 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
         totalStudents: sumStudents,
       };
     });
+    const cleaned = cleanAndSortFloors(rawFloors);
+    if (cleaned.length > 0) return cleaned;
   }
 
-  // 2. If building matches EST_REFERENCE_DATA, group by floor from reference rows
+  // 2. If building matches an official EST school, return canonical official school floors
+  if (options.building) {
+    const cleanB = options.building.trim().toLowerCase();
+    const official = OFFICIAL_EST_SCHOOLS.find(
+      (s) =>
+        s.schoolName.toLowerCase() === cleanB ||
+        s.fullFolderName.toLowerCase() === cleanB ||
+        cleanB.includes(s.schoolName.toLowerCase()) ||
+        s.schoolName.toLowerCase().includes(cleanB),
+    );
+    if (official) {
+      return cleanAndSortFloors(
+        official.floors.map((fl) => ({
+          floor: fl.floorName,
+          rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
+          totalStudents: fl.rooms.length * 25,
+        })),
+      );
+    }
+  }
+
+  // 3. If building matches EST_REFERENCE_DATA, group by floor from reference rows
   if (options.building) {
     const cleanB = options.building.trim().toLowerCase();
     const refRows = EST_REFERENCE_DATA.filter((r) => {
@@ -113,21 +189,22 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
       for (const row of refRows) {
         const fl = row.floor || "General Floor";
         const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
-        if (row.room && !entry.rooms.some((rm) => rm.room === row.room)) {
+        if (row.room && !entry.rooms.some((rm) => rm.room.toLowerCase() === row.room.toLowerCase())) {
           entry.rooms.push({ room: row.room, studentCount: row.studentsEst1 || 25 });
           entry.totalStudents += (row.studentsEst1 || 25);
         }
         floorMap.set(fl, entry);
       }
-      return Array.from(floorMap.entries()).map(([floor, data]) => ({
+      const raw = Array.from(floorMap.entries()).map(([floor, data]) => ({
         floor,
         rooms: data.rooms,
         totalStudents: data.totalStudents,
       }));
+      return cleanAndSortFloors(raw);
     }
   }
 
-  // 3. If roomNames provided, infer floors
+  // 4. If roomNames provided, infer floors
   if (options.roomNames && options.roomNames.length > 0) {
     const floorMap = new Map<string, { rooms: { room: string }[]; totalStudents: number }>();
     for (const rName of options.roomNames) {
@@ -145,20 +222,21 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
         }
       }
       const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
-      if (!entry.rooms.some((rm) => rm.room === clean)) {
+      if (!entry.rooms.some((rm) => rm.room.toLowerCase() === clean.toLowerCase())) {
         entry.rooms.push({ room: clean });
         entry.totalStudents += 25;
       }
       floorMap.set(fl, entry);
     }
-    return Array.from(floorMap.entries()).map(([floor, data]) => ({
+    const raw = Array.from(floorMap.entries()).map(([floor, data]) => ({
       floor,
       rooms: data.rooms,
       totalStudents: data.totalStudents,
     }));
+    return cleanAndSortFloors(raw);
   }
 
-  // 4. Default fallback: 2 floors
+  // 5. Default fallback: 2 floors
   return [
     {
       floor: "2nd Floor",

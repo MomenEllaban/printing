@@ -2266,9 +2266,25 @@ export function FileBrowser({
               isCurrentFolder: true,
             });
             if (regCategory !== "building_excel") return null;
+
+            const sessionCrumb = breadcrumbs.find((b) =>
+              /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
+                b.name.trim(),
+              ),
+            );
+            const examCrumb = breadcrumbs.find((b) =>
+              /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+))?$/i.test(b.name.trim()),
+            );
+            const q = new URLSearchParams({
+              building: currentFolder.name,
+              folderId: currentFolder.id,
+            });
+            if (sessionCrumb) q.set("cycle", sessionCrumb.name);
+            if (examCrumb) q.set("exam", examCrumb.name);
+
             return (
               <Link
-                href={`/logistics?building=${encodeURIComponent(currentFolder.name)}&folderId=${encodeURIComponent(currentFolder.id)}`}
+                href={`/logistics?${q.toString()}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all shadow-xs"
                 title={
                   locale === "ar"

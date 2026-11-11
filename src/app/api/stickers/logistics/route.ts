@@ -3,7 +3,12 @@ import { requireSession, enforceRateLimit, jsonError } from "@/lib/api-utils";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
 import { buildBreadcrumbs, getFileMeta } from "@/lib/drive";
 import { getDemoBreadcrumbs, getDemoDescendants, isDemoEnabled } from "@/lib/demo";
-import { getReferenceSubfolderInfo, EST_REFERENCE_DATA } from "@/lib/stickers/est-reference-data";
+import {
+  getReferenceSubfolderInfo,
+  EST_REFERENCE_DATA,
+  OFFICIAL_EST_SCHOOLS,
+  getFloorSortWeight,
+} from "@/lib/stickers/est-reference-data";
 import { parseEstRoomFileName } from "@/lib/stickers/est-room-data";
 import { isRoomFolderName } from "@/lib/stickers/register-utils";
 import {
@@ -89,51 +94,77 @@ export async function GET(request: Request) {
           );
 
           if (floorFolders.length > 0) {
-            floors = floorFolders.map((fl) => {
-              const roomFolders = desc.folders.filter(
-                (f) =>
-                  f.parentId === fl.id &&
-                  (isRoomFolderName(f.name) ||
-                    /^(\d{1,4}[A-Za-z]?|[A-Za-z]\d{1,4}|room\s*\d+|قاعة\s*\d+)$/i.test(f.name)),
-              );
-              const rms = roomFolders.map((rf) => {
-                const rFiles = desc.files.filter((file) => file.parentId === rf.id);
-                let stdCount: number | undefined;
-                let subjText: string | undefined;
-                for (const rfFile of rFiles) {
-                  const parsed = parseEstRoomFileName(rfFile.name);
-                  if (parsed) {
-                    stdCount = parsed.totalStudents;
-                    subjText = parsed.breakdownText;
-                    break;
+            // Group duplicate floor folders by name
+            const floorGroups = new Map<string, Array<{ id: string; name: string }>>();
+            for (const fl of floorFolders) {
+              const k = (fl.name || "").trim().toLowerCase();
+              const grp = floorGroups.get(k) || [];
+              grp.push({ id: fl.id, name: fl.name.trim() });
+              floorGroups.set(k, grp);
+            }
+
+            floors = Array.from(floorGroups.entries()).map(([_, flList]) => {
+              const displayFloorName = flList[0].name;
+              const roomsMap = new Map<string, { room: string; studentCount?: number; subjectsText?: string }>();
+
+              for (const fl of flList) {
+                const roomFolders = desc.folders.filter(
+                  (f) =>
+                    f.parentId === fl.id &&
+                    (isRoomFolderName(f.name) ||
+                      /^(\d{1,4}[A-Za-z]?|[A-Za-z]\d{1,4}|room\s*\d+|قاعة\s*\d+)$/i.test(f.name)),
+                );
+
+                for (const rf of roomFolders) {
+                  const rKey = rf.name.trim().toLowerCase();
+                  if (!roomsMap.has(rKey)) {
+                    const rFiles = desc.files.filter((file) => file.parentId === rf.id);
+                    let stdCount: number | undefined;
+                    let subjText: string | undefined;
+                    for (const rfFile of rFiles) {
+                      const parsed = parseEstRoomFileName(rfFile.name);
+                      if (parsed) {
+                        stdCount = parsed.totalStudents;
+                        subjText = parsed.breakdownText;
+                        break;
+                      }
+                    }
+                    roomsMap.set(rKey, {
+                      room: rf.name.trim(),
+                      studentCount: stdCount,
+                      subjectsText: subjText,
+                    });
                   }
                 }
-                return {
-                  room: rf.name,
-                  studentCount: stdCount,
-                  subjectsText: subjText,
-                };
-              });
 
-              // Check direct files in floor
-              const directFiles = desc.files.filter((file) => file.parentId === fl.id);
-              for (const df of directFiles) {
-                const parsed = parseEstRoomFileName(df.name);
-                if (parsed?.room && !rms.some((r) => r.room === parsed.room)) {
-                  rms.push({
-                    room: parsed.room,
-                    studentCount: parsed.totalStudents,
-                    subjectsText: parsed.breakdownText,
-                  });
+                // Check direct files in floor
+                const directFiles = desc.files.filter((file) => file.parentId === fl.id);
+                for (const df of directFiles) {
+                  const parsed = parseEstRoomFileName(df.name);
+                  const roomName = parsed?.room || df.name.replace(/\.[^/.]+$/, "");
+                  const rKey = roomName.trim().toLowerCase();
+                  if (!roomsMap.has(rKey)) {
+                    roomsMap.set(rKey, {
+                      room: roomName.trim(),
+                      studentCount: parsed?.totalStudents,
+                      subjectsText: parsed?.breakdownText,
+                    });
+                  }
                 }
               }
 
+              const sortedRooms = Array.from(roomsMap.values()).sort((a, b) =>
+                a.room.localeCompare(b.room, undefined, { numeric: true }),
+              );
+
               return {
-                floor: fl.name,
-                rooms: rms,
-                totalStudents: rms.reduce((s, r) => s + (r.studentCount || 25), 0),
+                floor: displayFloorName,
+                rooms: sortedRooms,
+                totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 25), 0),
               };
             });
+
+            floors.sort((a, b) => getFloorSortWeight(a.floor) - getFloorSortWeight(b.floor));
           } else {
             const directRooms = desc.folders.filter(
               (f) =>
@@ -210,18 +241,107 @@ export async function GET(request: Request) {
           );
 
           if (floorSubs.length > 0) {
+            // Group duplicate floor folders by name to merge Drive folders
+            const floorGroups = new Map<string, Array<{ id: string; name: string }>>();
             for (const fl of floorSubs) {
-              const roomRes = await drive.files.list({
-                q: `'${fl.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-                fields: "files(id, name)",
-                pageSize: 100,
-                supportsAllDrives: true,
-                includeItemsFromAllDrives: true,
-              });
-              const floorRooms = roomRes.data.files || [];
-              const roomsDetails = [];
+              const k = (fl.name || "").trim().toLowerCase();
+              const grp = floorGroups.get(k) || [];
+              grp.push({ id: fl.id!, name: fl.name!.trim() });
+              floorGroups.set(k, grp);
+            }
 
-              for (const rm of floorRooms) {
+            for (const [_, flList] of floorGroups.entries()) {
+              const displayFloorName = flList[0].name;
+              const roomsMap = new Map<string, { room: string; studentCount?: number; subjectsText?: string }>();
+
+              for (const fl of flList) {
+                const roomRes = await drive.files.list({
+                  q: `'${fl.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+                  fields: "files(id, name)",
+                  pageSize: 100,
+                  supportsAllDrives: true,
+                  includeItemsFromAllDrives: true,
+                });
+                const floorRooms = roomRes.data.files || [];
+
+                for (const rm of floorRooms) {
+                  const rName = (rm.name || "").trim();
+                  if (!rName) continue;
+                  const rKey = rName.toLowerCase();
+                  if (!roomsMap.has(rKey)) {
+                    let stdCount: number | undefined;
+                    let subjText: string | undefined;
+                    try {
+                      const fileRes = await drive.files.list({
+                        q: `'${rm.id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+                        fields: "files(id, name)",
+                        pageSize: 20,
+                        supportsAllDrives: true,
+                        includeItemsFromAllDrives: true,
+                      });
+                      for (const f of fileRes.data.files || []) {
+                        const parsed = parseEstRoomFileName(f.name || "");
+                        if (parsed) {
+                          stdCount = parsed.totalStudents;
+                          subjText = parsed.breakdownText;
+                          break;
+                        }
+                      }
+                    } catch {}
+                    roomsMap.set(rKey, {
+                      room: rName,
+                      studentCount: stdCount || 25,
+                      subjectsText: subjText,
+                    });
+                  }
+                }
+
+                // Also inspect direct files inside the floor folder
+                try {
+                  const directFloorFiles = await drive.files.list({
+                    q: `'${fl.id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+                    fields: "files(id, name)",
+                    pageSize: 50,
+                    supportsAllDrives: true,
+                    includeItemsFromAllDrives: true,
+                  });
+                  for (const f of directFloorFiles.data.files || []) {
+                    const parsed = parseEstRoomFileName(f.name || "");
+                    const roomName = parsed?.room || (f.name || "").replace(/\.[^/.]+$/, "").trim();
+                    if (!roomName) continue;
+                    const rKey = roomName.toLowerCase();
+                    if (!roomsMap.has(rKey)) {
+                      roomsMap.set(rKey, {
+                        room: roomName,
+                        studentCount: parsed?.totalStudents || 25,
+                        subjectsText: parsed?.breakdownText,
+                      });
+                    }
+                  }
+                } catch {}
+              }
+
+              const sortedRooms = Array.from(roomsMap.values()).sort((a, b) =>
+                a.room.localeCompare(b.room, undefined, { numeric: true }),
+              );
+
+              if (sortedRooms.length > 0) {
+                floors.push({
+                  floor: displayFloorName,
+                  rooms: sortedRooms,
+                  totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 25), 0),
+                });
+              }
+            }
+
+            floors.sort((a, b) => getFloorSortWeight(a.floor) - getFloorSortWeight(b.floor));
+          } else if (directRooms.length > 0) {
+            const roomsMap = new Map<string, { room: string; studentCount?: number; subjectsText?: string }>();
+            for (const rm of directRooms) {
+              const rName = (rm.name || "").trim();
+              if (!rName) continue;
+              const rKey = rName.toLowerCase();
+              if (!roomsMap.has(rKey)) {
                 let stdCount: number | undefined;
                 let subjText: string | undefined;
                 try {
@@ -241,78 +361,42 @@ export async function GET(request: Request) {
                     }
                   }
                 } catch {}
-
-                roomsDetails.push({
-                  room: rm.name || "",
-                  studentCount: stdCount,
+                roomsMap.set(rKey, {
+                  room: rName,
+                  studentCount: stdCount || 25,
                   subjectsText: subjText,
                 });
               }
-
-              // Also inspect files directly inside the floor folder
-              try {
-                const directFloorFiles = await drive.files.list({
-                  q: `'${fl.id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-                  fields: "files(id, name)",
-                  pageSize: 50,
-                  supportsAllDrives: true,
-                  includeItemsFromAllDrives: true,
-                });
-                for (const f of directFloorFiles.data.files || []) {
-                  const parsed = parseEstRoomFileName(f.name || "");
-                  if (parsed?.room && !roomsDetails.some((r) => r.room === parsed.room)) {
-                    roomsDetails.push({
-                      room: parsed.room,
-                      studentCount: parsed.totalStudents,
-                      subjectsText: parsed.breakdownText,
-                    });
-                  }
-                }
-              } catch {}
-
-              if (roomsDetails.length > 0) {
-                floors.push({
-                  floor: fl.name || "",
-                  rooms: roomsDetails,
-                  totalStudents: roomsDetails.reduce((s, r) => s + (r.studentCount || 25), 0),
-                });
-              }
             }
-          } else if (directRooms.length > 0) {
-            const roomsDetails = [];
-            for (const rm of directRooms) {
-              let stdCount: number | undefined;
-              let subjText: string | undefined;
-              try {
-                const fileRes = await drive.files.list({
-                  q: `'${rm.id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-                  fields: "files(id, name)",
-                  pageSize: 20,
-                  supportsAllDrives: true,
-                  includeItemsFromAllDrives: true,
-                });
-                for (const f of fileRes.data.files || []) {
-                  const parsed = parseEstRoomFileName(f.name || "");
-                  if (parsed) {
-                    stdCount = parsed.totalStudents;
-                    subjText = parsed.breakdownText;
-                    break;
-                  }
-                }
-              } catch {}
-              roomsDetails.push({
-                room: rm.name || "",
-                studentCount: stdCount,
-                subjectsText: subjText,
-              });
-            }
+            const sortedRooms = Array.from(roomsMap.values()).sort((a, b) =>
+              a.room.localeCompare(b.room, undefined, { numeric: true }),
+            );
             floors.push({
               floor: "General Floor",
-              rooms: roomsDetails,
-              totalStudents: roomsDetails.reduce((s, r) => s + (r.studentCount || 25), 0),
+              rooms: sortedRooms,
+              totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 25), 0),
             });
           }
         } catch {}
+      }
+    }
+
+    // Fallback: Check official EST schools first for canonical definition
+    if (floors.length === 0 && building) {
+      const cleanB = building.toLowerCase().trim();
+      const official = OFFICIAL_EST_SCHOOLS.find(
+        (s) =>
+          s.schoolName.toLowerCase() === cleanB ||
+          s.fullFolderName.toLowerCase() === cleanB ||
+          cleanB.includes(s.schoolName.toLowerCase()) ||
+          s.schoolName.toLowerCase().includes(cleanB),
+      );
+      if (official) {
+        floors = official.floors.map((fl) => ({
+          floor: fl.floorName,
+          rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
+          totalStudents: fl.rooms.length * 25,
+        }));
       }
     }
 
@@ -336,7 +420,7 @@ export async function GET(request: Request) {
         for (const r of refRows) {
           const fl = r.floor || "General Floor";
           const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
-          if (r.room && !entry.rooms.some((rm) => rm.room === r.room)) {
+          if (r.room && !entry.rooms.some((rm) => rm.room.toLowerCase() === r.room.toLowerCase())) {
             entry.rooms.push({ room: r.room, studentCount: r.studentsEst1 || 25 });
             entry.totalStudents += r.studentsEst1 || 25;
           }
@@ -344,9 +428,10 @@ export async function GET(request: Request) {
         }
         floors = Array.from(floorMap.entries()).map(([floorName, data]) => ({
           floor: floorName,
-          rooms: data.rooms,
+          rooms: data.rooms.sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })),
           totalStudents: data.totalStudents,
         }));
+        floors.sort((a, b) => getFloorSortWeight(a.floor) - getFloorSortWeight(b.floor));
       }
     }
 
