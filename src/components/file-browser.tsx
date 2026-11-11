@@ -70,6 +70,7 @@ import {
   findStudentFileInItems,
   findRegisterFileInItems,
   getFolderRegisterCategory,
+  isRoomFolderName,
   canProfileAddRegister,
   getRegisterTheme,
   type RegisterCategory,
@@ -152,39 +153,41 @@ function sortLabelKey(sort: string) {
   }
 }
 
-function ExamBadges({ name }: { name: string }) {
+function ExamBadges({ name, isRoomFolder }: { name: string; isRoomFolder?: boolean }) {
   const { locale } = useI18n();
   const info = parseExamInfoFromFileName(name);
-  if (!info) return null;
+  const isStudent = (isRoomFolder && !info?.registerType) || info?.registerType === "student";
+
+  if (!info && !isRoomFolder) return null;
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">
-      {info.examType && (
+      {info?.examType && (
         <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
           {info.examType}
         </span>
       )}
-      {info.registerType === "proctor" && (
+      {info?.registerType === "proctor" && (
         <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
           📋 {locale === "ar" ? "كشف مراقبين" : "Proctor Register"}
         </span>
       )}
-      {info.registerType === "control" && (
+      {info?.registerType === "control" && (
         <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
           🏢 {locale === "ar" ? "كشف كنترول" : "Control Register"}
         </span>
       )}
-      {info.registerType === "student" && (
+      {isStudent && (
         <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
           🎓 {locale === "ar" ? "كشف طلاب" : "Student Register"}
         </span>
       )}
-      {info.floor && (
+      {info?.floor && (
         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
           {locale === "ar" ? `دور ${info.floor}` : `Floor ${info.floor}`}
         </span>
       )}
-      {info.room && (
+      {info?.room && (
         <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 dark:text-cyan-300">
           {locale === "ar" ? `روم ${info.room}` : `Room ${info.room}`}
         </span>
@@ -578,9 +581,12 @@ export function FileBrowser({
 
   const handleShowRegisterFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }, type?: RegisterCategory) => {
+      const isRoom = isCurrentFolderRoom || (folder ? isRoomFolderName(folder.name) : false);
       const resolvedType =
         type ||
-        (isBuildingExcelFile(file)
+        (isRoom
+          ? "student"
+          : isBuildingExcelFile(file)
           ? "building_excel"
           : isControlRegisterFile(file)
           ? "control"
@@ -643,9 +649,12 @@ export function FileBrowser({
 
   const handlePrintRegisterFile = useCallback(
     (file: DriveItem, folder?: { id: string; name: string }, type?: RegisterCategory) => {
+      const isRoom = isCurrentFolderRoom || (folder ? isRoomFolderName(folder.name) : false);
       const resolvedType =
         type ||
-        (isBuildingExcelFile(file)
+        (isRoom
+          ? "student"
+          : isBuildingExcelFile(file)
           ? "building_excel"
           : isControlRegisterFile(file)
           ? "control"
@@ -1164,7 +1173,7 @@ export function FileBrowser({
       breadcrumbs,
       isCurrentFolder: true,
     });
-    return cat === "student";
+    return cat === "student" || isRoomFolderName(currentFolder.name);
   }, [currentFolder, breadcrumbs]);
 
   const displayItems = useMemo(() => {
@@ -2123,11 +2132,13 @@ export function FileBrowser({
             </div>
           )}
           {currentFolder && (() => {
-            const regCategory = getFolderRegisterCategory({
-              folder: currentFolder,
-              breadcrumbs,
-              isCurrentFolder: true,
-            });
+            const regCategory = isCurrentFolderRoom
+              ? "student"
+              : getFolderRegisterCategory({
+                  folder: currentFolder,
+                  breadcrumbs,
+                  isCurrentFolder: true,
+                });
             if (!regCategory) return null;
 
             const currentRegFile = findRegisterFileInItems(regCategory, items);
@@ -2719,7 +2730,7 @@ export function FileBrowser({
                       </span>
                     )}
                   </div>
-                  <ExamBadges name={item.name} />
+                  <ExamBadges name={item.name} isRoomFolder={isCurrentFolderRoom && !item.isFolder} />
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     {!item.isFolder && (
                       isPrinted ? (
@@ -2942,6 +2953,7 @@ export function FileBrowser({
                     key={item.id}
                     item={item}
                     depth={0}
+                    isRoomFolder={isCurrentFolderRoom}
                     expandedFolderIds={expandedFolderIds}
                     loadingFolderIds={loadingFolderIds}
                     folderChildren={folderChildren}
@@ -3904,6 +3916,7 @@ interface TreeRowProps {
   printFilter: "all" | "printed" | "pending";
   menuId: string | null;
   demoActive: boolean;
+  isRoomFolder?: boolean;
   getFolderCheckState: (folderId: string) => { checked: boolean; indeterminate: boolean };
   onToggleExpand: (folderId: string) => void;
   onToggleSelect: (id: string, e?: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => void;
@@ -3949,6 +3962,7 @@ function TreeRow({
   printFilter,
   menuId,
   demoActive,
+  isRoomFolder,
   getFolderCheckState,
   onToggleExpand,
   onToggleSelect,
@@ -4105,7 +4119,7 @@ function TreeRow({
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                <ExamBadges name={item.name} />
+                <ExamBadges name={item.name} isRoomFolder={isRoomFolder && !item.isFolder} />
                 {!item.isFolder && (
                   isPrinted ? (
                     <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
@@ -4462,6 +4476,7 @@ function TreeRow({
               key={child.id}
               item={child}
               depth={depth + 1}
+              isRoomFolder={item.isFolder && isRoomFolderName(item.name)}
               expandedFolderIds={expandedFolderIds}
               loadingFolderIds={loadingFolderIds}
               folderChildren={folderChildren}

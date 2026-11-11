@@ -8,6 +8,7 @@ import { useI18n } from "./locale-provider";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/file-utils";
 import { buildExamFileName, type ExamLevel, type ExamRegisterType, type ExamUploadMeta } from "@/lib/exam-utils";
+import { isRoomFolderName } from "@/lib/stickers/register-utils";
 import type { Locale } from "@/lib/types";
 import { useActiveProfile } from "./profile-provider";
 
@@ -77,8 +78,14 @@ export function UploadDialog({
       // Only enable autoFolder hierarchy by default when uploading from root (targetFolderId is falsy)
       setAutoFolder(!targetFolderId);
 
-      // Account-based locking to avoid any mix-up between Dina and Nabil
-      if (activeProfile.id === "dina") {
+      const isTargetRoom = targetFolderName ? isRoomFolderName(targetFolderName) : false;
+
+      // If uploading directly into a room folder, any file is treated as a Student Register!
+      if (isTargetRoom) {
+        setIsExamRegister(true);
+        setRegisterType("student");
+        if (targetFolderName) setRoom(targetFolderName);
+      } else if (activeProfile.id === "dina") {
         setIsExamRegister(true);
         setRegisterType("proctor");
         setRoom("");
@@ -87,7 +94,7 @@ export function UploadDialog({
         setRegisterType("student");
       }
     }
-  }, [open, targetFolderId, activeProfile.id]);
+  }, [open, targetFolderId, targetFolderName, activeProfile.id]);
 
   const maxBytes = maxUploadSizeMb * 1024 * 1024;
   const allowed = useMemo(() => new Set(allowedExtensions.map((item) => item.toLowerCase())), [allowedExtensions]);

@@ -233,7 +233,71 @@ export function findControlFileInItems(items?: DriveItem[]): DriveItem | undefin
 
 export function findStudentFileInItems(items?: DriveItem[]): DriveItem | undefined {
   if (!items || !items.length) return undefined;
-  return items.find(isStudentRegisterFile);
+
+  // 1. Prioritize files matching official EST Room naming convention (EST 1 & EST 2) or explicit student register names
+  const matched = items.find(isStudentRegisterFile);
+  if (matched) return matched;
+
+  // 2. Next prioritize any PDF file inside the room folder
+  const anyPdf = items.find(
+    (item) => !item.isFolder && (item.mimeType === "application/pdf" || item.name.toLowerCase().endsWith(".pdf")),
+  );
+  if (anyPdf) return anyPdf;
+
+  // 3. ANY non-folder file inside a room folder is considered the Student Register
+  return items.find((item) => !item.isFolder);
+}
+
+/**
+ * Helper to check whether a folder name matches a room pattern.
+ */
+export function isRoomFolderName(name?: string | null): boolean {
+  if (!name) return false;
+  const folderName = name.trim();
+  // 1. Exclude exam roots, months/dates, governorates, drive roots
+  if (
+    /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test(folderName) ||
+    /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
+      folderName,
+    ) ||
+    /^(cairo|alexandria|giza|qalyubia|mansoura|tanta|ismailia|suez|port said|القاهرة|الإسكندرية|الجيزة|القليوبية|المنصورة|طنطا|الإسماعيلية|السويس|بورسعيد|root|drive|my drive|home|file manager app)$/i.test(
+      folderName,
+    )
+  ) {
+    return false;
+  }
+  // 2. Exclude floors
+  if (
+    /floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b|\bground(\s*floor)?\b|\bأرضي\b|\bbasement\b|\bبدروم\b|\bmezzanine\b|\bميزانين\b/i.test(
+      folderName,
+    ) ||
+    /^(ground|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)\s*(floor)?$/i.test(folderName)
+  ) {
+    return false;
+  }
+  // 3. Exclude buildings, centers, control, management
+  if (
+    /building|مبنى|قسم|faculty|كلية|center|سنتر|campus|academy|أكاديمية|جامعة|مجمع|school|مدرسة|institute|معهد|control|كنترول|proctor|إدارة|admin/i.test(
+      folderName,
+    )
+  ) {
+    return false;
+  }
+  // 4. Room patterns: M102, M-102, 102, 204B, Room 1, Room-102, قاعة 5, لجنة 1, Lab 3, etc.
+  if (
+    /^([A-Za-z]{1,4}[-_\s]?\d{1,4}[A-Za-z]?|\d{1,4}[A-Za-z]?|(?:room|قاعة|لجنة|committee|lab|معمل)[-_\s]*\d+[A-Za-z]?)$/i.test(
+      folderName,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /room|قاعة|لجنة|معمل/i.test(folderName) &&
+    !/control|proctor|floor|building|management|pharmacy|center|faculty|school|سنتر|مبنى|إدارة/i.test(folderName)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function findRegisterFileInItems(category: RegisterCategory, items?: DriveItem[]): DriveItem | undefined {
@@ -273,22 +337,7 @@ export function getFolderRegisterCategory(params: {
     return null;
   }
 
-  // 2. Explicit Room detection by name (e.g. 204, 205, Room 1, قاعة 5, لجنة 1) -> ALWAYS student
-  if (
-    /^(\d{1,4}[A-Za-z]?|[A-Za-z]\d{1,4}|room\s*\d+|قاعة\s*\d+|committee\s*\d+|لجنة\s*\d+|lab\s*\d+|معمل\s*\d+)$/i.test(
-      folderName,
-    )
-  ) {
-    return "student";
-  }
-  if (
-    /room|قاعة|لجنة|معمل/i.test(folderName) &&
-    !/control|proctor|floor|building|management|pharmacy|center|faculty|school|سنتر|مبنى|إدارة/i.test(folderName)
-  ) {
-    return "student";
-  }
-
-  // 3. Exam Root / Drive Root / Governorate detection -> ALWAYS null
+  // 2. Exam Root / Drive Root / Governorate detection -> ALWAYS null
   if (
     /^(cairo|alexandria|giza|qalyubia|mansoura|tanta|ismailia|suez|port said|القاهرة|الإسكندرية|الجيزة|القليوبية|المنصورة|طنطا|الإسماعيلية|السويس|بورسعيد|root|drive|my drive|home|file manager app)$/i.test(
       folderName,
@@ -300,6 +349,11 @@ export function getFolderRegisterCategory(params: {
     /^est\s*numbers/i.test(folderName)
   ) {
     return null;
+  }
+
+  // 3. Explicit Room detection by name (e.g. M102, 204, Room 1, قاعة 5, لجنة 1) -> ALWAYS student
+  if (isRoomFolderName(folderName)) {
+    return "student";
   }
 
   // 4. Center check helper
