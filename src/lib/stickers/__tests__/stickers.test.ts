@@ -507,9 +507,59 @@ describe("generateStickerPdf", () => {
       // City / Governorate
       expect(getFolderRegisterCategory({ folder: { id: "g1", name: "Alexandria" } })).toBeNull();
       expect(getFolderRegisterCategory({ folder: { id: "g2", name: "Cairo" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "g3", name: "Damietta" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "g4", name: "Menofia" } })).toBeNull();
 
       // Root
       expect(getFolderRegisterCategory({ folder: { id: "root", name: "EST 1" }, isCurrentFolder: true })).toBeNull();
+
+      // Schools Container folder has NO register button (only individual schools inside it do)
+      expect(getFolderRegisterCategory({ folder: { id: "s1", name: "Schools" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "s2", name: "المدارس" } })).toBeNull();
+      expect(getFolderRegisterCategory({ folder: { id: "s3", name: "مدارس" } })).toBeNull();
+
+      const insideEst1Crumbs = breadcrumbs.slice(0, 2); // up to EST 1
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "s1", name: "Schools" },
+          breadcrumbs: insideEst1Crumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBeNull();
+
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "s1", name: "Schools" },
+          breadcrumbs: [...insideEst1Crumbs, { id: "s1", name: "Schools" }],
+          isCurrentFolder: true,
+        }),
+      ).toBeNull();
+
+      // Individual Schools inside the Schools folder DO have building_excel (+ Add Register (Excel))
+      const insideSchoolsCrumbs = [...insideEst1Crumbs, { id: "s1", name: "Schools" }];
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "sch1", name: "Taymour English School (Alexandria)" },
+          breadcrumbs: insideSchoolsCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("building_excel");
+
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "sch2", name: "Tiba Modern International Schools (Dakahlia)" },
+          breadcrumbs: insideSchoolsCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("building_excel");
+
+      expect(
+        getFolderRegisterCategory({
+          folder: { id: "sch3", name: "St.Fatima Badr International School (Suez)" },
+          breadcrumbs: insideSchoolsCrumbs,
+          isCurrentFolder: false,
+        }),
+      ).toBe("building_excel");
     });
 
     it("Detects Building Excel, Control Register, Proctor Register, and Student Register files correctly", () => {

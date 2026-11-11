@@ -354,9 +354,11 @@ export function getFolderRegisterCategory(params: {
     return null;
   }
 
-  // 2. Exam Root / Drive Root / Governorate detection -> ALWAYS null
+  // 2. Exam Root / Drive Root / Governorate / Schools Container detection -> ALWAYS null
+  // The "Schools" folder is a grouping container (like Cairo/Giza), NOT a single building.
   if (
-    /^(cairo|alexandria|giza|qalyubia|mansoura|tanta|ismailia|suez|port said|القاهرة|الإسكندرية|الجيزة|القليوبية|المنصورة|طنطا|الإسماعيلية|السويس|بورسعيد|root|drive|my drive|home|file manager app)$/i.test(
+    /^(schools|المدارس|مدارس|est\s*1\s*[-_]?\s*schools|est\s*2\s*[-_]?\s*schools)$/i.test(folderName) ||
+    /^(cairo|alexandria|giza|qalyubia|mansoura|tanta|ismailia|suez|port said|menofia|minya|damietta|dakahlia|beheira|sharqia|gharbia|fayoum|beni suef|asyut|sohag|qena|luxor|aswan|red sea|new valley|matruh|north sinai|south sinai|القاهرة|الإسكندرية|الجيزة|القليوبية|المنصورة|طنطا|الإسماعيلية|السويس|بورسعيد|المنوفية|المنيا|دمياط|الدقهلية|البحيرة|الشرقية|الغربية|الفيوم|بني سويف|أسيوط|سوهاج|قنا|الأقصر|أسوان|البحر الأحمر|الوادي الجديد|مطروح|شمال سيناء|جنوب سيناء|root|drive|my drive|home|file manager app)$/i.test(
       folderName,
     ) ||
     /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test(folderName) ||
@@ -379,6 +381,8 @@ export function getFolderRegisterCategory(params: {
     !/building|مبنى|faculty|كلية|management|pharmacy|engineering|قسم/i.test(n);
 
   // 5. Official EST Schools or College / Building detection by name -> Building Excel!
+  // Note: Individual schools (e.g. "Taymour English School (Alexandria)") qualify,
+  // but the parent container "Schools" was already intercepted in step 2.
   const isOfficialEstSchool = OFFICIAL_EST_SCHOOLS.some(
     (s) =>
       s.fullFolderName.toLowerCase() === folderName.toLowerCase() ||
@@ -388,6 +392,11 @@ export function getFolderRegisterCategory(params: {
   );
   if (isOfficialEstSchool) {
     return "building_excel";
+  }
+
+  // Guard: if folder is literally "Schools" or "المدارس", it is the container folder, NEVER a single building!
+  if (/^(schools|المدارس|مدارس)$/i.test(folderName)) {
+    return null;
   }
 
   if (
@@ -412,7 +421,8 @@ export function getFolderRegisterCategory(params: {
     const parentName = (parentFolder.name || "").trim().toLowerCase();
     if (
       parentName === "schools" ||
-      parentName.includes("school") ||
+      parentName === "المدارس" ||
+      parentName === "مدارس" ||
       isCenterName(parentName) ||
       /center|سنتر|مركز|sheraton|abu\s*qir/i.test(parentName)
     ) {
@@ -422,7 +432,7 @@ export function getFolderRegisterCategory(params: {
   }
 
   // 7. Breadcrumbs check: if anywhere in path we are inside "Schools"
-  if (breadcrumbs && breadcrumbs.some((b) => (b.name || "").trim().toLowerCase() === "schools")) {
+  if (breadcrumbs && breadcrumbs.some((b) => /^(schools|المدارس|مدارس)$/i.test((b.name || "").trim()))) {
     if (!isFloorFolderName(folderName) && !isRoomFolderName(folderName)) {
       return "building_excel";
     }
@@ -491,6 +501,16 @@ function resolveFolderLevelFromChain(
   }
 
   const locationChain = isEstRoot(relevantChain[0]) ? relevantChain.slice(1) : relevantChain;
+
+  // Handle Schools branch (depth is 1 level shorter than Center/Building branch):
+  // EST -> Schools (governorate/container) -> School (building) -> Floor -> Room
+  const isSchoolsGrouping = locationChain.length > 0 && /^(schools|المدارس|مدارس)$/i.test(locationChain[0]);
+  if (isSchoolsGrouping) {
+    if (locationChain.length === 1) return "governorate"; // The Schools grouping folder
+    if (locationChain.length === 2) return "building";    // Individual School
+    if (locationChain.length === 3) return "floor";       // Floor
+    if (locationChain.length >= 4) return "room";        // Room
+  }
 
   if (locationChain.length === 1) return "governorate";
   if (locationChain.length === 2) return "center";
