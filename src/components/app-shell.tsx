@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Boxes,
   Clock,
   FileImage,
   FileSpreadsheet,
@@ -72,6 +73,15 @@ const primaryNav: NavItem[] = [
     color: "text-amber-600 dark:text-amber-400",
     bgColor: "bg-amber-500/10 dark:bg-amber-500/20",
     activeBg: "bg-amber-600 text-white shadow-md shadow-amber-500/25",
+  },
+  {
+    href: "/logistics",
+    labelKey: "nav.logistics",
+    icon: Boxes,
+    exact: true,
+    color: "text-indigo-600 dark:text-indigo-400",
+    bgColor: "bg-indigo-500/10 dark:bg-indigo-500/20",
+    activeBg: "bg-indigo-600 text-white shadow-md shadow-indigo-500/25",
   },
   {
     href: "/files/pdf",

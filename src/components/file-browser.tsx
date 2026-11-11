@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  Boxes,
   Building2,
   CheckCircle2,
   ChevronDown,
@@ -2217,6 +2218,28 @@ export function FileBrowser({
                 <RegisterIcon category={regCategory} className={cn("size-3.5", theme.iconColorClass)} />
                 <span>{labelAdd}</span>
               </button>
+            );
+          })()}
+          {currentFolder && (() => {
+            const regCategory = getFolderRegisterCategory({
+              folder: currentFolder,
+              breadcrumbs,
+              isCurrentFolder: true,
+            });
+            if (regCategory !== "building_excel") return null;
+            return (
+              <Link
+                href={`/logistics?building=${encodeURIComponent(currentFolder.name)}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all shadow-xs"
+                title={
+                  locale === "ar"
+                    ? `فتح مركز الاستيكرات واللوجستيات لكراتين وشنط "${currentFolder.name}"`
+                    : `Open Logistics Hub for "${currentFolder.name}"`
+                }
+              >
+                <Boxes className="size-3.5 text-amber-600 dark:text-amber-400" />
+                <span>{locale === "ar" ? "اللوجستيات والكراتين" : "Logistics Hub"}</span>
+              </Link>
             );
           })()}
           <Button variant="secondary" onClick={refresh} disabled={loading}>
