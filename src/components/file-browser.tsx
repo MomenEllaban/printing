@@ -35,6 +35,7 @@ import {
   Printer,
   RefreshCw,
   Search,
+  Sparkles,
   Star,
   Tag,
   Trash2,
