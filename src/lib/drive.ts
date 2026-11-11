@@ -58,11 +58,12 @@ const CATEGORY_NAME_EXTENSIONS: Record<Exclude<FileCategory, "other">, string[]>
   excel: [".xlsx", ".xls", ".csv", ".xlsm", ".xlsb", ".xltx", ".ods"],
   word: [".docx", ".doc", ".rtf", ".odt"],
   image: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".bmp", ".ico", ".tiff"],
+  video: [".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"],
 };
 
 export function mimeCondition(category: FileCategory): string {
   if (category === "other") {
-    const knownMimes = [MIME.pdf, ...EXCEL_MIMES, ...WORD_MIMES, ...IMAGE_MIMES];
+    const knownMimes = [MIME.pdf, ...EXCEL_MIMES, ...WORD_MIMES, ...IMAGE_MIMES, "video/mp4", "video/webm"];
     const mimeChecks = knownMimes.map((mime) => `mimeType != '${mime}'`).join(" and ");
     const notExtensions = [
       "not name contains '.pdf'",
@@ -74,6 +75,8 @@ export function mimeCondition(category: FileCategory): string {
       "not name contains '.png'",
       "not name contains '.jpg'",
       "not name contains '.jpeg'",
+      "not name contains '.mp4'",
+      "not name contains '.webm'",
     ].join(" and ");
     return `mimeType != '${FOLDER_MIME}' and ${mimeChecks} and ${notExtensions}`;
   }

@@ -15,6 +15,7 @@ const CATEGORY_MAP: Record<string, { category: FileCategory; titleKey: Translati
   excel: { category: "excel", titleKey: "files.excelTitle" },
   word: { category: "word", titleKey: "files.wordTitle" },
   images: { category: "image", titleKey: "files.imagesTitle" },
+  videos: { category: "video", titleKey: "files.videosTitle" },
   other: { category: "other", titleKey: "files.otherTitle" },
 };
 

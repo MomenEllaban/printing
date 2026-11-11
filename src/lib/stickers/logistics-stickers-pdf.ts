@@ -398,9 +398,14 @@ export async function generateBuildingCartonStickerPdf(
     color: COLOR_GOLD,
   });
 
+  // 3 Large Metric Cards filling the Left Column (Checklist removed per user request)
+  const leftCardsTop = bodyBottom + bodyH - 24 - 10;
+  const leftCardsBottom = bodyBottom + 10;
+  const leftAvailableH = leftCardsTop - leftCardsBottom;
+  const statBoxH = Math.floor((leftAvailableH - 2 * 12) / 3);
+
   // Stat Card 1: Total Floors
-  const statBoxH = 54;
-  const stat1Y = bodyBottom + bodyH - 24 - statBoxH - 8;
+  const stat1Y = leftCardsTop - statBoxH;
   page.drawRectangle({
     x: leftX + 8,
     y: stat1Y,
@@ -411,22 +416,22 @@ export async function generateBuildingCartonStickerPdf(
     borderWidth: 0.8,
   });
   page.drawText("TOTAL BUILDING FLOORS:", {
-    x: leftX + 14,
-    y: stat1Y + statBoxH - 15,
-    size: 7.5,
+    x: leftX + 16,
+    y: stat1Y + statBoxH - 20,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(`${totalFloorsCount} FLOORS`, {
-    x: leftX + 14,
-    y: stat1Y + 13,
-    size: 18,
+    x: leftX + 16,
+    y: stat1Y + 20,
+    size: 22,
     font,
     color: COLOR_CHARCOAL,
   });
 
   // Stat Card 2: Total Rooms
-  const stat2Y = stat1Y - statBoxH - 6;
+  const stat2Y = stat1Y - 12 - statBoxH;
   page.drawRectangle({
     x: leftX + 8,
     y: stat2Y,
@@ -437,22 +442,22 @@ export async function generateBuildingCartonStickerPdf(
     borderWidth: 0.8,
   });
   page.drawText("TOTAL ENCLOSED ROOMS:", {
-    x: leftX + 14,
-    y: stat2Y + statBoxH - 15,
-    size: 7.5,
+    x: leftX + 16,
+    y: stat2Y + statBoxH - 20,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(`${totalRoomsCount} ROOMS`, {
-    x: leftX + 14,
-    y: stat2Y + 13,
-    size: 18,
+    x: leftX + 16,
+    y: stat2Y + 20,
+    size: 22,
     font,
     color: COLOR_CHARCOAL,
   });
 
   // Stat Card 3: Total Candidates
-  const stat3Y = stat2Y - statBoxH - 6;
+  const stat3Y = stat2Y - 12 - statBoxH;
   page.drawRectangle({
     x: leftX + 8,
     y: stat3Y,
@@ -463,69 +468,19 @@ export async function generateBuildingCartonStickerPdf(
     borderWidth: 0.8,
   });
   page.drawText("ASSIGNED CANDIDATES:", {
-    x: leftX + 14,
-    y: stat3Y + statBoxH - 15,
-    size: 7.5,
+    x: leftX + 16,
+    y: stat3Y + statBoxH - 20,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(`${totalStudentsCount} CANDIDATES`, {
-    x: leftX + 14,
-    y: stat3Y + 13,
-    size: 17,
+    x: leftX + 16,
+    y: stat3Y + 20,
+    size: 20,
     font,
     color: COLOR_CHARCOAL,
   });
-
-  // Packing Checklist Card
-  const checkCardY = bodyBottom + 8;
-  const checkCardH = stat3Y - checkCardY - 8;
-  page.drawRectangle({
-    x: leftX + 8,
-    y: checkCardY,
-    width: leftW - 16,
-    height: checkCardH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.8,
-  });
-
-  page.drawText("CARTON PACKING CHECKLIST", {
-    x: leftX + 14,
-    y: checkCardY + checkCardH - 16,
-    size: 7.5,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  const checkItems = [
-    "Floor dossiers verified",
-    "Room packets counted",
-    "Exam questions sealed",
-    "Emergency packet enclosed",
-  ];
-
-  const itemGap = Math.min(22, (checkCardH - 26) / checkItems.length);
-  for (let ci = 0; ci < checkItems.length; ci++) {
-    const cy = checkCardY + checkCardH - 26 - (ci + 1) * itemGap;
-    // Checkbox square
-    page.drawRectangle({
-      x: leftX + 14,
-      y: cy + 1,
-      width: 10,
-      height: 10,
-      color: COLOR_WHITE,
-      borderColor: COLOR_CHARCOAL,
-      borderWidth: 0.8,
-    });
-    page.drawText(checkItems[ci], {
-      x: leftX + 30,
-      y: cy + 2.5,
-      size: 7.5,
-      font,
-      color: COLOR_MUTED,
-    });
-  }
 
   // ----------------------------------------------------
   // RIGHT COLUMN: Floors & Rooms Directory

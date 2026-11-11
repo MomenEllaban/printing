@@ -1,4 +1,4 @@
-export type FileCategory = "pdf" | "excel" | "word" | "image" | "other";
+export type FileCategory = "pdf" | "excel" | "word" | "image" | "video" | "other";
 
 export type Locale = "ar" | "en";
 export type ThemeMode = "light" | "dark" | "system";

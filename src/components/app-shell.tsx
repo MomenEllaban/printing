@@ -21,6 +21,7 @@ import {
   Search,
   Settings,
   Star,
+  Video,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -119,6 +120,14 @@ const fileTypesNav: NavItem[] = [
     color: "text-purple-600 dark:text-purple-400",
     bgColor: "bg-purple-500/10 dark:bg-purple-500/20",
     activeBg: "bg-purple-600 text-white shadow-md shadow-purple-500/25",
+  },
+  {
+    href: "/files/videos",
+    labelKey: "nav.videoFiles",
+    icon: Video,
+    color: "text-sky-600 dark:text-sky-400",
+    bgColor: "bg-sky-500/10 dark:bg-sky-500/20",
+    activeBg: "bg-sky-600 text-white shadow-md shadow-sky-500/25",
   },
 ];
 

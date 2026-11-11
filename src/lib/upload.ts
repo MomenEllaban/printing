@@ -10,6 +10,7 @@ const TYPE_FOLDERS: Record<FileCategory, string> = {
   excel: "Excel",
   word: "Documents",
   image: "Images",
+  video: "Videos",
   other: "Other Files",
 };
 

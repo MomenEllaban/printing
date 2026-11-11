@@ -4,6 +4,7 @@ import {
   FileImage,
   FileSpreadsheet,
   FileText,
+  FileVideo,
   Folder,
   Presentation,
 } from "lucide-react";
@@ -16,6 +17,7 @@ const styles: Record<FileCategory | "folder", { className: string; icon: typeof 
   excel: { className: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400", icon: FileSpreadsheet },
   word: { className: "bg-sky-500/12 text-sky-600 dark:text-sky-400", icon: FileText },
   image: { className: "bg-violet-500/12 text-violet-600 dark:text-violet-400", icon: FileImage },
+  video: { className: "bg-cyan-500/12 text-cyan-600 dark:text-cyan-400", icon: FileVideo },
   other: { className: "bg-slate-500/12 text-slate-600 dark:text-slate-300", icon: File },
 };
 

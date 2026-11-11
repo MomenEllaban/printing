@@ -250,6 +250,16 @@ export function findStudentFileInItems(items?: DriveItem[]): DriveItem | undefin
 }
 
 /**
+ * Helper to check whether a folder name matches a floor pattern.
+ */
+export function isFloorFolderName(name?: string | null): boolean {
+  if (!name) return false;
+  return /floor|دور|طابق|\b\d+(st|nd|rd|th)\s*floor\b|\bground(\s*floor)?\b|\bأرضي\b|\bbasement\b|\bبدروم\b|\bmezzanine\b|\bميزانين\b/i.test(
+    name.trim(),
+  );
+}
+
+/**
  * Helper to check whether a folder name matches a room pattern.
  */
 export function isRoomFolderName(name?: string | null): boolean {

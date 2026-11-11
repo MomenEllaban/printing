@@ -55,11 +55,21 @@ export const IMAGE_MIMES: string[] = [
   "image/tiff",
 ];
 
+export const VIDEO_MIMES = [
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  "video/quicktime",
+  "video/x-msvideo",
+  "video/x-matroska",
+];
+
 export const CATEGORY_MIME_FILTERS: Record<Exclude<FileCategory, "other">, string> = {
   pdf: MIME.pdf,
   excel: EXCEL_MIMES.join(","),
   word: WORD_MIMES.join(","),
   image: IMAGE_MIMES.join(","),
+  video: VIDEO_MIMES.join(","),
 };
 
 export const DEFAULT_ALLOWED_EXTENSIONS = [
@@ -82,6 +92,10 @@ export const DEFAULT_ALLOWED_EXTENSIONS = [
   "gif",
   "svg",
   "bmp",
+  "mp4",
+  "webm",
+  "mov",
+  "mkv",
 ];
 
 export function extensionOf(name: string, mimeType?: string | null): string | null {
@@ -156,11 +170,13 @@ export function categoryFor(mimeType: string, name = ""): FileCategory | "folder
   if (ext && ["xlsx", "xls", "csv", "xlsm", "xlsb", "xltx", "ods", "tsv"].includes(ext)) return "excel";
   if (ext && ["docx", "doc", "dotx", "rtf", "odt"].includes(ext)) return "word";
   if (ext && ["jpg", "jpeg", "png", "webp", "gif", "svg", "bmp", "ico", "tiff", "tif"].includes(ext)) return "image";
+  if (ext && ["mp4", "webm", "mov", "mkv", "avi", "m4v", "ogv", "3gp"].includes(ext)) return "video";
   if (mimeType === MIME.folder && !ext) return "folder";
   if (mimeType === MIME.pdf) return "pdf";
   if (EXCEL_MIMES.includes(mimeType)) return "excel";
   if (WORD_MIMES.includes(mimeType)) return "word";
   if (IMAGE_MIMES.includes(mimeType)) return "image";
+  if (VIDEO_MIMES.includes(mimeType) || mimeType.startsWith("video/")) return "video";
   return "other";
 }
 

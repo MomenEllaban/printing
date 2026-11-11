@@ -71,6 +71,7 @@ import {
   findRegisterFileInItems,
   getFolderRegisterCategory,
   isRoomFolderName,
+  isFloorFolderName,
   canProfileAddRegister,
   getRegisterTheme,
   type RegisterCategory,
@@ -374,13 +375,14 @@ export function FileBrowser({
   >({});
   const [loadingDescendantIds, setLoadingDescendantIds] = useState<Set<string>>(new Set());
 
-  const fetchFolderChildren = useCallback(async (fId: string) => {
+  const fetchFolderChildren = useCallback(async (fId: string): Promise<DriveItem[] | undefined> => {
     setLoadingFolderIds((prev) => new Set(prev).add(fId));
     try {
       const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(fId)}&pageSize=100`, { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
         setFolderChildren((prev) => ({ ...prev, [fId]: data.items }));
+        return data.items;
       }
     } catch {
       // ignore
@@ -391,19 +393,36 @@ export function FileBrowser({
         return next;
       });
     }
+    return undefined;
   }, []);
 
   const toggleFolderExpand = useCallback(
-    (fId: string) => {
+    (fId: string, folderName?: string) => {
       setExpandedFolderIds((prev) => {
         const next = new Set(prev);
         if (next.has(fId)) {
           next.delete(fId);
         } else {
           next.add(fId);
-          if (!folderChildren[fId]) {
-            void fetchFolderChildren(fId);
-          }
+          // When expanding a Floor folder in tree view, auto-expand its room subfolders so user immediately sees room files!
+          const isFloor = folderName ? isFloorFolderName(folderName) : false;
+          void fetchFolderChildren(fId).then((children) => {
+            if (isFloor && Array.isArray(children)) {
+              const rooms = children.filter((c) => c.isFolder);
+              if (rooms.length > 0) {
+                setExpandedFolderIds((innerPrev) => {
+                  const innerNext = new Set(innerPrev);
+                  rooms.forEach((r) => innerNext.add(r.id));
+                  return innerNext;
+                });
+                rooms.forEach((r) => {
+                  if (!folderChildren[r.id]) {
+                    void fetchFolderChildren(r.id);
+                  }
+                });
+              }
+            }
+          });
         }
         return next;
       });
@@ -417,15 +436,16 @@ export function FileBrowser({
     setDescendantsCache({});
   }, [folderId]);
 
-  // Auto-expand folders by default in list view so everything is visible
+  // All folders are CLOSED by default when opening File Manager App or navigating.
+  // ONLY auto-expand room folders when the user opens a Floor folder so they immediately see room contents faster!
   useEffect(() => {
-    if (items.length > 0 && effectiveView === "list") {
-      const topFolders = items.filter((item) => item.isFolder);
-      if (topFolders.length > 0) {
+    if (items.length > 0 && currentFolder && isFloorFolderName(currentFolder.name)) {
+      const roomFolders = items.filter((item) => item.isFolder);
+      if (roomFolders.length > 0) {
         setExpandedFolderIds((prev) => {
           const next = new Set(prev);
           let changed = false;
-          topFolders.forEach((f) => {
+          roomFolders.forEach((f) => {
             if (!next.has(f.id)) {
               next.add(f.id);
               changed = true;
@@ -438,7 +458,7 @@ export function FileBrowser({
         });
       }
     }
-  }, [items, effectiveView, fetchFolderChildren, folderChildren]);
+  }, [items, currentFolder, fetchFolderChildren, folderChildren]);
 
   useEffect(() => {
     if (expandedFolderIds.size > 0) {
@@ -3922,7 +3942,7 @@ interface TreeRowProps {
   demoActive: boolean;
   isRoomFolder?: boolean;
   getFolderCheckState: (folderId: string) => { checked: boolean; indeterminate: boolean };
-  onToggleExpand: (folderId: string) => void;
+  onToggleExpand: (folderId: string, folderName?: string) => void;
   onToggleSelect: (id: string, e?: React.ChangeEvent<HTMLInputElement> | React.MouseEvent) => void;
   onOpenItem: (item: DriveItem) => void;
   onToggleFavorite: (item: DriveItem) => void;
@@ -4075,7 +4095,7 @@ function TreeRow({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onToggleExpand(item.id);
+                  onToggleExpand(item.id, item.name);
                 }}
                 className={cn(
                   "icon-btn size-7 text-muted hover:text-accent hover:bg-surface-strong shrink-0 rounded-md transition-all flex items-center justify-center cursor-pointer",
