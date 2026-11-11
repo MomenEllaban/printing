@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { PDFDocument } from "pdf-lib";
 import {
   generateBuildingCartonStickerPdf,
   generateExamBagChecklistPdf,
   generateCleanSkinMasterPdf,
+  generateMasterBuildingManifestPdf,
+  generateCleanSkinDispatchLogPdf,
   generateCleanSkinSubjectStickersPdf,
   generateCompleteLogisticsBundlePdf,
   normalizeFloorsData,
@@ -146,10 +149,34 @@ describe("Logistics Stickers PDF Generator", () => {
     expect(pdfBytes.length).toBeGreaterThan(1000);
   });
 
-  it("generates Clean Skin Master Envelope PDF (A4 Portrait)", async () => {
+  it("generates Clean Skin Master Packet as a 2-page PDF (Page 1: Manifest, Page 2: Dispatch Log)", async () => {
     const pdfBytes = await generateCleanSkinMasterPdf(baseData);
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(1000);
+
+    const doc = await PDFDocument.load(pdfBytes);
+    expect(doc.getPageCount()).toBe(2);
+  });
+
+  it("generates standalone Master Center & Building Manifest PDF (Strictly 1 Page)", async () => {
+    const pdfBytes = await generateMasterBuildingManifestPdf({
+      ...baseData,
+      building: "Tiba Modern International Schools (Dakahlia)",
+    });
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+
+    const doc = await PDFDocument.load(pdfBytes);
+    expect(doc.getPageCount()).toBe(1);
+  });
+
+  it("generates standalone Clean Skin Dispatch Log PDF (Strictly 1 Page)", async () => {
+    const pdfBytes = await generateCleanSkinDispatchLogPdf(baseData);
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+
+    const doc = await PDFDocument.load(pdfBytes);
+    expect(doc.getPageCount()).toBe(1);
   });
 
   it("generates Clean Skin Quarter-A4 Subject Stickers PDF (EST I)", async () => {

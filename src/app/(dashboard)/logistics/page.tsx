@@ -51,8 +51,15 @@ interface LiveFloorData {
     room: string;
     studentCount: number;
     subjectsText?: string;
+    est1Count?: number;
+    est1Subjects?: string;
+    est2Count?: number;
+    est2Subjects?: string;
+    isAssn?: boolean;
   }>;
   totalStudents: number;
+  est1Students?: number;
+  est2Students?: number;
 }
 
 export default function LogisticsHubPage() {
@@ -104,6 +111,8 @@ export default function LogisticsHubPage() {
   const [liveFloors, setLiveFloors] = useState<LiveFloorData[]>([]);
   const [loadingFloors, setLoadingFloors] = useState<boolean>(false);
   const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
+  const [est1TotalCandidates, setEst1TotalCandidates] = useState<number>(0);
+  const [est2TotalCandidates, setEst2TotalCandidates] = useState<number>(0);
 
   // True whenever any part of the asynchronous Drive data loading chain is active
   const isAnyLoading =
@@ -251,6 +260,23 @@ export default function LogisticsHubPage() {
       if (!targetFolderId) return;
       setLoadingFloors(true);
       try {
+        // 1. Try unified server-side cross-exam hierarchy scanner first
+        try {
+          const hierRes = await fetch(
+            `/api/stickers/logistics?type=hierarchy&folderId=${encodeURIComponent(targetFolderId)}&building=${encodeURIComponent(buildingName || "")}&governorate=${encodeURIComponent(governorateName || "")}&examName=${encodeURIComponent(selectedExamName)}&date=${encodeURIComponent(selectedSessionName)}`,
+            { cache: "no-store" },
+          );
+          if (hierRes.ok) {
+            const hierData = await hierRes.json();
+            if (Array.isArray(hierData.floors) && hierData.floors.length > 0) {
+              setLiveFloors(hierData.floors);
+              setEst1TotalCandidates(hierData.est1TotalCandidates || 0);
+              setEst2TotalCandidates(hierData.est2TotalCandidates || 0);
+              return;
+            }
+          }
+        } catch {}
+
         const res = await fetch(
           `/api/drive/folders/descendants?folderId=${encodeURIComponent(targetFolderId)}`,
           { cache: "no-store" },
@@ -700,7 +726,7 @@ export default function LogisticsHubPage() {
   // Execute Action (Show or Print)
   const handleLogisticsAction = useCallback(
     async (
-      type: "carton" | "bag" | "clean_skin_master" | "clean_skin_subjects" | "bundle",
+      type: "carton" | "bag" | "manifest" | "clean_skin_master" | "clean_skin_log" | "clean_skin_subjects" | "bundle",
       action: "show" | "print",
     ) => {
       const actionKey = `${type}-${action}`;
@@ -750,7 +776,9 @@ export default function LogisticsHubPage() {
           const titles: Record<string, string> = {
             carton: isAr ? "معاينة ستيكر كرتونة المبنى" : "Building Carton Placard",
             bag: isAr ? "معاينة بيان شنطة الامتحانات" : "Transit Bag Exam Checklist",
-            clean_skin_master: isAr ? "معاينة كيس طوارئ الكنترول الرئيسي" : "Clean Skin Master Packet",
+            manifest: isAr ? "معاينة بيان الحصر العام للمبنى واللجان (EST I & EST II)" : "Master Center & Building Examination Manifest",
+            clean_skin_master: isAr ? "معاينة ملف طوارئ الكنترول الشامل (صفحتين: بيان الحصر + سجل الصرف)" : "Emergency Reserve Master Packet (2 Pages: Manifest + Log)",
+            clean_skin_log: isAr ? "معاينة سجل صرف الطوارئ (Incident Log Sheet)" : "Emergency Dispatch Log Sheet",
             clean_skin_subjects: isAr ? "معاينة استيكرات المواد للطوارئ" : "Clean Skin Subjects Stickers",
             bundle: isAr ? "معاينة حزمة اللوجستيات الشاملة للمبنى" : "Complete Building Logistics Bundle",
           };
@@ -1125,8 +1153,16 @@ export default function LogisticsHubPage() {
                   <span>{totalRoomsCount} {isAr ? "قاعات / لجان" : "Rooms"}</span>
                 </span>
                 <span className="text-muted/60">•</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                  {est1TotalCandidates || totalCandidatesCount} {isAr ? "طالب EST 1" : "EST I"}
+                </span>
+                <span className="text-muted/60">•</span>
+                <span className="font-bold text-purple-600 dark:text-purple-400">
+                  {est2TotalCandidates || totalCandidatesCount} {isAr ? "طالب EST 2" : "EST II"}
+                </span>
+                <span className="text-muted/60">•</span>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                  {totalCandidatesCount} {isAr ? "طالب مسجل" : "Assigned Candidates"}
+                  {(est1TotalCandidates || totalCandidatesCount) + (est2TotalCandidates || totalCandidatesCount)} {isAr ? "إجمالي الحصر" : "Grand Total"}
                 </span>
               </>
             )}
@@ -1189,17 +1225,26 @@ export default function LogisticsHubPage() {
                       {fl.rooms.length} {isAr ? "لجان" : "rooms"} ({fl.totalStudents} {isAr ? "طالب" : "cand."})
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    {fl.rooms.map((rm) => (
-                      <span
-                        key={rm.room}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-surface-soft border border-border text-[10.5px] font-mono text-foreground"
-                      >
-                        <span>{rm.room}</span>
-                        <span className="text-muted text-[9.5px]">({rm.studentCount})</span>
-                      </span>
-                    ))}
-                  </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {fl.rooms.map((rm) => (
+                        <span
+                          key={rm.room}
+                          title={
+                            (rm.est1Subjects ? `EST I: ${rm.est1Subjects}\n` : "") +
+                            (rm.est2Subjects ? `EST II: ${rm.est2Subjects}` : "")
+                          }
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-soft border border-border text-[10.5px] font-mono text-foreground hover:border-indigo-500/50 transition-colors"
+                        >
+                          <span className="font-bold">{rm.room}</span>
+                          <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">
+                            E1:{rm.est1Count ?? rm.studentCount}
+                          </span>
+                          <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300">
+                            E2:{rm.est2Count ?? 25}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
                 </div>
               ))}
             </div>
@@ -1353,7 +1398,76 @@ export default function LogisticsHubPage() {
           </div>
         </div>
 
-        {/* CARD 3: Official Clean Skin Emergency Reserve Packet (Master Custody) */}
+        {/* CARD 3: Master Center & Building Examination Manifest (Single Page Blueprint) */}
+        <div className="card p-5 border border-indigo-500/30 hover:border-indigo-500/50 shadow-xs transition-all relative overflow-hidden group bg-indigo-500/[0.02]">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-lg">
+                📋
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
+                  A4 Strict Single Page
+                </span>
+                <h3 className="text-base font-extrabold text-foreground">
+                  {isAr ? "بيان الحصر العام للجان ومبنى الامتحان" : "Master Center & Building Manifest"}
+                </h3>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-xs font-bold">
+              EST I & II Manifest
+            </span>
+          </div>
+
+          <p className="text-xs text-muted mb-4 leading-relaxed">
+            {isAr
+              ? "ورقة مقاس A4 واحدة تجمع كافة تفاصيل السنتر والمبنى: الأدوار، القاعات، مواد الامتحان في كل قاعة، وأعداد الطلاب لـ EST 1 و EST 2 مع إجمالي الحصر."
+              : "Strict single-page master blueprint detailing center, building, floors, rooms, subjects for both EST I & EST II, and total candidate allocations."}
+          </p>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-border/60">
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("manifest", "show")}
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {busyAction === "manifest-show" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "جاري التحميل..." : "Loading..."
+                  : isAr ? "معاينة البيان" : "Preview Manifest"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("manifest", "print")}
+              disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {busyAction === "manifest-print" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : isAnyLoading ? (
+                <Loader2 className="size-3.5 animate-spin opacity-70" />
+              ) : (
+                <Printer className="size-3.5" />
+              )}
+              <span>
+                {isAnyLoading && !busyAction
+                  ? isAr ? "تحميل..." : "Loading..."
+                  : isAr ? "طباعة البيان" : "Print Manifest"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 4: Official Clean Skin Emergency Reserve Packet (Master Custody - 2 Pages) */}
         <div className="card p-5 border border-red-500/30 hover:border-red-500/50 shadow-xs transition-all relative overflow-hidden group bg-red-500/[0.02]">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5">
@@ -1362,22 +1476,22 @@ export default function LogisticsHubPage() {
               </div>
               <div>
                 <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider block">
-                  A4 Strict Single Page
+                  A4 2-Page Master Dossier
                 </span>
                 <h3 className="text-base font-extrabold text-foreground">
-                  {isAr ? "كيس طوارئ الكنترول (Clean Skin Master Packet)" : "Emergency Reserve Master Packet"}
+                  {isAr ? "كيس طوارئ الكنترول وبيان الحصر الشامل" : "Emergency Reserve Master Packet"}
                 </h3>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded-md bg-red-500/10 text-red-700 dark:text-red-400 text-xs font-bold">
-              Emergency Placard
+              2 Pages (Manifest + Log)
             </span>
           </div>
 
           <p className="text-xs text-muted mb-4 leading-relaxed">
             {isAr
-              ? "ورقة مقاس A4 محكمة ومصممة بدقة لطباعة جدول سجل الصرف المباشر لحالات الطوارئ مع 18 صفا مسطرا ومظللا بدون أي خروج عن الصفحة."
-              : "Strict single-page A4 incident placard affixed to the Clean Skin Master packet containing 18 zebra-striped incident rows."}
+              ? "حزمة متكاملة من صفحتين: صفحة 1 بيان الحصر الشامل لكافة اللجان والمبنى، وصفحة 2 جدول سجل صرف الطوارئ لكيس الكنترول المسطر بـ 18 صفاً."
+              : "Comprehensive 2-page Master Control Dossier: Page 1 Master Building Manifest + Page 2 Emergency Dispatch Log Sheet with 18 incident tracking rows."}
           </p>
 
           <div className="flex items-center gap-2 pt-3 border-t border-border/60">
@@ -1397,7 +1511,7 @@ export default function LogisticsHubPage() {
               <span>
                 {isAnyLoading && !busyAction
                   ? isAr ? "جاري التحميل..." : "Loading..."
-                  : isAr ? "معاينة PDF" : "Preview PDF"}
+                  : isAr ? "معاينة (2 صفحة)" : "Preview (2 Pages)"}
               </span>
             </button>
             <button
@@ -1416,9 +1530,35 @@ export default function LogisticsHubPage() {
               <span>
                 {isAnyLoading && !busyAction
                   ? isAr ? "تحميل..." : "Loading..."
-                  : isAr ? "طباعة البلاكار" : "Print Emergency Placard"}
+                  : isAr ? "طباعة الباقة (2 صفحة)" : "Print Packet (2 Pages)"}
               </span>
             </button>
+          </div>
+
+          {/* Sub-action quick preview pills */}
+          <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/40 text-[11px]">
+            <span className="text-muted text-[10.5px]">
+              {isAr ? "معاينة الصفحات منفردة:" : "Standalone Sheets:"}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleLogisticsAction("manifest", "show")}
+                disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {isAr ? "صفحة 1: بيان الحصر" : "Pg 1: Manifest"}
+              </button>
+              <span className="text-muted/40">•</span>
+              <button
+                type="button"
+                onClick={() => handleLogisticsAction("clean_skin_log", "show")}
+                disabled={Boolean(busyAction) || isAnyLoading || totalRoomsCount === 0}
+                className="text-red-600 dark:text-red-400 hover:underline font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {isAr ? "صفحة 2: سجل الصرف" : "Pg 2: Incident Log"}
+              </button>
+            </div>
           </div>
         </div>
 
