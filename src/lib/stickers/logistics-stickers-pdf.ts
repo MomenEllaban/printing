@@ -1608,3 +1608,4 @@ export async function generateCompleteLogisticsBundlePdf(
 
   return await masterDoc.save();
 }
+

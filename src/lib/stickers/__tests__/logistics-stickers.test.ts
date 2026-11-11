@@ -64,3 +64,4 @@ describe("Logistics Stickers PDF Generator", () => {
     expect(pdfBytes.length).toBeGreaterThan(5000);
   });
 });
+
