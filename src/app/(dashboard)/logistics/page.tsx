@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Boxes,
-  Package,
   Printer,
   Eye,
   Sparkles,
@@ -12,16 +11,17 @@ import {
   Building2,
   Calendar,
   Layers,
-  FolderTree,
   RefreshCw,
   FolderCheck,
-  CheckCircle2,
+  MapPin,
+  School,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/components/locale-provider";
 import { parseSchoolFolderName, OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
 import { parseEstRoomFileName } from "@/lib/stickers/est-room-data";
-import { isFloorFolderName, isRoomFolderName } from "@/lib/stickers/register-utils";
+import { isFloorFolderName } from "@/lib/stickers/register-utils";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
 import { toast } from "sonner";
 import type { DriveItem } from "@/lib/types";
@@ -29,6 +29,13 @@ import type { DriveItem } from "@/lib/types";
 interface DriveFolderOption {
   id: string;
   name: string;
+}
+
+interface DestinationOption {
+  id: string;
+  name: string;
+  isSchools: boolean;
+  cityName?: string;
 }
 
 interface DriveSchoolOption {
@@ -55,22 +62,42 @@ export default function LogisticsHubPage() {
   const urlFolderId = searchParams.get("folderId") || undefined;
   const urlBuilding = searchParams.get("building") || undefined;
 
-  // 1. Dynamic Drive State
+  // 1. Session / Cycle
   const [sessions, setSessions] = useState<DriveFolderOption[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedSessionName, setSelectedSessionName] = useState<string>("December 2026");
   const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
 
+  // 2. Exam (EST 1 / EST 2)
   const [exams, setExams] = useState<DriveFolderOption[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<string>("");
   const [selectedExamName, setSelectedExamName] = useState<string>("EST 1");
   const [loadingExams, setLoadingExams] = useState<boolean>(false);
 
+  // 3. Category / Destination (المدارس أو إحدى المدن/المحافظات)
+  const [destinations, setDestinations] = useState<DestinationOption[]>([]);
+  const [selectedDestId, setSelectedDestId] = useState<string>("");
+  const [selectedDest, setSelectedDest] = useState<DestinationOption | null>(null);
+  const [loadingDestinations, setLoadingDestinations] = useState<boolean>(false);
+
+  // 4A. Schools (عند اختيار المدارس)
   const [schools, setSchools] = useState<DriveSchoolOption[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [selectedSchool, setSelectedSchool] = useState<DriveSchoolOption | null>(null);
   const [loadingSchools, setLoadingSchools] = useState<boolean>(false);
 
+  // 4B. Center & Building (عند اختيار مدينة/محافظة)
+  const [centers, setCenters] = useState<DriveFolderOption[]>([]);
+  const [selectedCenterId, setSelectedCenterId] = useState<string>("");
+  const [selectedCenterName, setSelectedCenterName] = useState<string>("");
+  const [loadingCenters, setLoadingCenters] = useState<boolean>(false);
+
+  const [buildings, setBuildings] = useState<DriveFolderOption[]>([]);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
+  const [selectedBuildingName, setSelectedBuildingName] = useState<string>("");
+  const [loadingBuildings, setLoadingBuildings] = useState<boolean>(false);
+
+  // Live floors & rooms extracted from Google Drive
   const [liveFloors, setLiveFloors] = useState<LiveFloorData[]>([]);
   const [loadingFloors, setLoadingFloors] = useState<boolean>(false);
   const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
@@ -95,7 +122,7 @@ export default function LogisticsHubPage() {
   });
 
   // ----------------------------------------------------
-  // STEP 1: Load Session / Cycle Folders (e.g. December 2026)
+  // STEP 1: Load Session Folders (e.g. December 2026)
   // ----------------------------------------------------
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -106,7 +133,6 @@ export default function LogisticsHubPage() {
         setIsDriveConnected(true);
         const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
 
-        // Find date / session folders
         const dateFolders = folders.filter((f) =>
           /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
             f.name.trim(),
@@ -123,7 +149,6 @@ export default function LogisticsHubPage() {
           setSelectedSessionId(list[0].id);
           setSelectedSessionName(list[0].name);
         } else {
-          // Fallback root session
           const fallback = [{ id: "root", name: "December 2026" }];
           setSessions(fallback);
           setSelectedSessionId("root");
@@ -183,12 +208,294 @@ export default function LogisticsHubPage() {
   }, [selectedSessionId, loadExams]);
 
   // ----------------------------------------------------
-  // STEP 3: Load Schools / Buildings inside selected exam folder
+  // STEP 5: Core Hierarchy Loader (Floors, Rooms, Candidates)
+  // ----------------------------------------------------
+  const loadTargetHierarchy = useCallback(
+    async (
+      targetFolderId: string,
+      targetType: "school" | "building",
+      governorateName?: string,
+      buildingName?: string,
+    ) => {
+      if (!targetFolderId) return;
+      setLoadingFloors(true);
+      try {
+        const res = await fetch(
+          `/api/drive/folders/descendants?folderId=${encodeURIComponent(targetFolderId)}`,
+          { cache: "no-store" },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.folders)) {
+          const allFolders: DriveItem[] = data.folders;
+          const allFiles: DriveItem[] = Array.isArray(data.files) ? data.files : [];
+
+          // 1. Resolve Floor Folders (direct or descendant)
+          let floorFolders = allFolders.filter(
+            (f) => f.parentId === targetFolderId && isFloorFolderName(f.name),
+          );
+
+          if (floorFolders.length === 0) {
+            floorFolders = allFolders.filter((f) => isFloorFolderName(f.name));
+          }
+
+          if (floorFolders.length === 0) {
+            floorFolders = allFolders.filter((f) => f.parentId === targetFolderId);
+          }
+
+          floorFolders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+          if (floorFolders.length > 0) {
+            const computedFloors: LiveFloorData[] = floorFolders.map((fl) => {
+              // Subfolders under this floor
+              const roomFolders = allFolders.filter((f) => f.parentId === fl.id);
+              // Direct files under this floor
+              const directFiles = allFiles.filter((file) => file.parentId === fl.id);
+
+              const rms: LiveFloorData["rooms"] = [];
+
+              // Case A: Room folders exist
+              for (const rf of roomFolders) {
+                const rFiles = allFiles.filter((file) => file.parentId === rf.id);
+                let stdCount = 25;
+                let subjText: string | undefined;
+
+                for (const rfFile of rFiles) {
+                  const parsed = parseEstRoomFileName(rfFile.name);
+                  if (parsed) {
+                    stdCount = parsed.totalStudents;
+                    subjText = parsed.breakdownText;
+                    break;
+                  }
+                }
+
+                rms.push({
+                  room: rf.name,
+                  studentCount: stdCount,
+                  subjectsText: subjText,
+                });
+              }
+
+              // Case B: Direct files inside floor (e.g. room files)
+              for (const df of directFiles) {
+                const parsed = parseEstRoomFileName(df.name);
+                const roomName = parsed?.room || df.name.replace(/\.[^/.]+$/, "");
+                if (!rms.some((r) => r.room.toLowerCase() === roomName.toLowerCase())) {
+                  rms.push({
+                    room: roomName,
+                    studentCount: parsed?.totalStudents || 25,
+                    subjectsText: parsed?.breakdownText,
+                  });
+                }
+              }
+
+              // Case C: School fallback if room folders are empty in Drive
+              if (rms.length === 0 && targetType === "school") {
+                const official = OFFICIAL_EST_SCHOOLS.find(
+                  (s) =>
+                    s.schoolName.toLowerCase() === (buildingName || "").toLowerCase() ||
+                    s.fullFolderName.toLowerCase() === (buildingName || "").toLowerCase(),
+                );
+                const officialFloor = official?.floors.find(
+                  (ofl) => ofl.floorName.toLowerCase() === fl.name.toLowerCase(),
+                );
+                if (officialFloor) {
+                  for (const rm of officialFloor.rooms) {
+                    rms.push({ room: rm, studentCount: 25 });
+                  }
+                }
+              }
+
+              rms.sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+
+              return {
+                floor: fl.name,
+                rooms: rms,
+                totalStudents: rms.reduce((sum, r) => sum + r.studentCount, 0),
+              };
+            });
+
+            setLiveFloors(computedFloors);
+          } else {
+            // Full fallback to official schools definitions if no folders in Drive yet
+            if (targetType === "school") {
+              const official = OFFICIAL_EST_SCHOOLS.find(
+                (s) =>
+                  s.schoolName.toLowerCase() === (buildingName || "").toLowerCase() ||
+                  s.fullFolderName.toLowerCase() === (buildingName || "").toLowerCase(),
+              );
+              if (official) {
+                setLiveFloors(
+                  official.floors.map((fl) => ({
+                    floor: fl.floorName,
+                    rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
+                    totalStudents: fl.rooms.length * 25,
+                  })),
+                );
+              } else {
+                setLiveFloors([]);
+              }
+            } else {
+              setLiveFloors([]);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[logistics] Failed to load target hierarchy:", err);
+      } finally {
+        setLoadingFloors(false);
+      }
+    },
+    [],
+  );
+
+  // ----------------------------------------------------
+  // STEP 4B: Load Buildings inside selected Center
+  // ----------------------------------------------------
+  const loadBuildings = useCallback(
+    async (centerId: string, centerName: string, cityName: string) => {
+      if (!centerId) return;
+      setLoadingBuildings(true);
+      try {
+        const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(centerId)}&pageSize=100`, {
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.items)) {
+          const subFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+
+          // If subfolders exist, they are buildings (e.g. Science And Technology, Pharmacy)
+          // If no subfolders, or only floor folders, center itself acts as the building
+          const hasFloorFolders = subFolders.some((f) => isFloorFolderName(f.name));
+          let bList: DriveFolderOption[] = [];
+
+          if (subFolders.length > 0 && !hasFloorFolders) {
+            bList = subFolders.map((f) => ({ id: f.id, name: f.name }));
+          } else {
+            bList = [{ id: centerId, name: centerName }];
+          }
+
+          setBuildings(bList);
+          if (bList.length > 0) {
+            setSelectedBuildingId(bList[0].id);
+            setSelectedBuildingName(bList[0].name);
+            void loadTargetHierarchy(bList[0].id, "building", cityName, bList[0].name);
+          }
+        }
+      } catch (err) {
+        console.error("[logistics] Failed to load buildings:", err);
+      } finally {
+        setLoadingBuildings(false);
+      }
+    },
+    [loadTargetHierarchy],
+  );
+
+  // ----------------------------------------------------
+  // STEP 4A: Load Centers inside selected City/Governorate
+  // ----------------------------------------------------
+  const loadCenters = useCallback(
+    async (cityFolderId: string, cityName: string) => {
+      if (!cityFolderId) return;
+      setLoadingCenters(true);
+      try {
+        const res = await fetch(
+          `/api/drive/files?folder=${encodeURIComponent(cityFolderId)}&pageSize=100`,
+          { cache: "no-store" },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.items)) {
+          const centerFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+          const cList: DriveFolderOption[] = centerFolders.map((f) => ({ id: f.id, name: f.name }));
+          setCenters(cList);
+
+          if (cList.length > 0) {
+            setSelectedCenterId(cList[0].id);
+            setSelectedCenterName(cList[0].name);
+            void loadBuildings(cList[0].id, cList[0].name, cityName);
+          } else {
+            setBuildings([]);
+            setSelectedBuildingId("");
+            setSelectedBuildingName("");
+            setLiveFloors([]);
+          }
+        }
+      } catch (err) {
+        console.error("[logistics] Failed to load centers:", err);
+      } finally {
+        setLoadingCenters(false);
+      }
+    },
+    [loadBuildings],
+  );
+
+  // ----------------------------------------------------
+  // STEP 4: Load Schools from Schools folder (or reference)
   // ----------------------------------------------------
   const loadSchools = useCallback(
+    async (schoolsFolderId?: string) => {
+      setLoadingSchools(true);
+      try {
+        let loadedSchools: DriveSchoolOption[] = [];
+
+        if (schoolsFolderId && schoolsFolderId !== "schools") {
+          const res = await fetch(
+            `/api/drive/files?folder=${encodeURIComponent(schoolsFolderId)}&pageSize=100`,
+            { cache: "no-store" },
+          );
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && Array.isArray(data.items)) {
+            const driveFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+            if (driveFolders.length > 0) {
+              loadedSchools = driveFolders.map((sf) => {
+                const parsed = parseSchoolFolderName(sf.name);
+                return {
+                  id: sf.id,
+                  name: parsed.schoolName || sf.name,
+                  fullFolderName: sf.name,
+                  governorate: parsed.governorate,
+                };
+              });
+            }
+          }
+        }
+
+        // If no school folders found in drive folder yet, populate with official schools definitions
+        if (loadedSchools.length === 0) {
+          loadedSchools = OFFICIAL_EST_SCHOOLS.map((s) => ({
+            id: s.fullFolderName,
+            name: s.schoolName,
+            fullFolderName: s.fullFolderName,
+            governorate: s.governorate,
+          }));
+        }
+
+        setSchools(loadedSchools);
+        if (loadedSchools.length > 0) {
+          setSelectedSchoolId(loadedSchools[0].id);
+          setSelectedSchool(loadedSchools[0]);
+          void loadTargetHierarchy(
+            loadedSchools[0].id,
+            "school",
+            loadedSchools[0].governorate,
+            loadedSchools[0].name,
+          );
+        }
+      } catch (err) {
+        console.error("[logistics] Failed to load schools:", err);
+      } finally {
+        setLoadingSchools(false);
+      }
+    },
+    [loadTargetHierarchy],
+  );
+
+  // ----------------------------------------------------
+  // STEP 3: Load Destinations (Schools or City Folders) inside selected exam
+  // ----------------------------------------------------
+  const loadDestinations = useCallback(
     async (examId: string) => {
       if (!examId) return;
-      setLoadingSchools(true);
+      setLoadingDestinations(true);
       try {
         const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(examId)}&pageSize=100`, {
           cache: "no-store",
@@ -197,191 +504,91 @@ export default function LogisticsHubPage() {
         if (res.ok && Array.isArray(data.items)) {
           const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
 
-          // Check if there is a "Schools" subfolder
           const schoolsFolder = folders.find((f) => /^schools$/i.test(f.name.trim()));
-          let schoolFolders: DriveItem[] = [];
 
-          if (schoolsFolder) {
-            const sRes = await fetch(
-              `/api/drive/files?folder=${encodeURIComponent(schoolsFolder.id)}&pageSize=100`,
-              { cache: "no-store" },
-            );
-            const sData = await sRes.json().catch(() => ({}));
-            if (sRes.ok && Array.isArray(sData.items)) {
-              schoolFolders = sData.items.filter((i: DriveItem) => i.isFolder);
-            }
-          } else {
-            // Check if folders are Governorates
-            const govFolders = folders.filter((f) =>
-              /^(cairo|alexandria|giza|qalyubia|dakahlia|menofia|suez|القاهرة|الإسكندرية)/i.test(
-                f.name.trim(),
-              ),
-            );
-            if (govFolders.length > 0) {
-              for (const gf of govFolders) {
-                const gRes = await fetch(
-                  `/api/drive/files?folder=${encodeURIComponent(gf.id)}&pageSize=100`,
-                  { cache: "no-store" },
-                );
-                const gData = await gRes.json().catch(() => ({}));
-                if (gRes.ok && Array.isArray(gData.items)) {
-                  schoolFolders.push(...gData.items.filter((i: DriveItem) => i.isFolder));
-                }
-              }
-            } else {
-              schoolFolders = folders;
-            }
-          }
+          // City folders under the exam (exclude Schools and auxiliary schedules)
+          const cityFolders = folders.filter(
+            (f) =>
+              !/^schools$/i.test(f.name.trim()) &&
+              !/schedule|جدول|backup/i.test(f.name.trim()),
+          );
 
-          const schoolOptions: DriveSchoolOption[] = schoolFolders.map((sf) => {
-            const parsed = parseSchoolFolderName(sf.name);
-            return {
-              id: sf.id,
-              name: parsed.schoolName || sf.name,
-              fullFolderName: sf.name,
-              governorate: parsed.governorate,
-            };
+          const destList: DestinationOption[] = [];
+
+          // Option 1: Schools
+          destList.push({
+            id: schoolsFolder ? schoolsFolder.id : "schools",
+            name: isAr ? "🏫 المدارس (Schools)" : "🏫 Schools",
+            isSchools: true,
           });
 
-          setSchools(schoolOptions);
+          // Option 2..N: Cities / Governorates from Drive
+          for (const cf of cityFolders) {
+            destList.push({
+              id: cf.id,
+              name: `📍 ${cf.name}`,
+              isSchools: false,
+              cityName: cf.name,
+            });
+          }
 
-          if (schoolOptions.length > 0) {
-            // Check if URL specifies this folder or building
-            let matched = urlFolderId ? schoolOptions.find((s) => s.id === urlFolderId) : null;
-            if (!matched && urlBuilding) {
-              const uClean = urlBuilding.toLowerCase().trim();
-              matched = schoolOptions.find(
-                (s) =>
-                  s.fullFolderName.toLowerCase().trim() === uClean ||
-                  s.name.toLowerCase().trim() === uClean,
-              );
+          setDestinations(destList);
+
+          if (destList.length > 0) {
+            const first = destList[0];
+            setSelectedDestId(first.id);
+            setSelectedDest(first);
+
+            if (first.isSchools) {
+              void loadSchools(first.id);
+            } else if (first.cityName) {
+              void loadCenters(first.id, first.cityName);
             }
-            const chosen = matched || schoolOptions[0];
-            setSelectedSchoolId(chosen.id);
-            setSelectedSchool(chosen);
           }
         }
       } catch (err) {
-        console.error("[logistics] Failed to load schools:", err);
+        console.error("[logistics] Failed to load destinations:", err);
       } finally {
-        setLoadingSchools(false);
+        setLoadingDestinations(false);
       }
     },
-    [urlFolderId, urlBuilding],
+    [isAr, loadSchools, loadCenters],
   );
 
   useEffect(() => {
     if (selectedExamId) {
-      void loadSchools(selectedExamId);
+      void loadDestinations(selectedExamId);
     }
-  }, [selectedExamId, loadSchools]);
+  }, [selectedExamId, loadDestinations]);
 
-  // ----------------------------------------------------
-  // STEP 4: Load Floors, Rooms, and Candidates from Google Drive files
-  // ----------------------------------------------------
-  const loadSchoolDetails = useCallback(async (schoolId: string) => {
-    if (!schoolId) return;
-    setLoadingFloors(true);
-    try {
-      const res = await fetch(
-        `/api/drive/folders/descendants?folderId=${encodeURIComponent(schoolId)}`,
-        { cache: "no-store" },
-      );
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.folders)) {
-        const allFolders: DriveItem[] = data.folders;
-        const allFiles: DriveItem[] = Array.isArray(data.files) ? data.files : [];
+  // Derived Active Destination Details
+  const isSchoolMode = selectedDest?.isSchools ?? true;
 
-        // Direct floor folders under school
-        let floorFolders = allFolders.filter(
-          (f) => f.parentId === schoolId && isFloorFolderName(f.name),
-        );
-
-        if (floorFolders.length === 0) {
-          floorFolders = allFolders.filter((f) => f.parentId === schoolId);
-        }
-
-        if (floorFolders.length > 0) {
-          const computedFloors: LiveFloorData[] = floorFolders.map((fl) => {
-            const roomFolders = allFolders.filter(
-              (f) =>
-                f.parentId === fl.id &&
-                (isRoomFolderName(f.name) ||
-                  /^([A-Za-z0-9_-]+|room\s*\d+|قاعة\s*\d+)$/i.test(f.name)),
-            );
-
-            const rms: LiveFloorData["rooms"] = roomFolders.map((rf) => {
-              const rFiles = allFiles.filter((file) => file.parentId === rf.id);
-              let stdCount = 25;
-              let subjText: string | undefined;
-
-              for (const rfFile of rFiles) {
-                const parsed = parseEstRoomFileName(rfFile.name);
-                if (parsed) {
-                  stdCount = parsed.totalStudents;
-                  subjText = parsed.breakdownText;
-                  break;
-                }
-              }
-
-              return {
-                room: rf.name,
-                studentCount: stdCount,
-                subjectsText: subjText,
-              };
-            });
-
-            // Also check files directly in floor
-            const directFiles = allFiles.filter((file) => file.parentId === fl.id);
-            for (const df of directFiles) {
-              const parsed = parseEstRoomFileName(df.name);
-              if (parsed?.room && !rms.some((r) => r.room === parsed.room)) {
-                rms.push({
-                  room: parsed.room,
-                  studentCount: parsed.totalStudents,
-                  subjectsText: parsed.breakdownText,
-                });
-              }
-            }
-
-            return {
-              floor: fl.name,
-              rooms: rms,
-              totalStudents: rms.reduce((sum, r) => sum + r.studentCount, 0),
-            };
-          });
-
-          setLiveFloors(computedFloors);
-        } else {
-          // If no subfolders in Drive yet, fallback to reference structure for preview
-          const official = OFFICIAL_EST_SCHOOLS.find(
-            (s) =>
-              s.schoolName.toLowerCase() === (selectedSchool?.name || "").toLowerCase() ||
-              s.fullFolderName.toLowerCase() === (selectedSchool?.fullFolderName || "").toLowerCase(),
-          );
-          if (official) {
-            setLiveFloors(
-              official.floors.map((fl) => ({
-                floor: fl.floorName,
-                rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
-                totalStudents: fl.rooms.length * 25,
-              })),
-            );
-          }
-        }
-      }
-    } catch (err) {
-      console.error("[logistics] Failed to load school details:", err);
-    } finally {
-      setLoadingFloors(false);
+  const activeBuildingName = useMemo(() => {
+    if (isSchoolMode) {
+      return selectedSchool?.name || selectedSchool?.fullFolderName || "Building HQ";
     }
-  }, [selectedSchool]);
+    return selectedBuildingName || selectedCenterName || "Building HQ";
+  }, [isSchoolMode, selectedSchool, selectedBuildingName, selectedCenterName]);
 
-  useEffect(() => {
-    if (selectedSchoolId) {
-      void loadSchoolDetails(selectedSchoolId);
+  const activeCenterName = useMemo(() => {
+    if (isSchoolMode) {
+      return selectedSchool?.name || "Main School";
     }
-  }, [selectedSchoolId, loadSchoolDetails]);
+    return selectedCenterName || "Main Center";
+  }, [isSchoolMode, selectedSchool, selectedCenterName]);
+
+  const activeGovernorateName = useMemo(() => {
+    if (isSchoolMode) {
+      return selectedSchool?.governorate || "Alexandria";
+    }
+    return selectedDest?.cityName || "Alexandria";
+  }, [isSchoolMode, selectedSchool, selectedDest]);
+
+  const activeTargetFolderId = useMemo(() => {
+    if (isSchoolMode) return selectedSchoolId;
+    return selectedBuildingId || selectedCenterId;
+  }, [isSchoolMode, selectedSchoolId, selectedBuildingId, selectedCenterId]);
 
   // Derived Totals
   const totalFloorsCount = liveFloors.length;
@@ -407,9 +614,6 @@ export default function LogisticsHubPage() {
       const actionKey = `${type}-${action}`;
       if (busyAction) return;
 
-      const buildingName = selectedSchool?.name || selectedSchool?.fullFolderName || "Building HQ";
-      const governorateName = selectedSchool?.governorate || "Alexandria";
-
       setBusyAction(actionKey);
       const toastId = toast.loading(
         action === "show"
@@ -425,9 +629,9 @@ export default function LogisticsHubPage() {
         const query = new URLSearchParams({
           type,
           examName: selectedExamName,
-          governorate: governorateName,
-          center: buildingName,
-          building: buildingName,
+          governorate: activeGovernorateName,
+          center: activeCenterName,
+          building: activeBuildingName,
           date: selectedSessionName,
           totalRooms: String(totalRoomsCount || 12),
           totalStudents: String(totalCandidatesCount || 300),
@@ -436,7 +640,7 @@ export default function LogisticsHubPage() {
           boxNumber: String(boxNumber),
           totalBoxes: String(totalBoxes),
         });
-        if (selectedSchoolId) query.set("folderId", selectedSchoolId);
+        if (activeTargetFolderId) query.set("folderId", activeTargetFolderId);
         if (securitySeal) query.set("securitySeal", securitySeal);
 
         const res = await fetch(`/api/stickers/logistics?${query.toString()}`);
@@ -448,89 +652,47 @@ export default function LogisticsHubPage() {
         const pdfBlob = new Blob([blob], { type: "application/pdf" });
         const objectUrl = URL.createObjectURL(pdfBlob);
 
+        toast.dismiss(toastId);
+
         if (action === "show") {
-          let title = "Logistics PDF";
-          let customTitle = "";
-          let customDescription = "";
-
-          if (type === "carton") {
-            title = `Carton - ${buildingName}`;
-            customTitle = isAr
-              ? `ستيكر كرتونة المبنى — ${buildingName}`
-              : `Building Carton Placard — ${buildingName}`;
-            customDescription = isAr
-              ? "مقاس A4 بالعرض — يلصق على الكرتونة الكبيرة التي تحوي جميع أكياس ومظاريف المبنى مع مسرد الأدوار والقاعات."
-              : "A4 Landscape — Affixed to the outside of the master carton containing all room dossiers grouped by floor.";
-          } else if (type === "bag") {
-            title = `Bag Checklist - ${buildingName}`;
-            customTitle = isAr
-              ? `بيان شنطة الامتحانات (Checklist) — ${buildingName}`
-              : `Exam Transit Bag Checklist — ${buildingName}`;
-            customDescription = isAr
-              ? `مقاس A4 — قائمة فحص المواد وتأشير الـ Checkboxes لـ ${selectedExamName}.`
-              : `A4 Checklist — Subject checklists with checkboxes for ${selectedExamName}.`;
-          } else if (type === "clean_skin_master") {
-            title = `Clean Skin Master - ${buildingName}`;
-            customTitle = isAr
-              ? `مظروف أوراق الطوارئ والاحتياطي (Clean Skin Master)`
-              : `Clean Skin Emergency Master Packet`;
-            customDescription = isAr
-              ? "مقاس A4 صفحة واحدة — ستيكر كيس الطوارئ الخارجي مع جدول توثيق صرف الأوراق الإضافية."
-              : "A4 Single Page — Emergency reserve master envelope with on-site dispatch tracking log.";
-          } else if (type === "clean_skin_subjects") {
-            title = `Clean Skin Subjects - ${buildingName}`;
-            customTitle = isAr
-              ? `ستيكرات المواد الاحتياطية (Clean Skin)`
-              : `Clean Skin Subject Stickers`;
-            customDescription = isAr
-              ? "مقاس ربع A4 — خانة العدد مسطرة لكتابة الرقم يدوياً بالقلم بعد التعبئة الفعلية."
-              : "Quarter-A4 — Quantity box formatted for manual pen entry after actual packing.";
-          } else {
-            title = `Logistics Bundle - ${buildingName}`;
-            customTitle = isAr
-              ? `الحزمة اللوجستية الكاملة للمبنى — ${buildingName}`
-              : `Complete Logistics Bundle — ${buildingName}`;
-            customDescription = isAr
-              ? "ملف مجمع شامل (الكرتونة + شنطة المواد + كيس الطوارئ + ستيكرات المواد الاحتياطية)."
-              : "All-in-one bundle: Building Carton, Bag Checklist, Clean Skin Master, and Subject Stickers.";
-          }
-
+          const titles: Record<string, string> = {
+            carton: isAr ? "معاينة ستيكر كرتونة المبنى" : "Building Carton Placard",
+            bag: isAr ? "معاينة بيان شنطة الامتحانات" : "Transit Bag Exam Checklist",
+            clean_skin_master: isAr ? "معاينة كيس طوارئ الكنترول الرئيسي" : "Clean Skin Master Packet",
+            clean_skin_subjects: isAr ? "معاينة استيكرات المواد للطوارئ" : "Clean Skin Subjects Stickers",
+            bundle: isAr ? "معاينة حزمة اللوجستيات الشاملة للمبنى" : "Complete Building Logistics Bundle",
+          };
           setPreviewState({
             open: true,
             url: objectUrl,
-            title,
-            customTitle,
-            customDescription,
+            title: titles[type] || "Logistics PDF Preview",
           });
-          toast.success(isAr ? "تم فتح المعاينة بنجاح" : "Preview opened", { id: toastId });
         } else {
-          // Direct print via hidden iframe
-          const iframe = document.createElement("iframe");
-          iframe.style.position = "fixed";
-          iframe.style.right = "0";
-          iframe.style.bottom = "0";
-          iframe.style.width = "0";
-          iframe.style.height = "0";
-          iframe.style.border = "0";
-          iframe.src = objectUrl;
-          document.body.appendChild(iframe);
-          iframe.onload = () => {
-            try {
+          const printWindow = window.open(objectUrl, "_blank");
+          if (printWindow) {
+            printWindow.focus();
+            printWindow.onload = () => printWindow.print();
+          } else {
+            const iframe = document.createElement("iframe");
+            iframe.style.position = "fixed";
+            iframe.style.right = "0";
+            iframe.style.bottom = "0";
+            iframe.style.width = "0";
+            iframe.style.height = "0";
+            iframe.style.border = "0";
+            iframe.src = objectUrl;
+            document.body.appendChild(iframe);
+            iframe.onload = () => {
               iframe.contentWindow?.focus();
               iframe.contentWindow?.print();
-            } catch {
-              const w = window.open(objectUrl, "_blank");
-              w?.focus();
-              w?.print();
-            }
-          };
-          toast.success(isAr ? "تم إرسال المستند للطباعة" : "Sent to printer", { id: toastId });
+            };
+          }
+          toast.success(isAr ? "تم إرسال الملف للطباعة بنجاح" : "Document sent to printer successfully");
         }
-      } catch (err) {
-        console.error("[logistics-action] Error:", err);
-        toast.error(err instanceof Error ? err.message : isAr ? "حدث خطأ أثناء الطباعة" : "Print failed", {
-          id: toastId,
-        });
+      } catch (err: unknown) {
+        toast.dismiss(toastId);
+        const msg = err instanceof Error ? err.message : "Error generating document";
+        toast.error(msg);
       } finally {
         setBusyAction(null);
       }
@@ -539,44 +701,40 @@ export default function LogisticsHubPage() {
       busyAction,
       isAr,
       selectedExamName,
+      activeGovernorateName,
+      activeCenterName,
+      activeBuildingName,
       selectedSessionName,
-      selectedSchool,
-      selectedSchoolId,
       totalRoomsCount,
       totalCandidatesCount,
       allRoomNames,
       liveFloors,
       boxNumber,
       totalBoxes,
+      activeTargetFolderId,
       securitySeal,
     ],
   );
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
+    <div className="space-y-6 pb-16">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/80 pb-5">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-2">
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>
-              {isDriveConnected
-                ? isAr
-                  ? "متصل مباشرة بمجلدات Google Drive"
-                  : "Live Google Drive Connected"
-                : isAr
-                ? "جاري الاتصال بـ Google Drive..."
-                : "Connecting to Google Drive..."}
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {isAr ? "متصل مباشرة بمجلدات Google Drive" : "Live Google Drive Connected"}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
             <Boxes className="size-7 text-indigo-600 dark:text-indigo-400" />
-            <span>{isAr ? "مركز الاستيكرات واللوجستيات" : "Logistics & Stickers Hub"}</span>
+            <span>{isAr ? "منصة استيكرات ووثائق اللوجستيات (EST Logistics Hub)" : "Logistics & Stickers Hub"}</span>
           </h1>
-          <p className="mt-1 text-sm text-muted">
+          <p className="text-xs sm:text-sm text-muted mt-1 max-w-2xl">
             {isAr
-              ? "قراءة تلقائية مباشرة من مجلدات Google Drive لاختيار الدورة والامتحان والمدرسة وطباعة الاستيكرات والبيانات."
-              : "Automatic dynamic reading from Google Drive folders for cycles, exams, schools, and printable logistics placarded materials."}
+              ? "قراءة ديناميكية مباشرة من مجلدات درايف: اختر الدورة والاختبار والمدينة أو المدارس لاستخراج الأدوار والقاعات وأعداد الطلاب بدقة."
+              : "Automatic dynamic reading from Google Drive folders for cycles, exams, cities or schools, and printable logistics materials."}
           </p>
         </div>
 
@@ -598,6 +756,7 @@ export default function LogisticsHubPage() {
 
       {/* Dynamic Drive Selector Bar */}
       <div className="card p-4 sm:p-5 border border-border shadow-xs bg-surface-soft/40 backdrop-blur-xs space-y-4">
+        {/* ROW 1: Cycle, Exam, and Destination Category */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Step 1: Session / Cycle Folder (فولدر الدورة) */}
           <div>
@@ -663,34 +822,156 @@ export default function LogisticsHubPage() {
             </select>
           </div>
 
-          {/* Step 3: School / Center / Building Folder (المدرسة أو المبنى) */}
+          {/* Step 3: Destination Category (المدارس أو إحدى المدن/المحافظات) */}
           <div>
             <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
-                <Building2 className="size-3.5 text-emerald-500" />
-                <span>{isAr ? "3. المدرسة أو المبنى (School)" : "3. School / Center"}</span>
+                <MapPin className="size-3.5 text-rose-500" />
+                <span>{isAr ? "3. الوجهة (المدارس أو المدينة)" : "3. Destination (Schools/City)"}</span>
               </span>
-              {loadingSchools && <Loader2 className="size-3 animate-spin text-muted" />}
+              {loadingDestinations && <Loader2 className="size-3 animate-spin text-muted" />}
             </label>
             <select
-              value={selectedSchoolId}
+              value={selectedDestId}
               onChange={(e) => {
-                const found = schools.find((s) => s.id === e.target.value);
+                const found = destinations.find((d) => d.id === e.target.value);
                 if (found) {
-                  setSelectedSchoolId(found.id);
-                  setSelectedSchool(found);
+                  setSelectedDestId(found.id);
+                  setSelectedDest(found);
+                  if (found.isSchools) {
+                    void loadSchools(found.id);
+                  } else if (found.cityName) {
+                    void loadCenters(found.id, found.cityName);
+                  }
                 }
               }}
-              disabled={loadingSchools || schools.length === 0}
+              disabled={loadingDestinations || destinations.length === 0}
               className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
             >
-              {schools.map((sc) => (
-                <option key={sc.id} value={sc.id}>
-                  🏫 {sc.fullFolderName}
+              {destinations.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
                 </option>
               ))}
             </select>
           </div>
+        </div>
+
+        {/* ROW 2: Dependent Selectors (Schools OR Centers & Buildings) */}
+        <div className="pt-2 border-t border-border/50">
+          {isSchoolMode ? (
+            /* CASE A: Schools Dropdown */
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <School className="size-3.5 text-emerald-500" />
+                  <span>{isAr ? "4. اختيار المدرسة (School)" : "4. Select School"}</span>
+                </span>
+                {loadingSchools && <Loader2 className="size-3 animate-spin text-muted" />}
+              </label>
+              <select
+                value={selectedSchoolId}
+                onChange={(e) => {
+                  const found = schools.find((s) => s.id === e.target.value);
+                  if (found) {
+                    setSelectedSchoolId(found.id);
+                    setSelectedSchool(found);
+                    void loadTargetHierarchy(found.id, "school", found.governorate, found.name);
+                  }
+                }}
+                disabled={loadingSchools || schools.length === 0}
+                className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+              >
+                {schools.map((sc) => (
+                  <option key={sc.id} value={sc.id}>
+                    🏫 {sc.fullFolderName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            /* CASE B: City Mode -> Center Dropdown & Building Dropdown */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Select Center */}
+              <div>
+                <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Landmark className="size-3.5 text-blue-500" />
+                    <span>{isAr ? "4. السنتر (Test Center)" : "4. Test Center"}</span>
+                  </span>
+                  {loadingCenters && <Loader2 className="size-3 animate-spin text-muted" />}
+                </label>
+                <select
+                  value={selectedCenterId}
+                  onChange={(e) => {
+                    const found = centers.find((c) => c.id === e.target.value);
+                    if (found) {
+                      setSelectedCenterId(found.id);
+                      setSelectedCenterName(found.name);
+                      if (selectedDest?.cityName) {
+                        void loadBuildings(found.id, found.name, selectedDest.cityName);
+                      }
+                    }
+                  }}
+                  disabled={loadingCenters || centers.length === 0}
+                  className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+                >
+                  {centers.length > 0 ? (
+                    centers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        🏛️ {c.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">
+                      {loadingCenters ? (isAr ? "جاري التحميل..." : "Loading...") : (isAr ? "لا توجد سناتر" : "No centers")}
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              {/* Select Building */}
+              <div>
+                <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="size-3.5 text-purple-500" />
+                    <span>{isAr ? "5. المبنى (Building)" : "5. Building"}</span>
+                  </span>
+                  {loadingBuildings && <Loader2 className="size-3 animate-spin text-muted" />}
+                </label>
+                <select
+                  value={selectedBuildingId}
+                  onChange={(e) => {
+                    const found = buildings.find((b) => b.id === e.target.value);
+                    if (found) {
+                      setSelectedBuildingId(found.id);
+                      setSelectedBuildingName(found.name);
+                      void loadTargetHierarchy(
+                        found.id,
+                        "building",
+                        selectedDest?.cityName,
+                        found.name,
+                      );
+                    }
+                  }}
+                  disabled={loadingBuildings || buildings.length === 0}
+                  className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+                >
+                  {buildings.length > 0 ? (
+                    buildings.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        🏢 {b.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">
+                      {loadingBuildings ? (isAr ? "جاري التحميل..." : "Loading...") : (isAr ? "لا توجد مباني" : "No buildings")}
+                    </option>
+                  )}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Live Detected Stats Banner from Google Drive */}
@@ -698,38 +979,40 @@ export default function LogisticsHubPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
               <FolderCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{selectedSchool?.name || "Loading School..."}</span>
-              {selectedSchool?.governorate && (
+              <span>{activeBuildingName}</span>
+              {activeGovernorateName && (
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
-                  {selectedSchool.governorate}
+                  {activeGovernorateName}
                 </span>
               )}
             </span>
             <span className="text-muted/60">•</span>
             <span className="font-bold flex items-center gap-1">
               <Layers className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>
-                {loadingFloors ? (
-                  <Loader2 className="size-3 animate-spin inline" />
-                ) : (
-                  `${totalFloorsCount} ${isAr ? "أدوار" : "Floors"}`
-                )}
-              </span>
+              <span>{totalFloorsCount} {isAr ? "أدوار" : "Floors"}</span>
             </span>
             <span className="text-muted/60">•</span>
-            <span className="font-bold">
-              {totalRoomsCount} {isAr ? "قاعة مسجلة" : "Rooms"}
+            <span className="font-bold flex items-center gap-1">
+              <Boxes className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>{totalRoomsCount} {isAr ? "قاعات / لجان" : "Rooms"}</span>
             </span>
             <span className="text-muted/60">•</span>
-            <span className="font-bold text-emerald-700 dark:text-emerald-300">
-              {totalCandidatesCount} {isAr ? "طالب ممتحن (من أسماء الملفات)" : "Assigned Candidates"}
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+              {totalCandidatesCount} {isAr ? "طالب مسجل" : "Assigned Candidates"}
             </span>
           </div>
 
           <button
             type="button"
             onClick={() => {
-              if (selectedSchoolId) void loadSchoolDetails(selectedSchoolId);
+              if (activeTargetFolderId) {
+                void loadTargetHierarchy(
+                  activeTargetFolderId,
+                  isSchoolMode ? "school" : "building",
+                  activeGovernorateName,
+                  activeBuildingName,
+                );
+              }
             }}
             disabled={loadingFloors}
             className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
@@ -858,8 +1141,8 @@ export default function LogisticsHubPage() {
 
           <p className="text-xs text-muted mb-4 leading-relaxed">
             {isAr
-              ? `بيان مقاس A4 يلصق على شنطة المواد لـ ${selectedExamName}، يعرض جميع المواد مع خانات التأشير [✓] والقفل الأمني.`
-              : `A4 Portrait checklist affixed to the transit bag with subject breakdowns and packing verification for ${selectedExamName}.`}
+              ? "بيان A4 رأسي ملصق على شنطة نقل أوراق الإجابة والأسئلة لتأكيد استلام أكياس كل قاعة والمظاريف المغلقة."
+              : "A4 Portrait checklist affixed to the transit bag with subject breakdowns and packing verification for EST."}
           </p>
 
           <div className="flex items-center gap-2 pt-3 border-t border-border/60">
@@ -892,31 +1175,31 @@ export default function LogisticsHubPage() {
           </div>
         </div>
 
-        {/* CARD 3: Clean Skin Master Envelope */}
-        <div className="card p-5 border border-border/80 hover:border-red-500/40 shadow-xs transition-all relative overflow-hidden group">
+        {/* CARD 3: Official Clean Skin Emergency Reserve Packet (Master Custody) */}
+        <div className="card p-5 border border-red-500/30 hover:border-red-500/50 shadow-xs transition-all relative overflow-hidden group bg-red-500/[0.02]">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5">
-              <div className="size-10 rounded-xl bg-red-500/10 text-red-700 dark:text-red-400 flex items-center justify-center font-bold text-lg">
-                🚨
+              <div className="size-10 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center font-bold text-lg">
+                🛡️
               </div>
               <div>
                 <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider block">
-                  A4 Single Page
+                  A4 Strict Single Page
                 </span>
                 <h3 className="text-base font-extrabold text-foreground">
-                  {isAr ? "ستيكر كيس الطوارئ (Clean Skin Master)" : "Clean Skin Master Emergency Placard"}
+                  {isAr ? "كيس طوارئ الكنترول (Clean Skin Master Packet)" : "Emergency Reserve Master Packet"}
                 </h3>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded-md bg-red-500/10 text-red-700 dark:text-red-400 text-xs font-bold">
-              Emergency Reserve
+              Emergency Placard
             </span>
           </div>
 
           <p className="text-xs text-muted mb-4 leading-relaxed">
             {isAr
-              ? "ستيكر مقاس A4 صفحة واحدة بالضبط، يلصق على كيس الاحتياطي الخارجي مع جدول شبكي لتسجيل صرف الأوراق الطارئة للقاعات."
-              : "Strict single-page A4 emergency reserve placard with structured incident dispatch log sheet and safe printer margins."}
+              ? "ورقة مقاس A4 محكمة ومصممة بدقة لطباعة جدول سجل الصرف المباشر لحالات الطوارئ مع 18 صفا مسطرا ومظللا بدون أي خروج عن الصفحة."
+              : "Strict single-page A4 incident placard affixed to the Clean Skin Master packet containing 18 zebra-striped incident rows."}
           </p>
 
           <div className="flex items-center gap-2 pt-3 border-t border-border/60">
@@ -944,16 +1227,16 @@ export default function LogisticsHubPage() {
               ) : (
                 <Printer className="size-3.5" />
               )}
-              <span>{isAr ? "طباعة الكيس" : "Print Master"}</span>
+              <span>{isAr ? "طباعة البلاكار" : "Print Emergency Placard"}</span>
             </button>
           </div>
         </div>
 
-        {/* CARD 4: Clean Skin Subject Stickers (Quarter A4) */}
-        <div className="card p-5 border border-border/80 hover:border-red-500/40 shadow-xs transition-all relative overflow-hidden group">
+        {/* CARD 4: Clean Skin Individual Subjects Stickers */}
+        <div className="card p-5 border border-orange-500/30 hover:border-orange-500/50 shadow-xs transition-all relative overflow-hidden group bg-orange-500/[0.02]">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5">
-              <div className="size-10 rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-400 flex items-center justify-center font-bold text-lg">
+              <div className="size-10 rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold text-lg">
                 🏷️
               </div>
               <div>
@@ -961,12 +1244,12 @@ export default function LogisticsHubPage() {
                   Quarter A4 (4-up)
                 </span>
                 <h3 className="text-base font-extrabold text-foreground">
-                  {isAr ? "ستيكرات المواد الاحتياطية (Clean Skin)" : "Clean Skin Subject Stickers (4-Up)"}
+                  {isAr ? "ستيكرات مواد الطوارئ (Subject Packets)" : "Clean Skin Subject Stickers"}
                 </h3>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-700 dark:text-orange-400 text-xs font-bold">
-              Quarter A4
+              Quarter-A4
             </span>
           </div>
 
