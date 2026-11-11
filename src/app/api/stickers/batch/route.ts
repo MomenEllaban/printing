@@ -20,6 +20,7 @@ const batchStickersSchema = z.object({
   orientation: z.enum(["portrait", "landscape"]).optional(),
   widthMm: z.number().min(30).max(300).optional(),
   heightMm: z.number().min(20).max(200).optional(),
+  knownFiles: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 export async function POST(request: Request) {
@@ -131,6 +132,14 @@ export async function POST(request: Request) {
           folderFiles = (filesRes.data.files || []).map((f) => ({ name: f.name || "" }));
         } catch (err) {
           console.warn("[stickers/batch] Error querying direct files:", err);
+        }
+      }
+
+      if (body.knownFiles?.[folderId]) {
+        for (const fn of body.knownFiles[folderId]) {
+          if (!folderFiles.some((f) => f.name === fn)) {
+            folderFiles.unshift({ name: fn });
+          }
         }
       }
 

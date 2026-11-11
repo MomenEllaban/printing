@@ -119,7 +119,8 @@ export async function GET(request: Request, context: Context) {
         try {
           const filesRes = await drive.files.list({
             q: `'${resolvedFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
-            fields: "files(id, name)",
+            fields: "files(id, name, createdTime, modifiedTime)",
+            orderBy: "createdTime desc, modifiedTime desc",
             pageSize: 50,
             supportsAllDrives: true,
             includeItemsFromAllDrives: true,
@@ -129,6 +130,20 @@ export async function GET(request: Request, context: Context) {
           console.warn("[sticker] Error querying direct files:", err);
         }
       }
+    }
+
+    const knownFilesParam = url.searchParams.get("knownFiles");
+    if (knownFilesParam) {
+      try {
+        const parsedFiles = JSON.parse(knownFilesParam);
+        if (Array.isArray(parsedFiles)) {
+          for (const fn of parsedFiles) {
+            if (typeof fn === "string" && !folderFiles.some((f) => f.name === fn)) {
+              folderFiles.unshift({ name: fn });
+            }
+          }
+        }
+      } catch {}
     }
 
     if (breadcrumbs.length === 0) {

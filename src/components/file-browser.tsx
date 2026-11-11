@@ -784,7 +784,11 @@ export function FileBrowser({
       );
 
       try {
-        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}`);
+        const knownChildFiles = (folderChildren[target.id] || (currentFolder?.id === target.id ? items : []))
+          .filter((i) => !i.isFolder)
+          .map((i) => i.name);
+        const queryParam = knownChildFiles.length > 0 ? `?knownFiles=${encodeURIComponent(JSON.stringify(knownChildFiles))}` : "";
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}${queryParam}`);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(
@@ -885,7 +889,11 @@ export function FileBrowser({
       );
 
       try {
-        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=exam`);
+        const knownChildFiles = (folderChildren[target.id] || (currentFolder?.id === target.id ? items : []))
+          .filter((i) => !i.isFolder)
+          .map((i) => i.name);
+        const queryParam = knownChildFiles.length > 0 ? `&knownFiles=${encodeURIComponent(JSON.stringify(knownChildFiles))}` : "";
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=exam${queryParam}`);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(
@@ -1497,6 +1505,16 @@ export function FileBrowser({
       );
 
       try {
+        const knownFiles: Record<string, string[]> = {};
+        for (const f of targetFolders) {
+          const files = (folderChildren[f.id] || (currentFolder?.id === f.id ? items : []))
+            .filter((i) => !i.isFolder)
+            .map((i) => i.name);
+          if (files.length > 0) {
+            knownFiles[f.id] = files;
+          }
+        }
+
         const res = await fetch("/api/stickers/batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1505,6 +1523,7 @@ export function FileBrowser({
             type,
             includeChildren,
             orientation,
+            knownFiles,
           }),
         });
 

@@ -772,6 +772,18 @@ describe("generateStickerPdf", () => {
         });
       });
 
+      it("parses user-uploaded student register with underscores and trailing spaces", () => {
+        const parsed = parseEst1FileName("E426 _ LIT-33 _ MATH-33 _ ESSAY-YES-12 .pdf");
+        expect(parsed).toMatchObject({
+          room: "E426",
+          litCount: 33,
+          mathCount: 33,
+          essayCount: 12,
+          hasEssay: true,
+          totalStudents: 33,
+        });
+      });
+
       it("parses valid EST I room file name without Essay (ESSAY-NO-0)", () => {
         const parsed = parseEst1FileName("204 | LIT-30 | MATH-30 | ESSAY-NO-0.pdf");
         expect(parsed).toMatchObject({
@@ -804,6 +816,24 @@ describe("generateStickerPdf", () => {
         expect(counts.essayCount).toBe(12);
         expect(counts.hasEssay).toBe(true);
         expect(counts.totalStudents).toBe(35);
+      });
+
+      it("correctly extracts 33 candidates and overrides default 25 when user uploads underscore filename", () => {
+        const counts = getRoomExamCounts({
+          room: "E426",
+          folderFiles: [
+            // Sample older file with default 25
+            { name: "E426 | LIT-25 | MATH-25 | ESSAY-NO-0.pdf" },
+            // Newly uploaded student register with 33 candidates
+            { name: "E426 _ LIT-33 _ MATH-33 _ ESSAY-YES-12 .pdf" },
+          ],
+        });
+        expect(counts.room).toBe("E426");
+        expect(counts.litCount).toBe(33);
+        expect(counts.mathCount).toBe(33);
+        expect(counts.essayCount).toBe(12);
+        expect(counts.hasEssay).toBe(true);
+        expect(counts.totalStudents).toBe(33);
       });
 
       it("falls back to EST reference data when no matching child file exists", () => {
