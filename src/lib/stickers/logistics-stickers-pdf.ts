@@ -134,7 +134,7 @@ export async function generateBuildingCartonStickerPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText(`BUILDING MASTER CARTON / صندوق أوراق ومظاريف المبنى بالكامل — ${sessionText.toUpperCase()}`, {
+  page.drawText(`BUILDING MASTER CARTON — ${sessionText.toUpperCase()}`, {
     x: textStartX,
     y: headerY + 16,
     size: 10.5,
@@ -191,7 +191,7 @@ export async function generateBuildingCartonStickerPdf(
   const locColW = (cardW - 24) / 3;
 
   // 1. Governorate
-  page.drawText("GOVERNORATE / المحافظة", {
+  page.drawText("GOVERNORATE", {
     x: cardX + 22,
     y: locRibbonY + locRibbonH - 16,
     size: 8,
@@ -207,7 +207,7 @@ export async function generateBuildingCartonStickerPdf(
   });
 
   // 2. Test Center
-  page.drawText("TEST CENTER / السنتر", {
+  page.drawText("TEST CENTER", {
     x: cardX + 12 + locColW + 10,
     y: locRibbonY + locRibbonH - 16,
     size: 8,
@@ -223,7 +223,7 @@ export async function generateBuildingCartonStickerPdf(
   });
 
   // 3. Building
-  page.drawText("BUILDING / المبنى", {
+  page.drawText("BUILDING", {
     x: cardX + 12 + locColW * 2 + 10,
     y: locRibbonY + locRibbonH - 16,
     size: 8,
@@ -342,7 +342,7 @@ export async function generateBuildingCartonStickerPdf(
     borderColor: COLOR_GOLD,
     borderWidth: 1.2,
   });
-  page.drawText("SECURITY SEAL NUMBER / رقم القفل الأمني:", {
+  page.drawText("SECURITY SEAL NUMBER:", {
     x: leftX + 16,
     y: sealY + sealH - 16,
     size: 7.5,
@@ -383,7 +383,7 @@ export async function generateBuildingCartonStickerPdf(
     height: 25,
     color: COLOR_CHARCOAL,
   });
-  page.drawText("ROOMS DIRECTORY & PACKETS MANIFEST / مسرد القاعات بالكرتونة", {
+  page.drawText("ROOMS DIRECTORY & PACKETS MANIFEST", {
     x: rightX + 14,
     y: bodyBottom + bodyH - 18,
     size: 8.5,
@@ -461,7 +461,7 @@ export async function generateBuildingCartonStickerPdf(
 
   const footColW = (cardW - 24) / 3;
 
-  page.drawText("PACKED & VERIFIED BY / مسؤول التعبئة:", {
+  page.drawText("PACKED & VERIFIED BY:", {
     x: cardX + 20,
     y: footY + footerH - 15,
     size: 7.5,
@@ -476,7 +476,7 @@ export async function generateBuildingCartonStickerPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("DISPATCH DATE & TIME / تاريخ وساعة الخروج:", {
+  page.drawText("DISPATCH DATE & TIME:", {
     x: cardX + 12 + footColW + 10,
     y: footY + footerH - 15,
     size: 7.5,
@@ -491,7 +491,7 @@ export async function generateBuildingCartonStickerPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("BUILDING RECEPTION / استلام مسؤول المبنى:", {
+  page.drawText("BUILDING RECEPTION & SIGNATURE:", {
     x: cardX + 12 + footColW * 2 + 10,
     y: footY + footerH - 15,
     size: 7.5,
@@ -584,7 +584,7 @@ export async function generateExamBagChecklistPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("بيان محتويات شنطة الامتحانات وقائمة الفحص والتأكيد", {
+  page.drawText("EXAM TRANSIT BAG MANIFEST & SECURITY VERIFICATION CHECKLIST", {
     x: textStartX,
     y: headerY + 16,
     size: 9.5,
@@ -621,7 +621,7 @@ export async function generateExamBagChecklistPdf(
     color: COLOR_MUTED,
   });
 
-  page.drawText(`BUILDING / المبنى: ${options.building || "Building HQ"}`, {
+  page.drawText(`BUILDING: ${options.building || "Building HQ"}`, {
     x: cardX + 18,
     y: locY + 8,
     size: 12,
@@ -676,7 +676,7 @@ export async function generateExamBagChecklistPdf(
   });
 
   page.drawText("PACKED", { x: cardX + 20, y: thY + 9, size: 8, font, color: COLOR_GOLD });
-  page.drawText("EXAMINATION SUBJECT / المادة", { x: cardX + 80, y: thY + 9, size: 8, font, color: COLOR_GOLD });
+  page.drawText("EXAMINATION SUBJECT", { x: cardX + 80, y: thY + 9, size: 8, font, color: COLOR_GOLD });
   page.drawText("ENVELOPES COUNT", { x: cardX + 310, y: thY + 9, size: 8, font, color: COLOR_GOLD });
   page.drawText("VERIFIED BY", { x: cardX + 430, y: thY + 9, size: 8, font, color: COLOR_GOLD });
 
@@ -801,7 +801,7 @@ export async function generateExamBagChecklistPdf(
   });
 
   const sealLineY = secY + secH - 52;
-  page.drawText("TRANSIT BAG SECURITY SEAL # (رقم القفل الأمني للشنطة):", {
+  page.drawText("TRANSIT BAG SECURITY SEAL NUMBER:", {
     x: cardX + 18,
     y: sealLineY + 12,
     size: 8,
@@ -829,7 +829,7 @@ export async function generateExamBagChecklistPdf(
   const sigY = secY + 10;
   const sigColW = (cardW - 36) / 2;
 
-  page.drawText("PACKED & DISPATCHED BY / مسؤول التجهيز:", {
+  page.drawText("PACKED & DISPATCHED BY:", {
     x: cardX + 18,
     y: sigY + 28,
     size: 7.5,
@@ -844,7 +844,7 @@ export async function generateExamBagChecklistPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("RECEIVED & UNBROKEN SEAL VERIFIED BY / المستلم بالسنتر:", {
+  page.drawText("RECEIVED & UNBROKEN SEAL VERIFIED BY:", {
     x: cardX + 18 + sigColW,
     y: sigY + 28,
     size: 7.5,
@@ -954,7 +954,7 @@ export async function generateCleanSkinMasterPdf(
     color: COLOR_EMERGENCY_RED,
   });
 
-  page.drawText("مظروف أوراق الامتحانات الاحتياطية والطوارئ — عهدة رئيس الكنترول", {
+  page.drawText("EMERGENCY & RESERVE EXAM PAPERS PACKET — CONTROL MASTER CUSTODY", {
     x: textStartX,
     y: headerY + 28,
     size: 9.5,
@@ -1009,7 +1009,7 @@ export async function generateCleanSkinMasterPdf(
     font,
     color: COLOR_MUTED,
   });
-  page.drawText(`BUILDING / المبنى: ${options.building || "Building HQ"}    •    SESSION: ${options.date || "December 2026"}`, {
+  page.drawText(`BUILDING: ${options.building || "Building HQ"}    •    SESSION: ${options.date || "December 2026"}`, {
     x: cardX + 16,
     y: locY + 8,
     size: 9.5,
@@ -1043,7 +1043,7 @@ export async function generateCleanSkinMasterPdf(
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("EMERGENCY DISPATCH LOG SHEET / سجل صرف أوراق الطوارئ بالقاعات", {
+  page.drawText("EMERGENCY DISPATCH LOG SHEET", {
     x: cardX + 16,
     y: thY + 8,
     size: 8.5,
@@ -1065,11 +1065,11 @@ export async function generateCleanSkinMasterPdf(
   });
 
   page.drawText("#", { x: cardX + 14, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("TIME / الوقت", { x: cardX + 32, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("ROOM / القاعة", { x: cardX + 90, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("SUBJECT / المادة", { x: cardX + 160, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+  page.drawText("TIME", { x: cardX + 32, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+  page.drawText("ROOM", { x: cardX + 90, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+  page.drawText("SUBJECT", { x: cardX + 160, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
   page.drawText("COPIES", { x: cardX + 270, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
-  page.drawText("REASON (DEFECT / EXTRA) / السبب", { x: cardX + 320, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
+  page.drawText("REASON (DEFECT / EXTRA)", { x: cardX + 320, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
   page.drawText("PROCTOR SIGNATURE", { x: cardX + 445, y: colHeaderY + 7, size: 7.5, font, color: COLOR_CHARCOAL });
 
   // 12 Blank Rows for manual logging
@@ -1111,7 +1111,7 @@ export async function generateCleanSkinMasterPdf(
     borderWidth: 0.8,
   });
 
-  page.drawText("CHIEF PROCTOR CLOSEOUT / إقرار رئيس الكنترول في نهاية الامتحان:", {
+  page.drawText("CHIEF PROCTOR CLOSEOUT STATEMENT:", {
     x: cardX + 16,
     y: footY + footH - 16,
     size: 7.5,
@@ -1296,7 +1296,7 @@ function drawQuarterCleanSkinSticker(params: {
     color: COLOR_EMERGENCY_RED,
   });
 
-  page.drawText("أوراق احتياطي وطوارئ — للاستبدال أثناء الامتحان", {
+  page.drawText("EMERGENCY & RESERVE EXAM PAPERS — FOR REPLACEMENT IN ROOMS", {
     x: textStartX,
     y: logoY + 2,
     size: 6.5,
@@ -1526,7 +1526,7 @@ function drawQuarterCleanSkinSticker(params: {
     borderWidth: 1.2,
   });
 
-  page.drawText("PACKET QUANTITY / عدد النسخ (يُكتب باليد):", {
+  page.drawText("PACKET QUANTITY (WRITE BY HAND):", {
     x: rightX + 12,
     y: countBoxY + countBoxH - 12,
     size: 6.2,
