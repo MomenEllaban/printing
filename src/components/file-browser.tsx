@@ -1446,6 +1446,8 @@ export function FileBrowser({
   const [batchStickersOpen, setBatchStickersOpen] = useState(false);
   const [busyBatchStickers, setBusyBatchStickers] = useState(false);
   const [batchStickerAction, setBatchStickerAction] = useState<"show" | "print" | null>(null);
+  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam">("regular");
+  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam">("regular");
 
   const handleBatchStickersAction = useCallback(
     async ({
@@ -1478,6 +1480,7 @@ export function FileBrowser({
 
       setBusyBatchStickers(true);
       setBatchStickerAction(action);
+      setBatchStickerType(type);
 
       const toastId = toast.loading(
         action === "show"
@@ -2579,32 +2582,6 @@ export function FileBrowser({
                   </button>
                   {item.isFolder && (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenNewSubFolder(item)}
-                        className="chip border border-accent/30 text-accent hover:bg-accent/10 flex items-center gap-1 cursor-pointer font-medium"
-                        title={
-                          locale === "ar"
-                            ? `إضافة مجلد فرعي داخل "${item.name}"`
-                            : `Add subfolder inside "${item.name}"`
-                        }
-                      >
-                        <FolderPlus className="size-3 text-accent" />
-                        <span>{locale === "ar" ? "+ مجلد" : "+ Folder"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenUploadForFolder(item)}
-                        className="chip border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 cursor-pointer font-medium"
-                        title={
-                          locale === "ar"
-                            ? `رفع ملفات مباشرة داخل "${item.name}"`
-                            : `Upload files into "${item.name}"`
-                        }
-                      >
-                        <CloudUpload className="size-3 text-emerald-600 dark:text-emerald-400" />
-                        <span>{locale === "ar" ? "+ ملف" : "+ File"}</span>
-                      </button>
                       <div className="inline-flex items-center rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-0.5 text-xs">
                         <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 border-e border-indigo-500/20 select-none">
                           <Tag className="size-3 text-indigo-600 dark:text-indigo-400" />
@@ -3050,11 +3027,14 @@ export function FileBrowser({
           </div>
 
           <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
-            {/* Batch Stickers Action Button */}
+            {/* Batch Regular Stickers Action Button */}
             <div className="inline-flex items-center rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-0.5 shadow-sm">
               <button
                 type="button"
-                onClick={() => setBatchStickersOpen(true)}
+                onClick={() => {
+                  setBatchStickersInitialType("regular");
+                  setBatchStickersOpen(true);
+                }}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 rounded-s-lg border-e border-indigo-500/25 transition-all cursor-pointer"
                 title={
                   locale === "ar"
@@ -3072,7 +3052,7 @@ export function FileBrowser({
 
               <button
                 type="button"
-                onClick={() => handleBatchStickersAction({ action: "show" })}
+                onClick={() => handleBatchStickersAction({ action: "show", type: "regular" })}
                 disabled={busyBatchStickers}
                 className="inline-flex items-center justify-center size-7 rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
                 title={
@@ -3082,7 +3062,7 @@ export function FileBrowser({
                 }
                 aria-label="Preview Stickers"
               >
-                {busyBatchStickers && batchStickerAction === "show" ? (
+                {busyBatchStickers && batchStickerAction === "show" && batchStickerType === "regular" ? (
                   <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
                 ) : (
                   <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -3091,7 +3071,7 @@ export function FileBrowser({
 
               <button
                 type="button"
-                onClick={() => handleBatchStickersAction({ action: "print" })}
+                onClick={() => handleBatchStickersAction({ action: "print", type: "regular" })}
                 disabled={busyBatchStickers}
                 className="inline-flex items-center justify-center size-7 rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
                 title={
@@ -3101,7 +3081,7 @@ export function FileBrowser({
                 }
                 aria-label="Print Stickers"
               >
-                {busyBatchStickers && batchStickerAction === "print" ? (
+                {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "regular" ? (
                   <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
                 ) : (
                   <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -3109,36 +3089,43 @@ export function FileBrowser({
               </button>
             </div>
 
-            {/* Exam Stickers Action Button (when inside an exam room) */}
-            {isCurrentFolderRoom && currentFolder && (
+            {/* Exam Stickers Action Button (shown whenever folders/rooms/floors/buildings are selected or in a room) */}
+            {(selectedFolderCount > 0 || (isCurrentFolderRoom && currentFolder)) && (
               <div className="inline-flex items-center rounded-xl border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-sm">
                 <button
                   type="button"
-                  onClick={() => setBatchStickersOpen(true)}
+                  onClick={() => {
+                    setBatchStickersInitialType("exam");
+                    setBatchStickersOpen(true);
+                  }}
                   className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 rounded-s-lg border-e border-amber-500/25 transition-all cursor-pointer"
                   title={
                     locale === "ar"
-                      ? "طباعة استيكرات الامتحانات (EST I) للقاعة"
-                      : "Print EST I Exam Stickers for room"
+                      ? "طباعة استيكرات الامتحانات (EST I) للمجلدات المحددة أو القاعة"
+                      : "Print EST I Exam Stickers for selected folders or room"
                   }
                 >
                   <Files className="size-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>{locale === "ar" ? "استيكرات الامتحانات" : "Exam Stickers"}</span>
+                  <span>
+                    {locale === "ar"
+                      ? `استيكرات الامتحانات (${selectedFolderCount > 0 ? selectedFolderCount : 1})`
+                      : `Exam Stickers (${selectedFolderCount > 0 ? selectedFolderCount : 1})`}
+                  </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={(e) => handleShowExamStickers(e, currentFolder)}
-                  disabled={busyExamStickerId === currentFolder.id}
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "exam", includeChildren: true })}
+                  disabled={busyBatchStickers}
                   className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                   title={
                     locale === "ar"
-                      ? "معاينة استيكرات الامتحانات للقاعة (Show)"
-                      : "Preview exam stickers for room (Show)"
+                      ? "معاينة استيكرات الامتحانات (EST I) للمجلدات أو القاعة (Show)"
+                      : "Preview exam stickers (EST I) for folders or room (Show)"
                   }
                   aria-label="Preview Exam Stickers"
                 >
-                  {busyExamStickerId === currentFolder.id && examStickerAction === "show" ? (
+                  {busyBatchStickers && batchStickerAction === "show" && batchStickerType === "exam" ? (
                     <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
                   ) : (
                     <Eye className="size-3.5 text-amber-600 dark:text-amber-400" />
@@ -3147,17 +3134,17 @@ export function FileBrowser({
 
                 <button
                   type="button"
-                  onClick={(e) => handlePrintExamStickers(e, currentFolder)}
-                  disabled={busyExamStickerId === currentFolder.id}
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "exam", includeChildren: true })}
+                  disabled={busyBatchStickers}
                   className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                   title={
                     locale === "ar"
-                      ? "طباعة استيكرات الامتحانات للقاعة مباشرة (Print)"
-                      : "Print exam stickers for room directly"
+                      ? "طباعة استيكرات الامتحانات (EST I) للمجلدات أو القاعة مباشرة (Print)"
+                      : "Print exam stickers (EST I) for folders or room directly"
                   }
                   aria-label="Print Exam Stickers"
                 >
-                  {busyExamStickerId === currentFolder.id && examStickerAction === "print" ? (
+                  {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "exam" ? (
                     <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
                   ) : (
                     <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
@@ -3242,6 +3229,7 @@ export function FileBrowser({
         onClose={() => setBatchStickersOpen(false)}
         selectedFolders={selectedItems.filter((i) => i.isFolder)}
         currentFolder={currentFolder}
+        initialType={batchStickersInitialType}
         loading={busyBatchStickers}
         onExecute={handleBatchStickersAction}
       />
@@ -3982,34 +3970,6 @@ function TreeRow({
           <div className="flex items-center justify-end gap-1">
             {item.isFolder && (
               <div className="flex items-center gap-1 me-1">
-                <button
-                  type="button"
-                  onClick={() => onNewSubFolder(item)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted hover:text-accent hover:border-accent hover:bg-accent/10 transition-all cursor-pointer shadow-2xs"
-                  title={
-                    locale === "ar"
-                      ? `إضافة مجلد فرعي داخل "${item.name}"`
-                      : `Add subfolder inside "${item.name}"`
-                  }
-                >
-                  <FolderPlus className="size-3.5 text-accent" />
-                  <span className="hidden sm:inline">{locale === "ar" ? "+ مجلد" : "+ Folder"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onUploadToFolder(item)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-bold text-muted hover:text-emerald-600 hover:border-emerald-500 hover:bg-emerald-500/10 transition-all cursor-pointer shadow-2xs"
-                  title={
-                    locale === "ar"
-                      ? `رفع ملفات مباشرة داخل "${item.name}"`
-                      : `Upload files into "${item.name}"`
-                  }
-                >
-                  <CloudUpload className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span className="hidden sm:inline">{locale === "ar" ? "+ ملف" : "+ File"}</span>
-                </button>
-
                 {(() => {
                   const regCategory = getFolderRegisterCategory({
                     folder: item,

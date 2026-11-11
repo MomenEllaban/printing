@@ -7,6 +7,7 @@ import { getDemoBreadcrumbs, getDemoDescendants, isDemoEnabled } from "@/lib/dem
 import { getSettings } from "@/lib/settings";
 import { buildStickerContent, type StickerContent, type StickerSubfolderInfo } from "@/lib/stickers/sticker-content";
 import { generateBatchStickerPdf, generateBatchExamStickersPdf } from "@/lib/stickers/sticker-pdf";
+import { getRoomExamCounts } from "@/lib/stickers/est-room-data";
 import { AppError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -40,9 +41,10 @@ export async function POST(request: Request) {
 
     // Collect all unique folder IDs to generate stickers for
     const targetFolderIds = new Set<string>(body.folderIds);
+    const isExamStickers = body.type === "exam";
 
-    // If includeChildren is enabled, expand to include descendant folders
-    if (body.includeChildren) {
+    // If includeChildren is enabled OR if generating exam stickers (exam stickers belong to rooms), expand descendants
+    if (body.includeChildren || isExamStickers) {
       if (isDemo || body.folderIds.some((id) => id.startsWith("demo-"))) {
         const desc = getDemoDescendants(body.folderIds);
         for (const f of desc.folders) {
@@ -57,19 +59,29 @@ export async function POST(request: Request) {
       }
     }
 
-    const contents: StickerContent[] = [];
     const orderedFolderIds = Array.from(targetFolderIds);
+    let demoDesc: ReturnType<typeof getDemoDescendants> | null = null;
+    if (isDemo || orderedFolderIds.some((id) => id.startsWith("demo-"))) {
+      demoDesc = getDemoDescendants(orderedFolderIds);
+    }
+
+    const contents: StickerContent[] = [];
 
     for (const folderId of orderedFolderIds) {
       let breadcrumbs: Array<{ id?: string; name?: string | null }> = [];
-
       let driveSubfolderInfo: StickerSubfolderInfo | undefined;
+      let folderFiles: Array<{ name: string }> = [];
 
       if (isDemo || folderId.startsWith("demo-")) {
         const demoData = getDemoBreadcrumbs(folderId);
         breadcrumbs = demoData.breadcrumbs;
         if (breadcrumbs.length === 0 && demoData.currentFolder) {
           breadcrumbs = [demoData.currentFolder];
+        }
+        if (demoDesc) {
+          folderFiles = (demoDesc.folderTree[folderId] || [])
+            .filter((item) => !item.isFolder)
+            .map((f) => ({ name: f.name }));
         }
       } else {
         const { drive, rootFolderId } = await getDriveContextWithRoot();
@@ -106,11 +118,47 @@ export async function POST(request: Request) {
             };
           }
         } catch {}
+
+        // Query direct files to check for EST I room file naming patterns
+        try {
+          const filesRes = await drive.files.list({
+            q: `'${resolvedFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: "files(id, name)",
+            pageSize: 50,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          });
+          folderFiles = (filesRes.data.files || []).map((f) => ({ name: f.name || "" }));
+        } catch (err) {
+          console.warn("[stickers/batch] Error querying direct files:", err);
+        }
       }
 
       if (breadcrumbs.length > 0) {
         try {
-          const content = buildStickerContent(breadcrumbs, driveSubfolderInfo);
+          const content = buildStickerContent(breadcrumbs, {
+            ...driveSubfolderInfo,
+            childFiles: folderFiles,
+          });
+
+          const targetName = breadcrumbs[breadcrumbs.length - 1]?.name || "";
+          const targetRoom = content.room || (content.level === "room" ? targetName : undefined);
+          if (targetRoom) {
+            const counts = getRoomExamCounts({
+              room: targetRoom,
+              building: content.building,
+              center: content.center,
+              governorate: content.governorate,
+              floor: content.floor,
+              folderFiles,
+            });
+            content.totalStudents = counts.totalStudents;
+            content.litCount = counts.litCount;
+            content.mathCount = counts.mathCount;
+            content.essayCount = counts.essayCount;
+            content.hasEssay = counts.hasEssay;
+          }
+
           contents.push(content);
         } catch (err) {
           console.warn(`[stickers/batch] Skipping folder ${folderId}:`, err);

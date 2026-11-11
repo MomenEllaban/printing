@@ -74,7 +74,7 @@ export async function GET(request: Request, context: Context) {
         try {
           const desc = getDemoDescendants([folderId]);
           folderFiles = desc.files.map((f) => ({ name: f.name }));
-        } catch {}
+        } catch { }
       } else {
         const { drive, rootFolderId } = await getDriveContextWithRoot();
 
@@ -144,13 +144,13 @@ export async function GET(request: Request, context: Context) {
 
     const roomCounts = targetRoom
       ? getRoomExamCounts({
-          room: targetRoom,
-          building: stickerContent.building,
-          center: stickerContent.center,
-          governorate: stickerContent.governorate,
-          floor: stickerContent.floor,
-          folderFiles,
-        })
+        room: targetRoom,
+        building: stickerContent.building,
+        center: stickerContent.center,
+        governorate: stickerContent.governorate,
+        floor: stickerContent.floor,
+        folderFiles,
+      })
       : null;
 
     if (roomCounts) {

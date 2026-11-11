@@ -841,12 +841,26 @@ describe("generateStickerPdf", () => {
             childFiles: ["E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf"],
           }
         );
+        expect(content.totalStudents).toBe(35);
+        expect(content.litCount).toBe(35);
+        expect(content.mathCount).toBe(28);
+        expect(content.essayCount).toBe(12);
+
+        // A4 Single Placard
         const pdfBytes = await generateStickerPdf({
           content,
           paperMode: "a4",
         });
         const pdfDoc = await PDFDocument.load(pdfBytes);
         expect(pdfDoc.getPageCount()).toBe(1);
+
+        // 4-Up Batch Mode
+        const batchBytes = await generateBatchStickerPdf({
+          contents: [content],
+          paperMode: "a4",
+        });
+        const batchDoc = await PDFDocument.load(batchBytes);
+        expect(batchDoc.getPageCount()).toBe(1);
       });
     });
 

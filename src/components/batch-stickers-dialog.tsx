@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, Files, Layers, Loader2, Printer, Tag, X } from "lucide-react";
 import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
@@ -35,6 +35,15 @@ export function BatchStickersDialog({
   const [includeChildren, setIncludeChildren] = useState(false);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [activeAction, setActiveAction] = useState<"show" | "print" | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setStickerType(initialType);
+      if (initialType === "exam") {
+        setIncludeChildren(true);
+      }
+    }
+  }, [open, initialType]);
 
   // If user selected 0 folders but is inside a folder, use currentFolder
   const effectiveFolders =
