@@ -12,6 +12,7 @@ import {
   FileText,
   Files,
   FolderArchive,
+  GraduationCap,
   HardDrive,
   LayoutDashboard,
   Menu,
@@ -149,6 +150,18 @@ const secondaryNav: NavItem[] = [
     color: "text-amber-500 dark:text-amber-400",
     bgColor: "bg-amber-500/10 dark:bg-amber-500/20",
     activeBg: "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25",
+  },
+];
+
+const helpNav: NavItem[] = [
+  {
+    href: "/operations-guide",
+    labelKey: "nav.operationsGuide",
+    icon: GraduationCap,
+    exact: true,
+    color: "text-purple-600 dark:text-purple-400",
+    bgColor: "bg-purple-500/10 dark:bg-purple-500/20",
+    activeBg: "bg-purple-600 text-white shadow-md shadow-purple-500/25",
   },
 ];
 
@@ -355,6 +368,43 @@ export function AppShell({
 
         <div>
           <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-muted/70">
+            {t("nav.sectionHelp")}
+          </p>
+          <div className="space-y-1">
+            {helpNav.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(pathname, item);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold transition-all cursor-pointer",
+                    active
+                      ? cn(item.activeBg)
+                      : "text-muted hover:bg-surface-soft hover:text-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform",
+                      active
+                        ? "bg-white/20 text-white"
+                        : cn(item.bgColor, item.color, "group-hover:scale-110"),
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                  <span className="truncate">{t(item.labelKey)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-muted/70">
             {t("nav.sectionSystem")}
           </p>
           <div className="space-y-1">
@@ -538,6 +588,39 @@ export function AppShell({
           <FolderArchive className="size-5 transition-transform group-hover:scale-110" />
           <span className="sr-only">{t("nav.fileTypes")}</span>
         </button>
+
+        <div className="w-8 my-1 border-t border-border/60" />
+
+        {helpNav.map((item) => {
+          const Icon = item.icon;
+          const active = isActive(pathname, item);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={t(item.labelKey)}
+              aria-label={t(item.labelKey)}
+              className={cn(
+                "group relative flex size-10 items-center justify-center rounded-xl transition-all cursor-pointer",
+                active
+                  ? cn(item.activeBg, "scale-105")
+                  : cn(
+                      item.bgColor,
+                      item.color,
+                      "hover:scale-110 hover:shadow-md",
+                    ),
+              )}
+            >
+              <Icon
+                className={cn(
+                  "size-5 transition-transform group-hover:scale-110",
+                  active ? "text-white" : item.color,
+                )}
+              />
+              <span className="sr-only">{t(item.labelKey)}</span>
+            </Link>
+          );
+        })}
 
         <div className="w-8 my-1 border-t border-border/60" />
 

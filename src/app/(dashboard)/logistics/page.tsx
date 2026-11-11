@@ -144,6 +144,15 @@ export default function LogisticsHubPage() {
             ? dateFolders.map((f) => ({ id: f.id, name: f.name }))
             : folders.map((f) => ({ id: f.id, name: f.name }));
 
+        // Prioritize December 2026 first, then January 2027, March 2027
+        list.sort((a, b) => {
+          if (/december\s*2026/i.test(a.name)) return -1;
+          if (/december\s*2026/i.test(b.name)) return 1;
+          if (/january\s*2027/i.test(a.name)) return -1;
+          if (/january\s*2027/i.test(b.name)) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
         if (list.length > 0) {
           setSessions(list);
           setSelectedSessionId(list[0].id);
@@ -181,11 +190,20 @@ export default function LogisticsHubPage() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
         const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
-        const estFolders = folders.filter((f) => /^EST/i.test(f.name.trim()));
+        // Strictly match EST 1 or EST 2 folders, and exclude non-exam files/folders like schedules
+        const estFolders = folders
+          .filter((f) => {
+            const name = f.name.trim();
+            return /^EST\s*[-_]?\s*[12]\b/i.test(name) && !/schedule|proposed|note|guide/i.test(name);
+          })
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
         const list: DriveFolderOption[] =
           estFolders.length > 0
             ? estFolders.map((f) => ({ id: f.id, name: f.name }))
-            : folders.map((f) => ({ id: f.id, name: f.name }));
+            : folders
+                .filter((f) => !/schedule|proposed|note|guide/i.test(f.name))
+                .map((f) => ({ id: f.id, name: f.name }));
 
         setExams(list);
         if (list.length > 0) {

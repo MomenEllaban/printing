@@ -3237,8 +3237,8 @@ export function FileBrowser({
         title={locale === "ar" ? "إنشاء هيكل مجلدات المدارس لاختبارات EST" : "Create EST Schools Folder Structure"}
         description={
           locale === "ar"
-            ? "سيتم إنشاء وتحديث هيكل الدورات (December 2026, January 2027, March 2027) مع مجلد المدارس الرسمي (18 مدرسة، جميع الأدوار، و202 قاعة) والمحافظات الفارغة داخل Google Drive لكل من EST 1 و EST 2. هل تريد المتابعة؟"
-            : "This will automatically create/update the cycles structure (December 2026, January 2027, March 2027) with the official Schools folder (18 schools, floors, 202 rooms) and empty governorates in Google Drive for EST 1 and EST 2. Continue?"
+            ? "سيتم إنشاء وتحديث مجلد المدارس الرسمي (فولدر Schools يحتوي على 18 مدرسة، جميع الأدوار، والقاعات) مع المحافظات الفارغة داخل Google Drive مباشرة. هل تريد المتابعة؟"
+            : "This will automatically create/update the official Schools folder (Schools folder with 18 schools, all floors, and rooms) and empty governorates in Google Drive. Continue?"
         }
         confirmLabel={locale === "ar" ? "بدء الإنشاء" : "Create Structure"}
         loading={seedingEst}
