@@ -103,3 +103,4 @@ describe("Official EST 1 & EST 2 Schools Architecture", () => {
     expect(content.totalRooms).toBe(12);
   });
 });
+

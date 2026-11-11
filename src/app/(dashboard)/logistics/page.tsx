@@ -7,23 +7,46 @@ import {
   Package,
   Printer,
   Eye,
-  FileCheck2,
-  ShieldAlert,
   Sparkles,
-  CheckCircle2,
   Loader2,
-  ChevronRight,
   Building2,
-  School,
-  MapPin,
   Calendar,
   Layers,
+  FolderTree,
+  RefreshCw,
+  FolderCheck,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/components/locale-provider";
-import { EST_REFERENCE_DATA, OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
+import { parseSchoolFolderName, OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
+import { parseEstRoomFileName } from "@/lib/stickers/est-room-data";
+import { isFloorFolderName, isRoomFolderName } from "@/lib/stickers/register-utils";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
 import { toast } from "sonner";
+import type { DriveItem } from "@/lib/types";
+
+interface DriveFolderOption {
+  id: string;
+  name: string;
+}
+
+interface DriveSchoolOption {
+  id: string;
+  name: string;
+  fullFolderName: string;
+  governorate?: string;
+}
+
+interface LiveFloorData {
+  floor: string;
+  rooms: Array<{
+    room: string;
+    studentCount: number;
+    subjectsText?: string;
+  }>;
+  totalStudents: number;
+}
 
 export default function LogisticsHubPage() {
   const { locale } = useI18n();
@@ -32,41 +55,30 @@ export default function LogisticsHubPage() {
   const urlFolderId = searchParams.get("folderId") || undefined;
   const urlBuilding = searchParams.get("building") || undefined;
 
-  // Filter selections
-  const [examType, setExamType] = useState<"EST 1" | "EST 2">("EST 1");
-  const [governorate, setGovernorate] = useState<string>("Alexandria");
-  const [center, setCenter] = useState<string>("Abu Qir");
-  const [building, setBuilding] = useState<string>(urlBuilding || "Pharmacy");
-  const [sessionDate, setSessionDate] = useState<string>("December 2026");
+  // 1. Dynamic Drive State
+  const [sessions, setSessions] = useState<DriveFolderOption[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [selectedSessionName, setSelectedSessionName] = useState<string>("December 2026");
+  const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
+
+  const [exams, setExams] = useState<DriveFolderOption[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string>("");
+  const [selectedExamName, setSelectedExamName] = useState<string>("EST 1");
+  const [loadingExams, setLoadingExams] = useState<boolean>(false);
+
+  const [schools, setSchools] = useState<DriveSchoolOption[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+  const [selectedSchool, setSelectedSchool] = useState<DriveSchoolOption | null>(null);
+  const [loadingSchools, setLoadingSchools] = useState<boolean>(false);
+
+  const [liveFloors, setLiveFloors] = useState<LiveFloorData[]>([]);
+  const [loadingFloors, setLoadingFloors] = useState<boolean>(false);
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
+
+  // Manual Dispatch Overrides
   const [boxNumber, setBoxNumber] = useState<number>(1);
   const [totalBoxes, setTotalBoxes] = useState<number>(1);
   const [securitySeal, setSecuritySeal] = useState<string>("");
-
-  useEffect(() => {
-    if (urlBuilding) {
-      setBuilding(urlBuilding);
-      const urlClean = urlBuilding.toLowerCase().trim();
-      const schoolMatch = OFFICIAL_EST_SCHOOLS.find(
-        (s) =>
-          s.fullFolderName.toLowerCase().trim() === urlClean ||
-          s.schoolName.toLowerCase().trim() === urlClean,
-      );
-      if (schoolMatch) {
-        setGovernorate(schoolMatch.governorate);
-        setCenter(schoolMatch.schoolName);
-        return;
-      }
-      const match = EST_REFERENCE_DATA.find(
-        (r) =>
-          r.building.toLowerCase() === urlClean ||
-          r.testCenter.toLowerCase() === urlClean,
-      );
-      if (match) {
-        if (match.governorate) setGovernorate(match.governorate);
-        if (match.testCenter) setCenter(match.testCenter);
-      }
-    }
-  }, [urlBuilding]);
 
   // Loading & Preview state
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -82,107 +94,309 @@ export default function LogisticsHubPage() {
     title: "",
   });
 
-  // Extract unique options from official schools data
-  const governorates = useMemo(() => {
-    const fromSchools = OFFICIAL_EST_SCHOOLS.map((s) => s.governorate);
-    const fromRef = EST_REFERENCE_DATA.map((r) => r.governorate);
-    return Array.from(new Set([...fromSchools, ...fromRef])).filter(Boolean);
+  // ----------------------------------------------------
+  // STEP 1: Load Session / Cycle Folders (e.g. December 2026)
+  // ----------------------------------------------------
+  const loadSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      const res = await fetch("/api/drive/files?pageSize=100", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) {
+        setIsDriveConnected(true);
+        const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+
+        // Find date / session folders
+        const dateFolders = folders.filter((f) =>
+          /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
+            f.name.trim(),
+          ) || /session|cycle|دورة/i.test(f.name),
+        );
+
+        const list: DriveFolderOption[] =
+          dateFolders.length > 0
+            ? dateFolders.map((f) => ({ id: f.id, name: f.name }))
+            : folders.map((f) => ({ id: f.id, name: f.name }));
+
+        if (list.length > 0) {
+          setSessions(list);
+          setSelectedSessionId(list[0].id);
+          setSelectedSessionName(list[0].name);
+        } else {
+          // Fallback root session
+          const fallback = [{ id: "root", name: "December 2026" }];
+          setSessions(fallback);
+          setSelectedSessionId("root");
+          setSelectedSessionName("December 2026");
+        }
+      }
+    } catch (err) {
+      console.error("[logistics] Failed to load sessions:", err);
+    } finally {
+      setLoadingSessions(false);
+    }
   }, []);
 
-  const centers = useMemo(() => {
-    const fromSchools = OFFICIAL_EST_SCHOOLS.filter(
-      (s) => !governorate || s.governorate === governorate,
-    ).map((s) => s.schoolName);
-    const fromRef = EST_REFERENCE_DATA.filter(
-      (r) => !governorate || r.governorate === governorate,
-    ).map((r) => r.testCenter);
-    return Array.from(new Set([...fromSchools, ...fromRef])).filter(Boolean);
-  }, [governorate]);
+  useEffect(() => {
+    void loadSessions();
+  }, [loadSessions]);
 
-  const buildings = useMemo(() => {
-    const fromSchools = OFFICIAL_EST_SCHOOLS.filter(
-      (s) =>
-        (!governorate || s.governorate === governorate) &&
-        (!center || s.schoolName === center || s.fullFolderName === center),
-    ).map((s) => s.fullFolderName);
-    const fromRef = EST_REFERENCE_DATA.filter(
-      (r) =>
-        (!governorate || r.governorate === governorate) &&
-        (!center || r.testCenter === center),
-    ).map((r) => r.building);
-    return Array.from(new Set([...fromSchools, ...fromRef])).filter(Boolean);
-  }, [governorate, center]);
+  // ----------------------------------------------------
+  // STEP 2: Load Exam Folders (EST 1, EST 2) inside selected session
+  // ----------------------------------------------------
+  const loadExams = useCallback(async (sessionId: string) => {
+    if (!sessionId) return;
+    setLoadingExams(true);
+    try {
+      const url =
+        sessionId === "root"
+          ? "/api/drive/files?pageSize=100"
+          : `/api/drive/files?folder=${encodeURIComponent(sessionId)}&pageSize=100`;
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) {
+        const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+        const estFolders = folders.filter((f) => /^EST/i.test(f.name.trim()));
+        const list: DriveFolderOption[] =
+          estFolders.length > 0
+            ? estFolders.map((f) => ({ id: f.id, name: f.name }))
+            : folders.map((f) => ({ id: f.id, name: f.name }));
 
-  // Derived rooms for selected building
-  const buildingRooms = useMemo(() => {
-    const cleanB = building.toLowerCase().trim();
-    const school = OFFICIAL_EST_SCHOOLS.find(
-      (s) =>
-        s.fullFolderName.toLowerCase().trim() === cleanB ||
-        s.schoolName.toLowerCase().trim() === cleanB,
-    );
-    if (school) {
-      const rooms = school.floors.flatMap((fl) => fl.rooms);
-      return {
-        rooms,
-        totalRooms: rooms.length,
-        totalStudents: rooms.length * 25,
-      };
-    }
-
-    const rows = EST_REFERENCE_DATA.filter(
-      (r) =>
-        (!governorate || r.governorate === governorate) &&
-        (!center || r.testCenter === center) &&
-        (!building || r.building === building),
-    );
-    const rooms = Array.from(new Set(rows.map((r) => r.room).filter(Boolean)));
-    const totalStudents = rows.reduce((sum, r) => sum + (r.studentsEst1 || 25), 0);
-    return {
-      rooms,
-      totalRooms: rooms.length > 0 ? rooms.length : 12,
-      totalStudents: totalStudents > 0 ? totalStudents : 300,
-    };
-  }, [governorate, center, building]);
-
-  // Derived floors with their rooms for the selected building
-  const buildingFloors = useMemo(() => {
-    const cleanB = building.toLowerCase().trim();
-    const school = OFFICIAL_EST_SCHOOLS.find(
-      (s) =>
-        s.fullFolderName.toLowerCase().trim() === cleanB ||
-        s.schoolName.toLowerCase().trim() === cleanB,
-    );
-    if (school) {
-      return school.floors.map((fl) => ({
-        floor: fl.floorName,
-        rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
-        totalStudents: fl.rooms.length * 25,
-      }));
-    }
-
-    const rows = EST_REFERENCE_DATA.filter(
-      (r) =>
-        (!governorate || r.governorate === governorate) &&
-        (!center || r.testCenter === center) &&
-        (!building || r.building === building),
-    );
-    const floorMap = new Map<string, { rooms: { room: string; studentCount: number }[]; totalStudents: number }>();
-    for (const r of rows) {
-      const fl = r.floor || "General Floor";
-      const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
-      if (r.room && !entry.rooms.some((rm) => rm.room === r.room)) {
-        entry.rooms.push({ room: r.room, studentCount: r.studentsEst1 || 25 });
-        entry.totalStudents += r.studentsEst1 || 25;
+        setExams(list);
+        if (list.length > 0) {
+          const est1 = list.find((e) => /EST\s*[-_]?\s*1\b|EST\s*I\b/i.test(e.name)) || list[0];
+          setSelectedExamId(est1.id);
+          setSelectedExamName(est1.name);
+        }
       }
-      floorMap.set(fl, entry);
+    } catch (err) {
+      console.error("[logistics] Failed to load exams:", err);
+    } finally {
+      setLoadingExams(false);
     }
-    return Array.from(floorMap.entries()).map(([floor, data]) => ({
-      floor,
-      rooms: data.rooms,
-      totalStudents: data.totalStudents,
-    }));
-  }, [governorate, center, building]);
+  }, []);
+
+  useEffect(() => {
+    if (selectedSessionId) {
+      void loadExams(selectedSessionId);
+    }
+  }, [selectedSessionId, loadExams]);
+
+  // ----------------------------------------------------
+  // STEP 3: Load Schools / Buildings inside selected exam folder
+  // ----------------------------------------------------
+  const loadSchools = useCallback(
+    async (examId: string) => {
+      if (!examId) return;
+      setLoadingSchools(true);
+      try {
+        const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(examId)}&pageSize=100`, {
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.items)) {
+          const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+
+          // Check if there is a "Schools" subfolder
+          const schoolsFolder = folders.find((f) => /^schools$/i.test(f.name.trim()));
+          let schoolFolders: DriveItem[] = [];
+
+          if (schoolsFolder) {
+            const sRes = await fetch(
+              `/api/drive/files?folder=${encodeURIComponent(schoolsFolder.id)}&pageSize=100`,
+              { cache: "no-store" },
+            );
+            const sData = await sRes.json().catch(() => ({}));
+            if (sRes.ok && Array.isArray(sData.items)) {
+              schoolFolders = sData.items.filter((i: DriveItem) => i.isFolder);
+            }
+          } else {
+            // Check if folders are Governorates
+            const govFolders = folders.filter((f) =>
+              /^(cairo|alexandria|giza|qalyubia|dakahlia|menofia|suez|القاهرة|الإسكندرية)/i.test(
+                f.name.trim(),
+              ),
+            );
+            if (govFolders.length > 0) {
+              for (const gf of govFolders) {
+                const gRes = await fetch(
+                  `/api/drive/files?folder=${encodeURIComponent(gf.id)}&pageSize=100`,
+                  { cache: "no-store" },
+                );
+                const gData = await gRes.json().catch(() => ({}));
+                if (gRes.ok && Array.isArray(gData.items)) {
+                  schoolFolders.push(...gData.items.filter((i: DriveItem) => i.isFolder));
+                }
+              }
+            } else {
+              schoolFolders = folders;
+            }
+          }
+
+          const schoolOptions: DriveSchoolOption[] = schoolFolders.map((sf) => {
+            const parsed = parseSchoolFolderName(sf.name);
+            return {
+              id: sf.id,
+              name: parsed.schoolName || sf.name,
+              fullFolderName: sf.name,
+              governorate: parsed.governorate,
+            };
+          });
+
+          setSchools(schoolOptions);
+
+          if (schoolOptions.length > 0) {
+            // Check if URL specifies this folder or building
+            let matched = urlFolderId ? schoolOptions.find((s) => s.id === urlFolderId) : null;
+            if (!matched && urlBuilding) {
+              const uClean = urlBuilding.toLowerCase().trim();
+              matched = schoolOptions.find(
+                (s) =>
+                  s.fullFolderName.toLowerCase().trim() === uClean ||
+                  s.name.toLowerCase().trim() === uClean,
+              );
+            }
+            const chosen = matched || schoolOptions[0];
+            setSelectedSchoolId(chosen.id);
+            setSelectedSchool(chosen);
+          }
+        }
+      } catch (err) {
+        console.error("[logistics] Failed to load schools:", err);
+      } finally {
+        setLoadingSchools(false);
+      }
+    },
+    [urlFolderId, urlBuilding],
+  );
+
+  useEffect(() => {
+    if (selectedExamId) {
+      void loadSchools(selectedExamId);
+    }
+  }, [selectedExamId, loadSchools]);
+
+  // ----------------------------------------------------
+  // STEP 4: Load Floors, Rooms, and Candidates from Google Drive files
+  // ----------------------------------------------------
+  const loadSchoolDetails = useCallback(async (schoolId: string) => {
+    if (!schoolId) return;
+    setLoadingFloors(true);
+    try {
+      const res = await fetch(
+        `/api/drive/folders/descendants?folderId=${encodeURIComponent(schoolId)}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.folders)) {
+        const allFolders: DriveItem[] = data.folders;
+        const allFiles: DriveItem[] = Array.isArray(data.files) ? data.files : [];
+
+        // Direct floor folders under school
+        let floorFolders = allFolders.filter(
+          (f) => f.parentId === schoolId && isFloorFolderName(f.name),
+        );
+
+        if (floorFolders.length === 0) {
+          floorFolders = allFolders.filter((f) => f.parentId === schoolId);
+        }
+
+        if (floorFolders.length > 0) {
+          const computedFloors: LiveFloorData[] = floorFolders.map((fl) => {
+            const roomFolders = allFolders.filter(
+              (f) =>
+                f.parentId === fl.id &&
+                (isRoomFolderName(f.name) ||
+                  /^([A-Za-z0-9_-]+|room\s*\d+|قاعة\s*\d+)$/i.test(f.name)),
+            );
+
+            const rms: LiveFloorData["rooms"] = roomFolders.map((rf) => {
+              const rFiles = allFiles.filter((file) => file.parentId === rf.id);
+              let stdCount = 25;
+              let subjText: string | undefined;
+
+              for (const rfFile of rFiles) {
+                const parsed = parseEstRoomFileName(rfFile.name);
+                if (parsed) {
+                  stdCount = parsed.totalStudents;
+                  subjText = parsed.breakdownText;
+                  break;
+                }
+              }
+
+              return {
+                room: rf.name,
+                studentCount: stdCount,
+                subjectsText: subjText,
+              };
+            });
+
+            // Also check files directly in floor
+            const directFiles = allFiles.filter((file) => file.parentId === fl.id);
+            for (const df of directFiles) {
+              const parsed = parseEstRoomFileName(df.name);
+              if (parsed?.room && !rms.some((r) => r.room === parsed.room)) {
+                rms.push({
+                  room: parsed.room,
+                  studentCount: parsed.totalStudents,
+                  subjectsText: parsed.breakdownText,
+                });
+              }
+            }
+
+            return {
+              floor: fl.name,
+              rooms: rms,
+              totalStudents: rms.reduce((sum, r) => sum + r.studentCount, 0),
+            };
+          });
+
+          setLiveFloors(computedFloors);
+        } else {
+          // If no subfolders in Drive yet, fallback to reference structure for preview
+          const official = OFFICIAL_EST_SCHOOLS.find(
+            (s) =>
+              s.schoolName.toLowerCase() === (selectedSchool?.name || "").toLowerCase() ||
+              s.fullFolderName.toLowerCase() === (selectedSchool?.fullFolderName || "").toLowerCase(),
+          );
+          if (official) {
+            setLiveFloors(
+              official.floors.map((fl) => ({
+                floor: fl.floorName,
+                rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
+                totalStudents: fl.rooms.length * 25,
+              })),
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[logistics] Failed to load school details:", err);
+    } finally {
+      setLoadingFloors(false);
+    }
+  }, [selectedSchool]);
+
+  useEffect(() => {
+    if (selectedSchoolId) {
+      void loadSchoolDetails(selectedSchoolId);
+    }
+  }, [selectedSchoolId, loadSchoolDetails]);
+
+  // Derived Totals
+  const totalFloorsCount = liveFloors.length;
+  const totalRoomsCount = useMemo(
+    () => liveFloors.reduce((sum, fl) => sum + fl.rooms.length, 0),
+    [liveFloors],
+  );
+  const totalCandidatesCount = useMemo(
+    () => liveFloors.reduce((sum, fl) => sum + fl.totalStudents, 0),
+    [liveFloors],
+  );
+  const allRoomNames = useMemo(
+    () => liveFloors.flatMap((fl) => fl.rooms.map((r) => r.room)),
+    [liveFloors],
+  );
 
   // Execute Action (Show or Print)
   const handleLogisticsAction = useCallback(
@@ -193,12 +407,15 @@ export default function LogisticsHubPage() {
       const actionKey = `${type}-${action}`;
       if (busyAction) return;
 
+      const buildingName = selectedSchool?.name || selectedSchool?.fullFolderName || "Building HQ";
+      const governorateName = selectedSchool?.governorate || "Alexandria";
+
       setBusyAction(actionKey);
       const toastId = toast.loading(
         action === "show"
           ? isAr
-            ? "جاري إنشاء ومعاينة ملف الطباعة..."
-            : "Generating PDF preview..."
+            ? "جاري إنشاء ومعاينة ملف الطباعة من بيانات Google Drive..."
+            : "Generating PDF preview from Google Drive data..."
           : isAr
           ? "جاري إرسال المستند للطباعة..."
           : "Sending document to printer...",
@@ -207,19 +424,19 @@ export default function LogisticsHubPage() {
       try {
         const query = new URLSearchParams({
           type,
-          examName: examType,
-          governorate,
-          center,
-          building,
-          date: sessionDate,
-          totalRooms: String(buildingRooms.totalRooms),
-          totalStudents: String(buildingRooms.totalStudents),
-          roomNames: JSON.stringify(buildingRooms.rooms),
-          floors: JSON.stringify(buildingFloors),
+          examName: selectedExamName,
+          governorate: governorateName,
+          center: buildingName,
+          building: buildingName,
+          date: selectedSessionName,
+          totalRooms: String(totalRoomsCount || 12),
+          totalStudents: String(totalCandidatesCount || 300),
+          roomNames: JSON.stringify(allRoomNames),
+          floors: JSON.stringify(liveFloors),
           boxNumber: String(boxNumber),
           totalBoxes: String(totalBoxes),
         });
-        if (urlFolderId) query.set("folderId", urlFolderId);
+        if (selectedSchoolId) query.set("folderId", selectedSchoolId);
         if (securitySeal) query.set("securitySeal", securitySeal);
 
         const res = await fetch(`/api/stickers/logistics?${query.toString()}`);
@@ -237,32 +454,42 @@ export default function LogisticsHubPage() {
           let customDescription = "";
 
           if (type === "carton") {
-            title = `Carton - ${building}`;
-            customTitle = isAr ? `ستيكر كرتونة المبنى — ${building}` : `Building Carton Placard — ${building}`;
+            title = `Carton - ${buildingName}`;
+            customTitle = isAr
+              ? `ستيكر كرتونة المبنى — ${buildingName}`
+              : `Building Carton Placard — ${buildingName}`;
             customDescription = isAr
-              ? "مقاس A4 بالعرض — يلصق على الكرتونة الكبيرة التي تحوي جميع أكياس ومظاريف المبنى مع مسرد القاعات."
-              : "A4 Landscape — Affixed to the outside of the master carton containing all room envelopes.";
+              ? "مقاس A4 بالعرض — يلصق على الكرتونة الكبيرة التي تحوي جميع أكياس ومظاريف المبنى مع مسرد الأدوار والقاعات."
+              : "A4 Landscape — Affixed to the outside of the master carton containing all room dossiers grouped by floor.";
           } else if (type === "bag") {
-            title = `Bag Checklist - ${building}`;
-            customTitle = isAr ? `بيان شنطة الامتحانات (Checklist) — ${building}` : `Exam Transit Bag Checklist — ${building}`;
+            title = `Bag Checklist - ${buildingName}`;
+            customTitle = isAr
+              ? `بيان شنطة الامتحانات (Checklist) — ${buildingName}`
+              : `Exam Transit Bag Checklist — ${buildingName}`;
             customDescription = isAr
-              ? `مقاس A4 — قائمة فحص المواد وتأشير الـ Checkboxes لـ ${examType} وبيانات القفل الأمني.`
-              : `A4 Checklist — Subject checklists with checkboxes for ${examType} and security seal tracking.`;
+              ? `مقاس A4 — قائمة فحص المواد وتأشير الـ Checkboxes لـ ${selectedExamName}.`
+              : `A4 Checklist — Subject checklists with checkboxes for ${selectedExamName}.`;
           } else if (type === "clean_skin_master") {
-            title = `Clean Skin Master - ${building}`;
-            customTitle = isAr ? `مظروف أوراق الطوارئ والاحتياطي (Clean Skin Master)` : `Clean Skin Emergency Master Packet`;
+            title = `Clean Skin Master - ${buildingName}`;
+            customTitle = isAr
+              ? `مظروف أوراق الطوارئ والاحتياطي (Clean Skin Master)`
+              : `Clean Skin Emergency Master Packet`;
             customDescription = isAr
-              ? "مقاس A4 — ستيكر كيس الطوارئ الخارجي مع جدول توثيق صرف الأوراق الإضافية بالقاعات."
-              : "A4 — Emergency reserve master envelope with on-site dispatch tracking log.";
+              ? "مقاس A4 صفحة واحدة — ستيكر كيس الطوارئ الخارجي مع جدول توثيق صرف الأوراق الإضافية."
+              : "A4 Single Page — Emergency reserve master envelope with on-site dispatch tracking log.";
           } else if (type === "clean_skin_subjects") {
-            title = `Clean Skin Subjects - ${building}`;
-            customTitle = isAr ? `ستيكرات المواد الاحتياطية (Clean Skin)` : `Clean Skin Subject Stickers`;
+            title = `Clean Skin Subjects - ${buildingName}`;
+            customTitle = isAr
+              ? `ستيكرات المواد الاحتياطية (Clean Skin)`
+              : `Clean Skin Subject Stickers`;
             customDescription = isAr
               ? "مقاس ربع A4 — خانة العدد مسطرة لكتابة الرقم يدوياً بالقلم بعد التعبئة الفعلية."
               : "Quarter-A4 — Quantity box formatted for manual pen entry after actual packing.";
           } else {
-            title = `Logistics Bundle - ${building}`;
-            customTitle = isAr ? `الحزمة اللوجستية الكاملة للمبنى — ${building}` : `Complete Logistics Bundle — ${building}`;
+            title = `Logistics Bundle - ${buildingName}`;
+            customTitle = isAr
+              ? `الحزمة اللوجستية الكاملة للمبنى — ${buildingName}`
+              : `Complete Logistics Bundle — ${buildingName}`;
             customDescription = isAr
               ? "ملف مجمع شامل (الكرتونة + شنطة المواد + كيس الطوارئ + ستيكرات المواد الاحتياطية)."
               : "All-in-one bundle: Building Carton, Bag Checklist, Clean Skin Master, and Subject Stickers.";
@@ -311,12 +538,14 @@ export default function LogisticsHubPage() {
     [
       busyAction,
       isAr,
-      examType,
-      governorate,
-      center,
-      building,
-      sessionDate,
-      buildingRooms,
+      selectedExamName,
+      selectedSessionName,
+      selectedSchool,
+      selectedSchoolId,
+      totalRoomsCount,
+      totalCandidatesCount,
+      allRoomNames,
+      liveFloors,
       boxNumber,
       totalBoxes,
       securitySeal,
@@ -328,9 +557,17 @@ export default function LogisticsHubPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300 mb-2">
-            <Package className="size-3.5" />
-            <span>{isAr ? "العمليات اللوجستية وتجهيز الامتحانات" : "Exam Operations & Logistics"}</span>
+          <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-2">
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>
+              {isDriveConnected
+                ? isAr
+                  ? "متصل مباشرة بمجلدات Google Drive"
+                  : "Live Google Drive Connected"
+                : isAr
+                ? "جاري الاتصال بـ Google Drive..."
+                : "Connecting to Google Drive..."}
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
             <Boxes className="size-7 text-indigo-600 dark:text-indigo-400" />
@@ -338,8 +575,8 @@ export default function LogisticsHubPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">
             {isAr
-              ? "طباعة استيكرات الكراتين، شنط الامتحانات، وقوائم الفحص، وأوراق الطوارئ (Clean Skin) لـ EST 1 و EST 2."
-              : "Generate and print Building Carton Placards, Transit Bag Checklists, and Clean Skin Reserve Envelopes."}
+              ? "قراءة تلقائية مباشرة من مجلدات Google Drive لاختيار الدورة والامتحان والمدرسة وطباعة الاستيكرات والبيانات."
+              : "Automatic dynamic reading from Google Drive folders for cycles, exams, schools, and printable logistics placarded materials."}
           </p>
         </div>
 
@@ -347,8 +584,8 @@ export default function LogisticsHubPage() {
         <button
           type="button"
           onClick={() => handleLogisticsAction("bundle", "print")}
-          disabled={Boolean(busyAction)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2.5 text-sm font-bold shadow-md shadow-indigo-500/25 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+          disabled={Boolean(busyAction) || loadingFloors}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2.5 text-sm font-bold shadow-md shadow-indigo-500/25 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
         >
           {busyAction === "bundle-print" ? (
             <Loader2 className="size-4 animate-spin" />
@@ -359,455 +596,420 @@ export default function LogisticsHubPage() {
         </button>
       </div>
 
-      {/* Control Selector Bar */}
-      <div className="card p-4 sm:p-5 border border-border shadow-xs bg-surface-soft/40 backdrop-blur-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Exam Type Toggle */}
+      {/* Dynamic Drive Selector Bar */}
+      <div className="card p-4 sm:p-5 border border-border shadow-xs bg-surface-soft/40 backdrop-blur-xs space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Step 1: Session / Cycle Folder (فولدر الدورة) */}
           <div>
-            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-indigo-500" />
-              <span>{isAr ? "نوع الامتحان" : "Exam Session"}</span>
+            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Calendar className="size-3.5 text-amber-500" />
+                <span>{isAr ? "1. فولدر الدورة (Session)" : "1. Cycle Folder"}</span>
+              </span>
+              {loadingSessions && <Loader2 className="size-3 animate-spin text-muted" />}
             </label>
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-surface border border-border">
-              <button
-                type="button"
-                onClick={() => setExamType("EST 1")}
-                className={cn(
-                  "py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer text-center",
-                  examType === "EST 1"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                EST I
-              </button>
-              <button
-                type="button"
-                onClick={() => setExamType("EST 2")}
-                className={cn(
-                  "py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer text-center",
-                  examType === "EST 2"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                EST II
-              </button>
+            <select
+              value={selectedSessionId}
+              onChange={(e) => {
+                const found = sessions.find((s) => s.id === e.target.value);
+                if (found) {
+                  setSelectedSessionId(found.id);
+                  setSelectedSessionName(found.name);
+                }
+              }}
+              disabled={loadingSessions}
+              className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+            >
+              {sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  📁 {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step 2: Exam Folder (EST 1 / EST 2) */}
+          <div>
+            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-indigo-500" />
+                <span>{isAr ? "2. فولدر الاختبار (Exam)" : "2. Exam Folder"}</span>
+              </span>
+              {loadingExams && <Loader2 className="size-3 animate-spin text-muted" />}
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-surface border border-border h-10 items-center">
+              {exams.length > 0 ? (
+                exams.map((ex) => (
+                  <button
+                    key={ex.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedExamId(ex.id);
+                      setSelectedExamName(ex.name);
+                    }}
+                    className={cn(
+                      "h-8 text-xs font-bold rounded-lg transition-all cursor-pointer text-center flex items-center justify-center gap-1",
+                      selectedExamId === ex.id
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-muted hover:text-foreground",
+                    )}
+                  >
+                    <span>{ex.name}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="col-span-2 text-center text-xs text-muted">
+                  {loadingExams ? (isAr ? "جاري التحميل..." : "Loading...") : "EST 1 / EST 2"}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Governorate */}
+          {/* Step 3: School / Center / Building Folder (المدرسة أو المبنى) */}
           <div>
-            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center gap-1.5">
-              <MapPin className="size-3.5 text-sky-500" />
-              <span>{isAr ? "المحافظة" : "Governorate"}</span>
+            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Building2 className="size-3.5 text-emerald-500" />
+                <span>{isAr ? "3. المدرسة أو المبنى (School)" : "3. School / Center"}</span>
+              </span>
+              {loadingSchools && <Loader2 className="size-3 animate-spin text-muted" />}
             </label>
             <select
-              value={governorate}
-              onChange={(e) => setGovernorate(e.target.value)}
+              value={selectedSchoolId}
+              onChange={(e) => {
+                const found = schools.find((s) => s.id === e.target.value);
+                if (found) {
+                  setSelectedSchoolId(found.id);
+                  setSelectedSchool(found);
+                }
+              }}
+              disabled={loadingSchools || schools.length === 0}
               className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
             >
-              {governorates.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Test Center */}
-          <div>
-            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center gap-1.5">
-              <School className="size-3.5 text-emerald-500" />
-              <span>{isAr ? "السنتر / المركز" : "Test Center"}</span>
-            </label>
-            <select
-              value={center}
-              onChange={(e) => setCenter(e.target.value)}
-              className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
-            >
-              {centers.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Building */}
-          <div>
-            <label className="block text-xs font-bold text-muted mb-1.5 flex items-center gap-1.5">
-              <Building2 className="size-3.5 text-amber-500" />
-              <span>{isAr ? "المبنى" : "Building"}</span>
-            </label>
-            <select
-              value={building}
-              onChange={(e) => setBuilding(e.target.value)}
-              className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
-            >
-              {buildings.map((b) => (
-                <option key={b} value={b}>
-                  {b}
+              {schools.map((sc) => (
+                <option key={sc.id} value={sc.id}>
+                  🏫 {sc.fullFolderName}
                 </option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* Secondary Details: Session Date, Box Count */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-3 border-t border-border/50 text-xs">
-          <div>
-            <span className="font-semibold text-muted block mb-1">
-              {isAr ? "تاريخ الدورة / Session:" : "Session Date:"}
+        {/* Live Detected Stats Banner from Google Drive */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-950 dark:text-indigo-200">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
+              <FolderCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <span>{selectedSchool?.name || "Loading School..."}</span>
+              {selectedSchool?.governorate && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
+                  {selectedSchool.governorate}
+                </span>
+              )}
             </span>
-            <input
-              type="text"
-              value={sessionDate}
-              onChange={(e) => setSessionDate(e.target.value)}
-              placeholder="December 2026"
-              className="w-full h-9 px-3 text-xs font-medium rounded-lg border border-border bg-surface"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <span className="font-semibold text-muted block mb-1">
-                {isAr ? "رقم الكرتونة:" : "Box #:"}
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={boxNumber}
-                onChange={(e) => setBoxNumber(Number(e.target.value) || 1)}
-                className="w-full h-9 px-3 text-xs font-medium rounded-lg border border-border bg-surface"
-              />
-            </div>
-            <div className="flex-1">
-              <span className="font-semibold text-muted block mb-1">
-                {isAr ? "إجمالي الكراتين:" : "Total Boxes:"}
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={totalBoxes}
-                onChange={(e) => setTotalBoxes(Number(e.target.value) || 1)}
-                className="w-full h-9 px-3 text-xs font-medium rounded-lg border border-border bg-surface"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Live Detected Stats Banner */}
-        <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-indigo-500/5 border border-indigo-500/20 text-xs text-indigo-900 dark:text-indigo-200">
-          <div className="flex items-center gap-3">
+            <span className="text-muted/60">•</span>
             <span className="font-bold flex items-center gap-1">
               <Layers className="size-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>
-                {buildingFloors.length} {isAr ? "أدوار" : "Floors"} • {buildingRooms.totalRooms} {isAr ? "قاعة مسجلة" : "Rooms"}
+                {loadingFloors ? (
+                  <Loader2 className="size-3 animate-spin inline" />
+                ) : (
+                  `${totalFloorsCount} ${isAr ? "أدوار" : "Floors"}`
+                )}
               </span>
             </span>
             <span className="text-muted/60">•</span>
-            <span>{buildingRooms.totalStudents} {isAr ? "طالب ممتحن تقديري" : "Estimated Candidates"}</span>
+            <span className="font-bold">
+              {totalRoomsCount} {isAr ? "قاعة مسجلة" : "Rooms"}
+            </span>
+            <span className="text-muted/60">•</span>
+            <span className="font-bold text-emerald-700 dark:text-emerald-300">
+              {totalCandidatesCount} {isAr ? "طالب ممتحن (من أسماء الملفات)" : "Assigned Candidates"}
+            </span>
           </div>
-          <span className="font-mono text-[11px] text-muted">
-            {buildingRooms.rooms.slice(0, 8).join(", ")}
-            {buildingRooms.rooms.length > 8 ? ` +${buildingRooms.rooms.length - 8}` : ""}
-          </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedSchoolId) void loadSchoolDetails(selectedSchoolId);
+            }}
+            disabled={loadingFloors}
+            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+            title={isAr ? "إعادة قراءة محتويات المجلد من الدرايف" : "Refresh from Drive"}
+          >
+            <RefreshCw className={cn("size-3", loadingFloors && "animate-spin")} />
+            <span>{isAr ? "تحديث الداتا" : "Refresh"}</span>
+          </button>
         </div>
+
+        {/* Live Floors and Rooms Chips Preview */}
+        {liveFloors.length > 0 && (
+          <div className="pt-2 border-t border-border/40">
+            <span className="text-[11px] font-bold text-muted block mb-2">
+              {isAr ? "دليل الأدوار والقاعات المستخرج تلقائياً من الدرايف:" : "Directory Extracted from Drive:"}
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {liveFloors.map((fl) => (
+                <div
+                  key={fl.floor}
+                  className="rounded-lg border border-border/80 bg-surface/60 p-2 text-xs"
+                >
+                  <div className="flex items-center justify-between font-bold text-foreground mb-1.5 border-b border-border/40 pb-1">
+                    <span>🏢 {fl.floor}</span>
+                    <span className="text-[10px] text-muted font-mono">
+                      {fl.rooms.length} {isAr ? "لجان" : "rooms"} ({fl.totalStudents} {isAr ? "طالب" : "cand."})
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {fl.rooms.map((rm) => (
+                      <span
+                        key={rm.room}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-surface-soft border border-border text-[10.5px] font-mono text-foreground"
+                      >
+                        <span>{rm.room}</span>
+                        <span className="text-muted text-[9.5px]">({rm.studentCount})</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main 4 Action Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Card 1: Building Carton Sticker (A4 Landscape) */}
-        <div className="card p-5 border-2 border-border/80 hover:border-indigo-500/50 transition-all rounded-2xl flex flex-col justify-between group shadow-xs">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs font-bold">
-                <Package className="size-4" />
-                <span>{isAr ? "كرتونة المبنى" : "Building Carton"}</span>
+        {/* CARD 1: Master Building Carton Placard */}
+        <div className="card p-5 border border-border/80 hover:border-indigo-500/40 shadow-xs transition-all relative overflow-hidden group">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-10 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400 flex items-center justify-center font-bold text-lg">
+                📦
               </div>
-              <span className="text-[11px] font-semibold text-muted bg-surface-strong px-2 py-0.5 rounded">
-                A4 Landscape
-              </span>
-            </div>
-
-            <h3 className="text-lg font-bold text-foreground">
-              {isAr ? "ستيكر كرتونة أكياس المبنى" : "Master Building Carton Placard"}
-            </h3>
-            <p className="mt-1.5 text-xs text-muted leading-relaxed">
-              {isAr
-                ? "يُلصق على الكرتونة الكبيرة التي تحوي جميع أكياس لجان المبنى بالكامل. يعرض أدوار المبنى والقاعات التابعة لكل دور مع خانات تدقيق [✓] وإجمالي الطلاب."
-                : "Affixed to the master carton box containing all room dossiers. Displays building floors with their constituent rooms, packing checkboxes, and total candidates."}
-            </p>
-          </div>
-
-          <div className="mt-5 pt-4 border-t border-border flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted">
-              {building} — {buildingFloors.length} {isAr ? "أدوار" : "Floors"} • {buildingRooms.totalRooms} {isAr ? "قاعة" : "Rooms"}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("carton", "show")}
-                disabled={Boolean(busyAction)}
-                className="btn btn-secondary text-xs h-9 px-3 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "carton-show" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-                )}
-                <span>{isAr ? "معاينة" : "Show"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("carton", "print")}
-                disabled={Boolean(busyAction)}
-                className="btn btn-primary text-xs h-9 px-3.5 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "carton-print" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Printer className="size-3.5" />
-                )}
-                <span>{isAr ? "طباعة" : "Print"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Exam Transit Bag Checklist (A4 Portrait) */}
-        <div className="card p-5 border-2 border-border/80 hover:border-emerald-500/50 transition-all rounded-2xl flex flex-col justify-between group shadow-xs">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-                <FileCheck2 className="size-4" />
-                <span>{isAr ? "بيان الشنطة" : "Bag Checklist"}</span>
+              <div>
+                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                  A4 Landscape
+                </span>
+                <h3 className="text-base font-extrabold text-foreground">
+                  {isAr ? "ستيكر كرتونة المبنى الرئيسية" : "Master Building Carton Placard"}
+                </h3>
               </div>
-              <span className="text-[11px] font-semibold text-muted bg-surface-strong px-2 py-0.5 rounded">
-                A4 Portrait
-              </span>
             </div>
-
-            <h3 className="text-lg font-bold text-foreground">
-              {isAr ? "بيان فحص شنطة الامتحانات (Checklist)" : "Exam Transit Bag Security Checklist"}
-            </h3>
-            <p className="mt-1.5 text-xs text-muted leading-relaxed">
-              {isAr
-                ? `يُلصق على شنطة نقل الامتحانات. يحتوي على جدول بجميع المواد لـ ${examType} مع مربعات اختيار [ ] للتأشير بالقلم عند وضع المظاريف، وتوثيق عدد الأكياس والقفل الأمني.`
-                : `Affixed to the transit bag. Features check-boxes [ ] for all ${examType} subjects, envelope count verification, and chain-of-custody seal signatures.`}
-            </p>
-          </div>
-
-          <div className="mt-5 pt-4 border-t border-border flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted">
-              {examType}: {examType === "EST 2" ? "Math 1, Math 2, Bio, Chem, Phy" : "Lit, Math, Essay"}
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-bold">
+              Carton Sticker
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("bag", "show")}
-                disabled={Boolean(busyAction)}
-                className="btn btn-secondary text-xs h-9 px-3 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "bag-show" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                )}
-                <span>{isAr ? "معاينة" : "Show"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("bag", "print")}
-                disabled={Boolean(busyAction)}
-                className="btn bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 px-3.5 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "bag-print" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Printer className="size-3.5" />
-                )}
-                <span>{isAr ? "طباعة" : "Print"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Clean Skin Master Outer Envelope (A4 Portrait) */}
-        <div className="card p-5 border-2 border-border/80 hover:border-rose-500/50 transition-all rounded-2xl flex flex-col justify-between group shadow-xs">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-bold">
-                <ShieldAlert className="size-4" />
-                <span>{isAr ? "طوارئ الكنترول" : "Emergency Master"}</span>
-              </div>
-              <span className="text-[11px] font-semibold text-muted bg-surface-strong px-2 py-0.5 rounded">
-                A4 Master Envelope
-              </span>
-            </div>
-
-            <h3 className="text-lg font-bold text-foreground">
-              {isAr ? "كيس أوراق الطوارئ والاحتياطي (Clean Skin Master)" : "Clean Skin Master Emergency Envelope"}
-            </h3>
-            <p className="mt-1.5 text-xs text-muted leading-relaxed">
-              {isAr
-                ? "يُلصق على كيس الطوارئ الخارجي الخاص بكنترول المبنى. يحتوي على تحذيرات أمنية مشددة وجدول مسطر جاهز للكتابة اليدوية لتوثيق صرف أي ورقة احتياطية لأي قاعة."
-                : "Affixed to the master emergency packet for building control. Features strict security warnings and a full manual dispatch tracking log sheet."}
-            </p>
           </div>
 
-          <div className="mt-5 pt-4 border-t border-border flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted">
-              {isAr ? "سجل توثيق واستبدال التالف" : "Replacement & Incident Log"}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("clean_skin_master", "show")}
-                disabled={Boolean(busyAction)}
-                className="btn btn-secondary text-xs h-9 px-3 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "clean_skin_master-show" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Eye className="size-3.5 text-rose-600 dark:text-rose-400" />
-                )}
-                <span>{isAr ? "معاينة" : "Show"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("clean_skin_master", "print")}
-                disabled={Boolean(busyAction)}
-                className="btn bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 px-3.5 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "clean_skin_master-print" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Printer className="size-3.5" />
-                )}
-                <span>{isAr ? "طباعة" : "Print"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+          <p className="text-xs text-muted mb-4 leading-relaxed">
+            {isAr
+              ? "ورقة مقاس A4 بالعرض تلصق على الكرتونة الخارجية التي تحتوي على جميع أكياس ومظاريف المبنى مع مسرد الأدوار والقاعات بالكامل ومربعات [ ] للتأكيد."
+              : "A4 Landscape placard affixed to the master carton, detailing total floors, rooms, candidates, and packing check-off boxes."}
+          </p>
 
-        {/* Card 4: Clean Skin Subject Stickers (Quarter A4) */}
-        <div className="card p-5 border-2 border-border/80 hover:border-amber-500/50 transition-all rounded-2xl flex flex-col justify-between group shadow-xs">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-bold">
-                <Boxes className="size-4" />
-                <span>{isAr ? "ستيكرات المواد (طوارئ)" : "Subject Spare Stickers"}</span>
-              </div>
-              <span className="text-[11px] font-semibold text-muted bg-surface-strong px-2 py-0.5 rounded">
-                Quarter A4 (4-up)
-              </span>
-            </div>
-
-            <h3 className="text-lg font-bold text-foreground">
-              {isAr ? "ستيكرات المواد الاحتياطية (كتابة يدوية للعدد)" : "Clean Skin Subject Stickers (Manual Count)"}
-            </h3>
-            <p className="mt-1.5 text-xs text-muted leading-relaxed">
-              {isAr
-                ? "ستيكرات لكل مادة بمقاس ربع صفحة A4 متناسقة تماماً مع ستيكرات الامتحانات، مع ترك خانة العدد فارغة ومسطرة لكتابة العدد الفعلي بالقلم بعد التجهيز."
-                : "Quarter-A4 stickers for each subject. Features a prominent blank quantity underline so staff can write the actual packet count with a pen after packing."}
-            </p>
-          </div>
-
-          <div className="mt-5 pt-4 border-t border-border flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted">
-              {isAr ? "خانة عدد فارغة [ _____ ] نسخ" : "Blank count box [ _____ ] copies"}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("clean_skin_subjects", "show")}
-                disabled={Boolean(busyAction)}
-                className="btn btn-secondary text-xs h-9 px-3 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "clean_skin_subjects-show" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Eye className="size-3.5 text-amber-600 dark:text-amber-400" />
-                )}
-                <span>{isAr ? "معاينة" : "Show"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLogisticsAction("clean_skin_subjects", "print")}
-                disabled={Boolean(busyAction)}
-                className="btn bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 px-3.5 gap-1.5 cursor-pointer font-bold"
-              >
-                {busyAction === "clean_skin_subjects-print" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Printer className="size-3.5" />
-                )}
-                <span>{isAr ? "طباعة" : "Print"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Complete Bundle Master Card */}
-      <div className="rounded-2xl border-2 border-indigo-500/40 bg-gradient-to-br from-indigo-500/10 via-surface to-purple-500/10 p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
-                <Boxes className="size-4" />
-              </span>
-              <h3 className="text-base font-bold text-foreground">
-                {isAr
-                  ? "الحزمة اللوجستية المجمعة للمبنى (Complete Logistics Bundle)"
-                  : "All-in-One Building Logistics Bundle"}
-              </h3>
-            </div>
-            <p className="text-xs text-muted max-w-2xl">
-              {isAr
-                ? "توليد ملف PDF موحد يحتوي على جميع المستندات اللوجستية أعلاه لمبنى " +
-                  building +
-                  " دفعة واحدة (الكرتونة + الشنطة + كيس الطوارئ + استيكرات المواد)."
-                : "Generates one consolidated PDF containing all logistics carrier sheets for " +
-                  building +
-                  " in a single print job."}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center gap-2 pt-3 border-t border-border/60">
             <button
               type="button"
-              onClick={() => handleLogisticsAction("bundle", "show")}
+              onClick={() => handleLogisticsAction("carton", "show")}
               disabled={Boolean(busyAction)}
-              className="flex-1 sm:flex-initial btn btn-secondary text-xs h-10 px-4 font-bold cursor-pointer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
             >
-              {busyAction === "bundle-show" ? (
-                <Loader2 className="size-4 animate-spin text-indigo-600" />
+              {busyAction === "carton-show" ? (
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Eye className="size-4 text-indigo-600 dark:text-indigo-400" />
+                <Eye className="size-3.5" />
               )}
-              <span>{isAr ? "معاينة شاملة" : "Preview All"}</span>
+              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
             </button>
             <button
               type="button"
-              onClick={() => handleLogisticsAction("bundle", "print")}
+              onClick={() => handleLogisticsAction("carton", "print")}
               disabled={Boolean(busyAction)}
-              className="flex-1 sm:flex-initial btn bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-10 px-5 font-bold cursor-pointer shadow-sm shadow-indigo-500/25"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
             >
-              {busyAction === "bundle-print" ? (
-                <Loader2 className="size-4 animate-spin" />
+              {busyAction === "carton-print" ? (
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Printer className="size-4" />
+                <Printer className="size-3.5" />
               )}
-              <span>{isAr ? "طباعة الحزمة كاملة" : "Print Bundle"}</span>
+              <span>{isAr ? "طباعة فورية" : "Print Placard"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 2: Transit Bag Exam Checklist */}
+        <div className="card p-5 border border-border/80 hover:border-indigo-500/40 shadow-xs transition-all relative overflow-hidden group">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-10 rounded-xl bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-lg">
+                🎒
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
+                  A4 Portrait
+                </span>
+                <h3 className="text-base font-extrabold text-foreground">
+                  {isAr ? "بيان محتويات شنطة الامتحانات (Checklist)" : "Transit Bag Exam Checklist"}
+                </h3>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-xs font-bold">
+              Bag Manifest
+            </span>
+          </div>
+
+          <p className="text-xs text-muted mb-4 leading-relaxed">
+            {isAr
+              ? `بيان مقاس A4 يلصق على شنطة المواد لـ ${selectedExamName}، يعرض جميع المواد مع خانات التأشير [✓] والقفل الأمني.`
+              : `A4 Portrait checklist affixed to the transit bag with subject breakdowns and packing verification for ${selectedExamName}.`}
+          </p>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-border/60">
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("bag", "show")}
+              disabled={Boolean(busyAction)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+            >
+              {busyAction === "bag-show" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("bag", "print")}
+              disabled={Boolean(busyAction)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              {busyAction === "bag-print" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Printer className="size-3.5" />
+              )}
+              <span>{isAr ? "طباعة البيان" : "Print Checklist"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 3: Clean Skin Master Envelope */}
+        <div className="card p-5 border border-border/80 hover:border-red-500/40 shadow-xs transition-all relative overflow-hidden group">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-10 rounded-xl bg-red-500/10 text-red-700 dark:text-red-400 flex items-center justify-center font-bold text-lg">
+                🚨
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider block">
+                  A4 Single Page
+                </span>
+                <h3 className="text-base font-extrabold text-foreground">
+                  {isAr ? "ستيكر كيس الطوارئ (Clean Skin Master)" : "Clean Skin Master Emergency Placard"}
+                </h3>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-red-500/10 text-red-700 dark:text-red-400 text-xs font-bold">
+              Emergency Reserve
+            </span>
+          </div>
+
+          <p className="text-xs text-muted mb-4 leading-relaxed">
+            {isAr
+              ? "ستيكر مقاس A4 صفحة واحدة بالضبط، يلصق على كيس الاحتياطي الخارجي مع جدول شبكي لتسجيل صرف الأوراق الطارئة للقاعات."
+              : "Strict single-page A4 emergency reserve placard with structured incident dispatch log sheet and safe printer margins."}
+          </p>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-border/60">
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("clean_skin_master", "show")}
+              disabled={Boolean(busyAction)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+            >
+              {busyAction === "clean_skin_master-show" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("clean_skin_master", "print")}
+              disabled={Boolean(busyAction)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              {busyAction === "clean_skin_master-print" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Printer className="size-3.5" />
+              )}
+              <span>{isAr ? "طباعة الكيس" : "Print Master"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 4: Clean Skin Subject Stickers (Quarter A4) */}
+        <div className="card p-5 border border-border/80 hover:border-red-500/40 shadow-xs transition-all relative overflow-hidden group">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-10 rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-400 flex items-center justify-center font-bold text-lg">
+                🏷️
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider block">
+                  Quarter A4 (4-up)
+                </span>
+                <h3 className="text-base font-extrabold text-foreground">
+                  {isAr ? "ستيكرات المواد الاحتياطية (Clean Skin)" : "Clean Skin Subject Stickers (4-Up)"}
+                </h3>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-700 dark:text-orange-400 text-xs font-bold">
+              Quarter A4
+            </span>
+          </div>
+
+          <p className="text-xs text-muted mb-4 leading-relaxed">
+            {isAr
+              ? "ستيكرات ربع A4 مقسمة 4 في الصفحة، مجهزة للمواد مع خانة عدد فارغة ومسطرة لكتابة العدد يدوياً بالقلم بعد التعبئة."
+              : "Quarter-A4 stickers (4-up on A4 landscape) with blank quantity boxes formatted for manual pen entry."}
+          </p>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-border/60">
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("clean_skin_subjects", "show")}
+              disabled={Boolean(busyAction)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-surface-soft hover:bg-surface-strong text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
+            >
+              {busyAction === "clean_skin_subjects-show" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+              <span>{isAr ? "معاينة PDF" : "Preview PDF"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLogisticsAction("clean_skin_subjects", "print")}
+              disabled={Boolean(busyAction)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              {busyAction === "clean_skin_subjects-print" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Printer className="size-3.5" />
+              )}
+              <span>{isAr ? "طباعة الستيكرات" : "Print Stickers"}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* PDF Live Preview Modal */}
+      {/* Modal for PDF Preview */}
       <StickerPreviewModal
         open={previewState.open}
         onClose={() => setPreviewState({ open: false, url: null, title: "" })}
@@ -819,4 +1021,3 @@ export default function LogisticsHubPage() {
     </div>
   );
 }
-
