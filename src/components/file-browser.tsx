@@ -1030,8 +1030,7 @@ export function FileBrowser({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scheduleName: "December 2026",
-          examNames: ["EST 1", "EST 2"],
+          cycles: ["December 2026", "January 2027", "March 2027"],
           targetFolderId: currentFolder?.id ?? null,
         }),
       });
@@ -1041,8 +1040,8 @@ export function FileBrowser({
       }
       toast.success(
         locale === "ar"
-          ? `تم بنجاح إنشاء هيكل المدارس (${data.totalCreated} مجلد، 18 مدرسة، ${data.totalRooms} قاعة) تحت EST 1 و EST 2`
-          : `Successfully created Schools hierarchy (${data.totalCreated} folders, 18 schools, ${data.totalRooms} rooms) under EST 1 & EST 2`,
+          ? `تم بنجاح إنشاء وتحديث هيكل الدورات والمدارس (${data.totalCreated} مجلد، 18 مدرسة) للدورات: December 2026, January 2027, March 2027`
+          : `Successfully created Schools & Cycles hierarchy (${data.totalCreated} folders, 18 schools) for December 2026, January 2027, March 2027`,
         { id: toastId },
       );
       setRefreshKey((v) => v + 1);
@@ -3238,8 +3237,8 @@ export function FileBrowser({
         title={locale === "ar" ? "إنشاء هيكل مجلدات المدارس لاختبارات EST" : "Create EST Schools Folder Structure"}
         description={
           locale === "ar"
-            ? "سيتم إنشاء هيكل المدارس الرسمي كاملاً (18 مدرسة، جميع الأدوار، و202 قاعة) تلقائياً داخل Google Drive لكل من EST 1 و EST 2 (تحت مجلد Schools). هل تريد المتابعة؟"
-            : "This will automatically create the complete official schools hierarchy (18 schools, all floors, and 202 rooms) in Google Drive for both EST 1 and EST 2 (under Schools). Continue?"
+            ? "سيتم إنشاء وتحديث هيكل الدورات (December 2026, January 2027, March 2027) مع مجلد المدارس الرسمي (18 مدرسة، جميع الأدوار، و202 قاعة) والمحافظات الفارغة داخل Google Drive لكل من EST 1 و EST 2. هل تريد المتابعة؟"
+            : "This will automatically create/update the cycles structure (December 2026, January 2027, March 2027) with the official Schools folder (18 schools, floors, 202 rooms) and empty governorates in Google Drive for EST 1 and EST 2. Continue?"
         }
         confirmLabel={locale === "ar" ? "بدء الإنشاء" : "Create Structure"}
         loading={seedingEst}

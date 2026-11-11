@@ -82,22 +82,26 @@ async function main() {
   console.log("Root folder ID:", rootFolderId);
 
   const cache = new Map<string, string>();
+  const cycles = ["December 2026", "January 2027", "March 2027"];
 
-  // Target path: File Manager App (root) -> December 2026 -> EST 1 & EST 2
-  console.log("Step 1: Ensuring 'December 2026' under root...");
-  const dec2026Id = await getOrCreateChildFolder(drive, rootFolderId, "December 2026", cache);
+  for (const cycleName of cycles) {
+    console.log(`\n========================================`);
+    console.log(`Ensuring Cycle: "${cycleName}" under root...`);
+    console.log(`========================================`);
+    const cycleFolderId = await getOrCreateChildFolder(drive, rootFolderId, cycleName, cache);
 
-  // EST 1
-  console.log("\nStep 2: Ensuring 'EST 1' under 'December 2026'...");
-  const est1Id = await getOrCreateChildFolder(drive, dec2026Id, "EST 1", cache);
-  await seedExamSchools(drive, est1Id, "EST 1", cache);
+    // EST 1
+    console.log(`Ensuring 'EST 1' under '${cycleName}'...`);
+    const est1Id = await getOrCreateChildFolder(drive, cycleFolderId, "EST 1", cache);
+    await seedExamSchools(drive, est1Id, `EST 1 (${cycleName})`, cache);
 
-  // EST 2
-  console.log("\nStep 3: Ensuring 'EST 2' under 'December 2026'...");
-  const est2Id = await getOrCreateChildFolder(drive, dec2026Id, "EST 2", cache);
-  await seedExamSchools(drive, est2Id, "EST 2", cache);
+    // EST 2
+    console.log(`Ensuring 'EST 2' under '${cycleName}'...`);
+    const est2Id = await getOrCreateChildFolder(drive, cycleFolderId, "EST 2", cache);
+    await seedExamSchools(drive, est2Id, `EST 2 (${cycleName})`, cache);
+  }
 
-  console.log(`\n🎉 Successfully completed! Verified/created official EST schools structure across ${cache.size} total folders in Google Drive!`);
+  console.log(`\n🎉 Successfully completed! Verified/created official EST schools structure for [${cycles.join(", ")}] across ${cache.size} total folders in Google Drive!`);
 }
 
 main().catch((err) => {

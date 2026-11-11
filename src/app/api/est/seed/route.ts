@@ -8,7 +8,7 @@ import type { drive_v3 } from "googleapis";
 
 export const dynamic = "force-dynamic";
 
-const OFFICIAL_GOVERNORATES = [
+export const OFFICIAL_GOVERNORATES = [
   "Alexandria",
   "Cairo",
   "Giza",
@@ -18,6 +18,12 @@ const OFFICIAL_GOVERNORATES = [
   "Suez",
   "Minya",
   "Damietta",
+];
+
+export const OFFICIAL_CYCLES = [
+  "December 2026",
+  "January 2027",
+  "March 2027",
 ];
 
 async function getOrCreateSubFolder(
@@ -145,8 +151,17 @@ export async function POST(request: Request) {
 
     const cache = new Map<string, string>();
 
-    // 1. Resolve December 2026 folder
-    let dec2026Id: string;
+    // Determine which cycles to seed (December 2026, January 2027, March 2027 by default)
+    let cyclesToSeed: string[] = OFFICIAL_CYCLES;
+    if (Array.isArray(body.cycles) && body.cycles.length > 0) {
+      cyclesToSeed = body.cycles.map((c: string) => String(c).trim()).filter(Boolean);
+    } else if (typeof body.scheduleName === "string" && body.scheduleName.trim()) {
+      const customName = body.scheduleName.trim();
+      cyclesToSeed = Array.from(new Set([customName, ...OFFICIAL_CYCLES]));
+    }
+
+    // Check if targetFolderId points directly inside a specific cycle or exam
+    let currentCycleId: string | null = null;
     if (targetFolderId) {
       try {
         const meta = await drive.files.get({
@@ -156,48 +171,70 @@ export async function POST(request: Request) {
         const name = (meta.data.name || "").trim();
 
         if (/^EST\s*[12]$/i.test(name)) {
-          // targetFolderId is EST 1 or EST 2 itself! Parent is December 2026
-          const parentId = meta.data.parents?.[0];
-          dec2026Id = parentId || (await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache));
-        } else if (/december\s*2026/i.test(name)) {
-          dec2026Id = targetFolderId;
-        } else {
-          dec2026Id = await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache);
+          // Inside EST 1 or EST 2, parent is the cycle folder
+          currentCycleId = meta.data.parents?.[0] || null;
+        } else if (/^(december|january|march|session|cycle)/i.test(name)) {
+          currentCycleId = targetFolderId;
         }
-      } catch {
-        dec2026Id = await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache);
+      } catch (err) {
+        console.warn("[seed] Could not inspect targetFolderId:", err);
       }
-    } else {
-      dec2026Id = await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache);
     }
 
-    // 2. Resolve both EST 1 and EST 2 directly under December 2026
-    const est1Id = await getOrCreateSubFolder(drive, dec2026Id, "EST 1", cache);
-    const est2Id = await getOrCreateSubFolder(drive, dec2026Id, "EST 2", cache);
+    const seededCycles: Array<{
+      cycleName: string;
+      cycleId: string;
+      exams: Array<{ examName: string; examFolderId: string; roomsCreated: number }>;
+    }> = [];
 
-    const examTargets = [
-      { name: "EST 1", id: est1Id },
-      { name: "EST 2", id: est2Id },
-    ];
+    // Seed each cycle
+    for (const cycleName of cyclesToSeed) {
+      let cycleFolderId: string;
+      if (
+        currentCycleId &&
+        /december\s*2026/i.test(cycleName) &&
+        (await drive.files.get({ fileId: currentCycleId, fields: "name" }).catch(() => ({})))
+          // @ts-expect-error type check safe
+          ?.data?.name?.includes("December")
+      ) {
+        cycleFolderId = currentCycleId;
+      } else {
+        cycleFolderId = await getOrCreateSubFolder(drive, rootFolderId, cycleName, cache);
+      }
 
-    const seededExams: Array<{ examName: string; examFolderId: string; roomsCreated: number }> = [];
+      const est1Id = await getOrCreateSubFolder(drive, cycleFolderId, "EST 1", cache);
+      const est2Id = await getOrCreateSubFolder(drive, cycleFolderId, "EST 2", cache);
 
-    // Seed both EST 1 and EST 2
-    for (const exam of examTargets) {
-      const { roomsCreated } = await seedSchoolsHierarchy(drive, exam.id, cache);
-      seededExams.push({ examName: exam.name, examFolderId: exam.id, roomsCreated });
+      const examTargets = [
+        { name: "EST 1", id: est1Id },
+        { name: "EST 2", id: est2Id },
+      ];
+
+      const examResults = [];
+      for (const exam of examTargets) {
+        const { roomsCreated } = await seedSchoolsHierarchy(drive, exam.id, cache);
+        examResults.push({ examName: exam.name, examFolderId: exam.id, roomsCreated });
+      }
+
+      seededCycles.push({
+        cycleName,
+        cycleId: cycleFolderId,
+        exams: examResults,
+      });
     }
 
-    const totalRooms = seededExams.reduce((acc, e) => acc + e.roomsCreated, 0);
+    const totalRooms = seededCycles.reduce(
+      (sum, c) => sum + c.exams.reduce((eSum, e) => eSum + e.roomsCreated, 0),
+      0,
+    );
 
     return NextResponse.json({
       success: true,
-      message: `Successfully created Schools folder (18 schools, 202 rooms) and initialized empty governorates under EST 1 & EST 2`,
+      message: `Successfully created EST folder structure for ${cyclesToSeed.join(", ")} (Schools + empty Governorates)`,
       totalCreated: cache.size,
       totalRooms,
       totalSchools: OFFICIAL_EST_SCHOOLS.length,
-      scheduleFolderId: dec2026Id,
-      seededExams,
+      seededCycles,
     });
   } catch (err) {
     return jsonError(err);
