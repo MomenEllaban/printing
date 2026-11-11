@@ -1,7 +1,7 @@
 import type { Breadcrumb, DriveItem, DriveStats, FileCategory } from "./types";
 import { MIME, categoryFor, extensionOf } from "./file-utils";
-import { EST_REFERENCE_DATA } from "./stickers/est-reference-data";
-import { formatEst1FileName } from "./stickers/est-room-data";
+import { EST_REFERENCE_DATA, OFFICIAL_EST_SCHOOLS } from "./stickers/est-reference-data";
+import { formatEst1FileName, formatEst2FileName } from "./stickers/est-room-data";
 
 interface DemoRecord {
   id: string;
@@ -33,124 +33,170 @@ function buildEstDemoRecords(): DemoRecord[] {
       parentId: "demo-folder-december-2026",
       modifiedOffsetDays: 1,
     },
+    {
+      id: "demo-folder-est-2",
+      name: "EST 2",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-folder-december-2026",
+      modifiedOffsetDays: 1,
+    },
+    {
+      id: "demo-folder-est-1-schools",
+      name: "Schools",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-folder-est-1",
+      modifiedOffsetDays: 1,
+    },
+    {
+      id: "demo-folder-est-2-schools",
+      name: "Schools",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-folder-est-2",
+      modifiedOffsetDays: 1,
+    },
+    // Legacy sample path for tests and backwards compatibility
+    {
+      id: "demo-gov-alexandria",
+      name: "Alexandria",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-folder-est-1",
+      modifiedOffsetDays: 2,
+    },
+    {
+      id: "demo-gov-alexandria-abu-qir",
+      name: "Abu Qir",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-gov-alexandria",
+      modifiedOffsetDays: 2,
+    },
+    {
+      id: "demo-gov-alexandria-abu-qir-pharmacy",
+      name: "Pharmacy",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-gov-alexandria-abu-qir",
+      modifiedOffsetDays: 2,
+    },
+    {
+      id: "demo-gov-alexandria-abu-qir-pharmacy-2nd-floor",
+      name: "2nd Floor",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-gov-alexandria-abu-qir-pharmacy",
+      modifiedOffsetDays: 2,
+    },
+    {
+      id: "demo-gov-alexandria-abu-qir-pharmacy-2nd-floor-204",
+      name: "204",
+      mimeType: MIME.folder,
+      size: 0,
+      parentId: "demo-gov-alexandria-abu-qir-pharmacy-2nd-floor",
+      modifiedOffsetDays: 2,
+    },
   ];
 
-  const addedIds = new Set<string>(["demo-folder-december-2026", "demo-folder-est-1"]);
+  const addedIds = new Set<string>([
+    "demo-folder-december-2026",
+    "demo-folder-est-1",
+    "demo-folder-est-2",
+    "demo-folder-est-1-schools",
+    "demo-folder-est-2-schools",
+    "demo-gov-alexandria",
+    "demo-gov-alexandria-abu-qir",
+    "demo-gov-alexandria-abu-qir-pharmacy",
+    "demo-gov-alexandria-abu-qir-pharmacy-2nd-floor",
+    "demo-gov-alexandria-abu-qir-pharmacy-2nd-floor-204",
+  ]);
 
   const makeId = (prefix: string, str: string) =>
     `${prefix}-${str.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-")}`;
 
-  for (const row of EST_REFERENCE_DATA) {
-    // Governorate
-    const govId = makeId("demo-gov", row.governorate);
-    if (!addedIds.has(govId)) {
-      addedIds.add(govId);
-      records.push({
-        id: govId,
-        name: row.governorate,
-        mimeType: MIME.folder,
-        size: 0,
-        parentId: "demo-folder-est-1",
-        modifiedOffsetDays: 2,
-      });
-    }
+  // Populate both EST 1 and EST 2 with the identical official schools hierarchy
+  const examRoots = [
+    { exam: "EST 1", parentId: "demo-folder-est-1-schools", idPrefix: "est1" },
+    { exam: "EST 2", parentId: "demo-folder-est-2-schools", idPrefix: "est2" },
+  ];
 
-    // Test Center
-    const centerId = makeId(govId, row.testCenter);
-    if (!addedIds.has(centerId)) {
-      addedIds.add(centerId);
-      records.push({
-        id: centerId,
-        name: row.testCenter,
-        mimeType: MIME.folder,
-        size: 0,
-        parentId: govId,
-        modifiedOffsetDays: 2,
-      });
-    }
+  for (const root of examRoots) {
+    for (const school of OFFICIAL_EST_SCHOOLS) {
+      // School Folder: e.g. "Al Alamiya Modern School - International (Qalyubia)"
+      const schoolId = makeId(`demo-${root.idPrefix}`, school.fullFolderName);
+      if (!addedIds.has(schoolId)) {
+        addedIds.add(schoolId);
+        records.push({
+          id: schoolId,
+          name: school.fullFolderName,
+          mimeType: MIME.folder,
+          size: 0,
+          parentId: root.parentId,
+          modifiedOffsetDays: 2,
+        });
 
-    // Building
-    const bldId = makeId(centerId, row.building);
-    if (!addedIds.has(bldId)) {
-      addedIds.add(bldId);
-      records.push({
-        id: bldId,
-        name: row.building,
-        mimeType: MIME.folder,
-        size: 0,
-        parentId: centerId,
-        modifiedOffsetDays: 2,
-      });
-    }
+        // Sample Building Excel Master Register inside each school
+        const excelId = `${schoolId}-building-excel`;
+        records.push({
+          id: excelId,
+          name: `${school.schoolName} _ Master_Register.xlsx`,
+          mimeType: MIME.xlsx,
+          size: 245_000,
+          parentId: schoolId,
+          modifiedOffsetDays: 2,
+          content: "xlsx",
+        });
+      }
 
-    // Floor
-    const flrId = makeId(bldId, row.floor);
-    if (!addedIds.has(flrId)) {
-      addedIds.add(flrId);
-      records.push({
-        id: flrId,
-        name: row.floor,
-        mimeType: MIME.folder,
-        size: 0,
-        parentId: bldId,
-        modifiedOffsetDays: 2,
-      });
-
-      // Sample Proctor Register for Pharmacy - 2nd Floor
-      if (row.floor === "2nd Floor" && row.building === "Pharmacy") {
-        const flrProctorId = `${flrId}-proctor-register`;
-        if (!addedIds.has(flrProctorId)) {
-          addedIds.add(flrProctorId);
+      // Floors
+      for (const fl of school.floors) {
+        const flrId = makeId(schoolId, fl.floorName);
+        if (!addedIds.has(flrId)) {
+          addedIds.add(flrId);
           records.push({
-            id: flrProctorId,
-            name: `Proctor_Register_${row.floor.replace(/\s+/g, "_")}.pdf`,
-            mimeType: MIME.pdf,
-            size: 118_400,
-            parentId: flrId,
-            modifiedOffsetDays: 1,
-            content: "pdf",
+            id: flrId,
+            name: fl.floorName,
+            mimeType: MIME.folder,
+            size: 0,
+            parentId: schoolId,
+            modifiedOffsetDays: 2,
           });
         }
+
+        // Rooms
+        for (const room of fl.rooms) {
+          const rmId = makeId(flrId, room);
+          if (!addedIds.has(rmId)) {
+            addedIds.add(rmId);
+            records.push({
+              id: rmId,
+              name: room,
+              mimeType: MIME.folder,
+              size: 0,
+              parentId: flrId,
+              modifiedOffsetDays: 2,
+            });
+
+            // Sample exam PDF inside each room
+            const examFileName =
+              root.exam === "EST 1"
+                ? formatEst1FileName(room, 25, 25, 0)
+                : formatEst2FileName(room, { MATH1: 25, MATH2: 25, BIO: 25, CHEM: 20 });
+
+            records.push({
+              id: `${rmId}-student-register`,
+              name: examFileName,
+              mimeType: MIME.pdf,
+              size: 154_200,
+              parentId: rmId,
+              modifiedOffsetDays: 1,
+              content: "pdf",
+            });
+          }
+        }
       }
-    }
-
-    // Room
-    const rmId = makeId(flrId, row.room);
-    if (!addedIds.has(rmId)) {
-      addedIds.add(rmId);
-      records.push({
-        id: rmId,
-        name: row.room,
-        mimeType: MIME.folder,
-        size: 0,
-        parentId: flrId,
-        modifiedOffsetDays: 2,
-      });
-
-      // Sample exam PDFs inside each room (following official EST I naming convention)
-      const lit = row.studentsEst1;
-      const math = row.studentsEst1;
-      const essay = row.studentsWithEssay;
-      const examFileName = formatEst1FileName(row.room, lit, math, essay);
-
-      records.push({
-        id: `${rmId}-student-register`,
-        name: examFileName,
-        mimeType: MIME.pdf,
-        size: 154_200,
-        parentId: rmId,
-        modifiedOffsetDays: 1,
-        content: "pdf",
-      });
-      records.push({
-        id: `${rmId}-proctor-register`,
-        name: `Proctor_Register_${row.room}.pdf`,
-        mimeType: MIME.pdf,
-        size: 98_400,
-        parentId: rmId,
-        modifiedOffsetDays: 1,
-        content: "pdf",
-      });
     }
   }
 

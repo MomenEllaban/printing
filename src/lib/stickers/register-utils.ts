@@ -1,4 +1,5 @@
 import type { DriveItem, Breadcrumb } from "@/lib/types";
+import { OFFICIAL_ROOMS_SET } from "./est-reference-data";
 
 export type RegisterCategory = "building_excel" | "student" | "control" | "proctor" | null;
 
@@ -254,13 +255,19 @@ export function findStudentFileInItems(items?: DriveItem[]): DriveItem | undefin
 export function isRoomFolderName(name?: string | null): boolean {
   if (!name) return false;
   const folderName = name.trim();
+
+  // 0. Match official EST reference rooms immediately (e.g. Nebraska, California, MathsClass, Senior1, G5-C)
+  if (OFFICIAL_ROOMS_SET.has(folderName.toLowerCase())) {
+    return true;
+  }
+
   // 1. Exclude exam roots, months/dates, governorates, drive roots
   if (
     /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+|[A-Za-z0-9\s,._-]+))?$/i.test(folderName) ||
     /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
       folderName,
     ) ||
-    /^(cairo|alexandria|giza|qalyubia|mansoura|tanta|ismailia|suez|port said|القاهرة|الإسكندرية|الجيزة|القليوبية|المنصورة|طنطا|الإسماعيلية|السويس|بورسعيد|root|drive|my drive|home|file manager app)$/i.test(
+    /^(cairo|alexandria|giza|qalyubia|dakahlia|menofia|suez|mansoura|tanta|ismailia|port said|القاهرة|الإسكندرية|الجيزة|القليوبية|الدقهلية|المنوفية|السويس|المنصورة|طنطا|الإسماعيلية|بورسعيد|root|drive|my drive|home|file manager app|schools)$/i.test(
       folderName,
     )
   ) {
@@ -283,9 +290,9 @@ export function isRoomFolderName(name?: string | null): boolean {
   ) {
     return false;
   }
-  // 4. Room patterns: M102, M-102, 102, 204B, Room 1, Room-102, قاعة 5, لجنة 1, Lab 3, etc.
+  // 4. Room patterns: M102, G5-C, 102, 204B, Room 1, Room 1.1, Room-102, قاعة 5, لجنة 1, Senior1, MathsClass, etc.
   if (
-    /^([A-Za-z]{1,4}[-_\s]?\d{1,4}[A-Za-z]?|\d{1,4}[A-Za-z]?|(?:room|قاعة|لجنة|committee|lab|معمل)[-_\s]*\d+[A-Za-z]?)$/i.test(
+    /^([A-Za-z]{1,4}[-_\s]?\d{1,4}[-_\s]?[A-Za-z]?|\d{1,4}[-_\s]?[A-Za-z]?|(?:room|قاعة|لجنة|committee|lab|معمل)[-_\s]*\d+(\.\d+)?[-_\s]?[A-Za-z]?|(?:senior|grade|class|gr)[-_\s]*\d+[-_\s]?[A-Za-z]?|mathsclass)$/i.test(
       folderName,
     )
   ) {

@@ -2,8 +2,8 @@ import { config } from "dotenv";
 config();
 
 import { getDriveContextWithRoot, getConnection } from "../src/lib/auth";
-import { EST_REFERENCE_DATA } from "../src/lib/stickers/est-reference-data";
-import { createFolder, searchFolders } from "../src/lib/drive";
+import { OFFICIAL_EST_SCHOOLS } from "../src/lib/stickers/est-reference-data";
+import { createFolder } from "../src/lib/drive";
 import type { drive_v3 } from "googleapis";
 
 async function getOrCreateChildFolder(
@@ -40,6 +40,34 @@ async function getOrCreateChildFolder(
   return folderId;
 }
 
+async function seedExamSchools(
+  drive: drive_v3.Drive,
+  examFolderId: string,
+  examName: string,
+  cache: Map<string, string>,
+) {
+  console.log(`\n========================================`);
+  console.log(`Seeding Schools for ${examName}...`);
+  console.log(`========================================`);
+
+  const schoolsFolderId = await getOrCreateChildFolder(drive, examFolderId, "Schools", cache);
+
+  for (let s = 0; s < OFFICIAL_EST_SCHOOLS.length; s++) {
+    const school = OFFICIAL_EST_SCHOOLS[s];
+    console.log(`\n[${s + 1}/${OFFICIAL_EST_SCHOOLS.length}] School: ${school.fullFolderName}`);
+    const schoolId = await getOrCreateChildFolder(drive, schoolsFolderId, school.fullFolderName, cache);
+
+    for (const fl of school.floors) {
+      console.log(`  -> Floor: ${fl.floorName} (${fl.rooms.length} rooms)`);
+      const floorId = await getOrCreateChildFolder(drive, schoolId, fl.floorName, cache);
+
+      for (const room of fl.rooms) {
+        await getOrCreateChildFolder(drive, floorId, room, cache);
+      }
+    }
+  }
+}
+
 async function main() {
   console.log("Checking Google Drive connection...");
   const conn = await getConnection();
@@ -55,36 +83,24 @@ async function main() {
 
   const cache = new Map<string, string>();
 
-  // Target path: File Manager App (root) -> December 2026 -> EST 1
+  // Target path: File Manager App (root) -> December 2026 -> EST 1 & EST 2
   console.log("Step 1: Ensuring 'December 2026' under root...");
   const dec2026Id = await getOrCreateChildFolder(drive, rootFolderId, "December 2026", cache);
 
-  console.log("Step 2: Ensuring 'EST 1' under 'December 2026'...");
+  // EST 1
+  console.log("\nStep 2: Ensuring 'EST 1' under 'December 2026'...");
   const est1Id = await getOrCreateChildFolder(drive, dec2026Id, "EST 1", cache);
+  await seedExamSchools(drive, est1Id, "EST 1", cache);
 
-  console.log("Step 3: Creating EST hierarchy under 'EST 1'...");
-  const processedRooms = new Set<string>();
-  let count = 0;
+  // EST 2
+  console.log("\nStep 3: Ensuring 'EST 2' under 'December 2026'...");
+  const est2Id = await getOrCreateChildFolder(drive, dec2026Id, "EST 2", cache);
+  await seedExamSchools(drive, est2Id, "EST 2", cache);
 
-  for (const row of EST_REFERENCE_DATA) {
-    const govId = await getOrCreateChildFolder(drive, est1Id, row.governorate, cache);
-    const centerId = await getOrCreateChildFolder(drive, govId, row.testCenter, cache);
-    const buildingId = await getOrCreateChildFolder(drive, centerId, row.building, cache);
-    const floorId = await getOrCreateChildFolder(drive, buildingId, row.floor, cache);
-
-    const roomKey = `${floorId}:::${row.room.trim().toLowerCase()}`;
-    if (!processedRooms.has(roomKey)) {
-      await getOrCreateChildFolder(drive, floorId, row.room, cache);
-      processedRooms.add(roomKey);
-      count++;
-    }
-  }
-
-  console.log(`\n🎉 Successfully completed! Created / verified ${count} rooms across ${cache.size} folders!`);
+  console.log(`\n🎉 Successfully completed! Verified/created official EST schools structure across ${cache.size} total folders in Google Drive!`);
 }
 
 main().catch((err) => {
   console.error("Error seeding folders:", err);
   process.exit(1);
 });
-

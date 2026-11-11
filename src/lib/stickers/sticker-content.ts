@@ -1,4 +1,4 @@
-import { getReferenceSubfolderInfo } from "./est-reference-data";
+import { getReferenceSubfolderInfo, parseSchoolFolderName } from "./est-reference-data";
 import { getRoomExamCounts, type RoomSubjectCount } from "./est-room-data";
 
 export type StickerLevel = "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom";
@@ -117,7 +117,38 @@ export function buildStickerContent(
   let floor: string | undefined;
   let room: string | undefined;
 
-  if (locationChain.length === 1) {
+  const isSchoolsGrouping = locationChain.length > 0 && /^schools$/i.test(locationChain[0]);
+
+  if (isSchoolsGrouping) {
+    const schoolChain = locationChain.slice(1);
+    if (schoolChain.length === 0) {
+      level = "root";
+    } else if (schoolChain.length === 1) {
+      // e.g. Schools / Al Alamiya Modern School - International (Qalyubia)
+      level = "building";
+      const parsed = parseSchoolFolderName(schoolChain[0]);
+      building = parsed.schoolName || schoolChain[0];
+      center = parsed.schoolName || schoolChain[0];
+      governorate = parsed.governorate;
+    } else if (schoolChain.length === 2) {
+      // e.g. Schools / Al Alamiya... / 4th Floor
+      level = "floor";
+      const parsed = parseSchoolFolderName(schoolChain[0]);
+      building = parsed.schoolName || schoolChain[0];
+      center = parsed.schoolName || schoolChain[0];
+      governorate = parsed.governorate;
+      floor = schoolChain[1];
+    } else if (schoolChain.length >= 3) {
+      // e.g. Schools / Al Alamiya... / 4th Floor / G5-C
+      level = "room";
+      const parsed = parseSchoolFolderName(schoolChain[0]);
+      building = parsed.schoolName || schoolChain[0];
+      center = parsed.schoolName || schoolChain[0];
+      governorate = parsed.governorate;
+      floor = schoolChain[1];
+      room = schoolChain[2];
+    }
+  } else if (locationChain.length === 1) {
     level = "governorate";
     governorate = locationChain[0];
   } else if (locationChain.length === 2) {

@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/components/locale-provider";
-import { EST_REFERENCE_DATA } from "@/lib/stickers/est-reference-data";
+import { EST_REFERENCE_DATA, OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
 import { toast } from "sonner";
 
@@ -45,7 +45,22 @@ export default function LogisticsHubPage() {
   useEffect(() => {
     if (urlBuilding) {
       setBuilding(urlBuilding);
-      const match = EST_REFERENCE_DATA.find((r) => r.building.toLowerCase() === urlBuilding.toLowerCase());
+      const urlClean = urlBuilding.toLowerCase().trim();
+      const schoolMatch = OFFICIAL_EST_SCHOOLS.find(
+        (s) =>
+          s.fullFolderName.toLowerCase().trim() === urlClean ||
+          s.schoolName.toLowerCase().trim() === urlClean,
+      );
+      if (schoolMatch) {
+        setGovernorate(schoolMatch.governorate);
+        setCenter(schoolMatch.schoolName);
+        return;
+      }
+      const match = EST_REFERENCE_DATA.find(
+        (r) =>
+          r.building.toLowerCase() === urlClean ||
+          r.testCenter.toLowerCase() === urlClean,
+      );
       if (match) {
         if (match.governorate) setGovernorate(match.governorate);
         if (match.testCenter) setCenter(match.testCenter);
@@ -67,37 +82,54 @@ export default function LogisticsHubPage() {
     title: "",
   });
 
-  // Extract unique options from reference data
+  // Extract unique options from official schools data
   const governorates = useMemo(() => {
-    return Array.from(new Set(EST_REFERENCE_DATA.map((r) => r.governorate).filter(Boolean)));
+    const fromSchools = OFFICIAL_EST_SCHOOLS.map((s) => s.governorate);
+    const fromRef = EST_REFERENCE_DATA.map((r) => r.governorate);
+    return Array.from(new Set([...fromSchools, ...fromRef])).filter(Boolean);
   }, []);
 
   const centers = useMemo(() => {
-    return Array.from(
-      new Set(
-        EST_REFERENCE_DATA.filter((r) => !governorate || r.governorate === governorate)
-          .map((r) => r.testCenter)
-          .filter(Boolean),
-      ),
-    );
+    const fromSchools = OFFICIAL_EST_SCHOOLS.filter(
+      (s) => !governorate || s.governorate === governorate,
+    ).map((s) => s.schoolName);
+    const fromRef = EST_REFERENCE_DATA.filter(
+      (r) => !governorate || r.governorate === governorate,
+    ).map((r) => r.testCenter);
+    return Array.from(new Set([...fromSchools, ...fromRef])).filter(Boolean);
   }, [governorate]);
 
   const buildings = useMemo(() => {
-    return Array.from(
-      new Set(
-        EST_REFERENCE_DATA.filter(
-          (r) =>
-            (!governorate || r.governorate === governorate) &&
-            (!center || r.testCenter === center),
-        )
-          .map((r) => r.building)
-          .filter(Boolean),
-      ),
-    );
+    const fromSchools = OFFICIAL_EST_SCHOOLS.filter(
+      (s) =>
+        (!governorate || s.governorate === governorate) &&
+        (!center || s.schoolName === center || s.fullFolderName === center),
+    ).map((s) => s.fullFolderName);
+    const fromRef = EST_REFERENCE_DATA.filter(
+      (r) =>
+        (!governorate || r.governorate === governorate) &&
+        (!center || r.testCenter === center),
+    ).map((r) => r.building);
+    return Array.from(new Set([...fromSchools, ...fromRef])).filter(Boolean);
   }, [governorate, center]);
 
   // Derived rooms for selected building
   const buildingRooms = useMemo(() => {
+    const cleanB = building.toLowerCase().trim();
+    const school = OFFICIAL_EST_SCHOOLS.find(
+      (s) =>
+        s.fullFolderName.toLowerCase().trim() === cleanB ||
+        s.schoolName.toLowerCase().trim() === cleanB,
+    );
+    if (school) {
+      const rooms = school.floors.flatMap((fl) => fl.rooms);
+      return {
+        rooms,
+        totalRooms: rooms.length,
+        totalStudents: rooms.length * 25,
+      };
+    }
+
     const rows = EST_REFERENCE_DATA.filter(
       (r) =>
         (!governorate || r.governorate === governorate) &&
@@ -115,6 +147,20 @@ export default function LogisticsHubPage() {
 
   // Derived floors with their rooms for the selected building
   const buildingFloors = useMemo(() => {
+    const cleanB = building.toLowerCase().trim();
+    const school = OFFICIAL_EST_SCHOOLS.find(
+      (s) =>
+        s.fullFolderName.toLowerCase().trim() === cleanB ||
+        s.schoolName.toLowerCase().trim() === cleanB,
+    );
+    if (school) {
+      return school.floors.map((fl) => ({
+        floor: fl.floorName,
+        rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
+        totalStudents: fl.rooms.length * 25,
+      }));
+    }
+
     const rows = EST_REFERENCE_DATA.filter(
       (r) =>
         (!governorate || r.governorate === governorate) &&

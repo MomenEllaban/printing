@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession, enforceRateLimit, jsonError } from "@/lib/api-utils";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
-import { EST_REFERENCE_DATA } from "@/lib/stickers/est-reference-data";
+import { OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
 import { createFolder } from "@/lib/drive";
 import { AppError } from "@/lib/errors";
 import type { drive_v3 } from "googleapis";
@@ -14,17 +14,18 @@ async function getOrCreateSubFolder(
   name: string,
   cache: Map<string, string>,
 ): Promise<string> {
-  const cacheKey = `${parentId}:::${name.trim()}`;
+  const cacheKey = `${parentId}:::${name.trim().toLowerCase()}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
 
-  const escapedName = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const escapedName = name.trim().replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const escapedParent = parentId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
   const listRes = await drive.files.list({
     q: `name = '${escapedName}' and '${escapedParent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: "files(id,name)",
-    pageSize: 1,
+    pageSize: 5,
     supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
 
   let folderId = listRes.data.files?.[0]?.id;
@@ -37,49 +38,39 @@ async function getOrCreateSubFolder(
   return folderId;
 }
 
-async function seedEstFolderStructure(
+/**
+ * Seeds the official Schools / Floors / Rooms hierarchy for an exam folder (EST 1 / EST 2)
+ */
+async function seedSchoolsHierarchy(
   drive: drive_v3.Drive,
-  rootParentId: string,
-  options?: { scheduleName?: string; examName?: string } | string,
+  examFolderId: string,
+  cache: Map<string, string>,
   onProgress?: (msg: string) => void,
-): Promise<{ totalCreated: number; estRootId: string; scheduleFolderId?: string }> {
-  const cache = new Map<string, string>();
-  const scheduleName =
-    (typeof options === "object" ? options?.scheduleName : undefined) ?? "December 2026";
-  const examName = (typeof options === "string" ? options : options?.examName) ?? "EST 1";
+): Promise<{ schoolsCreated: number; roomsCreated: number }> {
+  // 1. Schools Folder
+  const schoolsFolderId = await getOrCreateSubFolder(drive, examFolderId, "Schools", cache);
 
-  let parentForExam = rootParentId;
-  let scheduleFolderId: string | undefined;
-  if (scheduleName) {
-    onProgress?.(`Creating or finding schedule folder "${scheduleName}"...`);
-    scheduleFolderId = await getOrCreateSubFolder(drive, rootParentId, scheduleName, cache);
-    parentForExam = scheduleFolderId;
-  }
+  let roomsCreated = 0;
+  for (let sIdx = 0; sIdx < OFFICIAL_EST_SCHOOLS.length; sIdx++) {
+    const school = OFFICIAL_EST_SCHOOLS[sIdx];
+    onProgress?.(`Processing school [${sIdx + 1}/${OFFICIAL_EST_SCHOOLS.length}]: ${school.schoolName}...`);
 
-  onProgress?.(`Creating or finding root folder "${examName}"...`);
-  const estRootId = await getOrCreateSubFolder(drive, parentForExam, examName, cache);
+    // School Folder: e.g. "Al Alamiya Modern School - International (Qalyubia)"
+    const schoolId = await getOrCreateSubFolder(drive, schoolsFolderId, school.fullFolderName, cache);
 
-  let count = 1;
-  const processed = new Set<string>();
+    // Floors
+    for (const fl of school.floors) {
+      const floorId = await getOrCreateSubFolder(drive, schoolId, fl.floorName, cache);
 
-  for (const row of EST_REFERENCE_DATA) {
-    const govId = await getOrCreateSubFolder(drive, estRootId, row.governorate, cache);
-    const centerId = await getOrCreateSubFolder(drive, govId, row.testCenter, cache);
-    const buildingId = await getOrCreateSubFolder(drive, centerId, row.building, cache);
-    const floorId = await getOrCreateSubFolder(drive, buildingId, row.floor, cache);
-
-    const roomKey = `${floorId}:::${row.room}`;
-    if (!processed.has(roomKey)) {
-      await getOrCreateSubFolder(drive, floorId, row.room, cache);
-      processed.add(roomKey);
-      count++;
-      if (count % 10 === 0) {
-        onProgress?.(`Created ${count} folders...`);
+      // Rooms
+      for (const room of fl.rooms) {
+        await getOrCreateSubFolder(drive, floorId, room, cache);
+        roomsCreated++;
       }
     }
   }
 
-  return { totalCreated: cache.size, estRootId, scheduleFolderId };
+  return { schoolsCreated: OFFICIAL_EST_SCHOOLS.length, roomsCreated };
 }
 
 export async function POST(request: Request) {
@@ -97,17 +88,50 @@ export async function POST(request: Request) {
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const body = await request.json().catch(() => ({}));
-    const scheduleName = typeof body.scheduleName === "string" ? body.scheduleName.trim() : "December 2026";
-    const examName = typeof body.examName === "string" && body.examName.trim() ? body.examName.trim() : "EST 1";
 
-    const result = await seedEstFolderStructure(drive, rootFolderId, { scheduleName, examName });
+    // Target parent folder ID (optional, defaults to root or schedule folder)
+    const targetFolderId = typeof body.targetFolderId === "string" && body.targetFolderId.trim()
+      ? body.targetFolderId.trim()
+      : null;
+
+    const scheduleName = typeof body.scheduleName === "string" ? body.scheduleName.trim() : "December 2026";
+
+    // Support seeding both EST 1 and EST 2 by default
+    const examNames: string[] = Array.isArray(body.examNames) && body.examNames.length > 0
+      ? body.examNames
+      : typeof body.examName === "string" && body.examName.trim()
+        ? [body.examName.trim()]
+        : ["EST 1", "EST 2"];
+
+    const cache = new Map<string, string>();
+
+    // Determine root parent for exams
+    let parentForExams = targetFolderId || rootFolderId;
+    let scheduleFolderId: string | undefined;
+
+    if (!targetFolderId && scheduleName) {
+      scheduleFolderId = await getOrCreateSubFolder(drive, rootFolderId, scheduleName, cache);
+      parentForExams = scheduleFolderId;
+    }
+
+    const seededExams: Array<{ examName: string; examFolderId: string; roomsCreated: number }> = [];
+
+    for (const examName of examNames) {
+      const examFolderId = await getOrCreateSubFolder(drive, parentForExams, examName, cache);
+      const { roomsCreated } = await seedSchoolsHierarchy(drive, examFolderId, cache);
+      seededExams.push({ examName, examFolderId, roomsCreated });
+    }
+
+    const totalRooms = seededExams.reduce((acc, e) => acc + e.roomsCreated, 0);
 
     return NextResponse.json({
       success: true,
-      message: `Successfully created EST folder structure (${result.totalCreated} folders) under ${scheduleName} / ${examName}`,
-      totalCreated: result.totalCreated,
-      estRootId: result.estRootId,
-      scheduleFolderId: result.scheduleFolderId,
+      message: `Successfully created official EST schools hierarchy (${cache.size} total folders, ${totalRooms} rooms) for ${examNames.join(" & ")}`,
+      totalCreated: cache.size,
+      totalRooms,
+      totalSchools: OFFICIAL_EST_SCHOOLS.length,
+      scheduleFolderId,
+      seededExams,
     });
   } catch (err) {
     return jsonError(err);

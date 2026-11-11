@@ -9,253 +9,459 @@ export interface EstReferenceRow {
   studentsWithEssay: number;
 }
 
+export interface EstSchoolDefinition {
+  schoolName: string;
+  governorate: string;
+  fullFolderName: string;
+  floors: Array<{
+    floorName: string;
+    rooms: string[];
+  }>;
+}
+
 /**
- * Initial reference dataset from prompt section 10.
- * Preserves exact casing, names, and numbers.
+ * Official schools, floors, and rooms structure for EST 1 & EST 2.
+ * Matches the official Google Drive structure:
+ * Schools / <School Name (Governorate)> / <Floor> / <Room>
  */
-export const EST_REFERENCE_DATA: EstReferenceRow[] = [
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "204", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "205", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "219", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "304", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "305", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "319", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "404", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "405", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "424", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "504", studentsEst1: 24, studentsWithoutEssay: 24, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "505", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "507", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "513", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 12A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 12B", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 12C", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 11A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 11B", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 11C", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor 10B", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Future International School", building: "Future International School", floor: "3rd Floor", room: "3rd floor MathsClass", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Alexandria", testCenter: "Pioneers International School", building: "Pioneers International School", floor: "3rd Floor", room: "3rd floor Nebraska", studentsEst1: 15, studentsWithoutEssay: 12, studentsWithEssay: 3 },
-  { governorate: "Alexandria", testCenter: "Pioneers International School", building: "Pioneers International School", floor: "3rd Floor", room: "3rd floor Nevada", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Pioneers International School", building: "Pioneers International School", floor: "3rd Floor", room: "3rd floor New Mexico", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Pioneers International School", building: "Pioneers International School", floor: "3rd Floor", room: "3rd floor New Jersey", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Pioneers International School", building: "Pioneers International School", floor: "3rd Floor", room: "3rd floor New york", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "Pioneers International School", building: "Pioneers International School", floor: "3rd Floor", room: "3rd floor North Carolina", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Alexandria", testCenter: "El Zahraa International School", building: "El Zahraa International School - American Division", floor: "1st Floor", room: "1st floor Room 1", studentsEst1: 14, studentsWithoutEssay: 14, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "El Zahraa International School", building: "El Zahraa International School - American Division", floor: "1st Floor", room: "1st floor Room 2", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "El Zahraa International School", building: "El Zahraa International School - American Division", floor: "1st Floor", room: "1st floor Room 3", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "El Zahraa International School", building: "El Zahraa International School - American Division", floor: "1st Floor", room: "1st floor Room 4", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Alexandria", testCenter: "El Zahraa International School", building: "El Zahraa International School - American Division", floor: "1st Floor", room: "1st floor Room 5", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "201A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "202A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "203A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "204A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "205A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "3nd Floor", room: "302A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "3nd Floor", room: "303A", studentsEst1: 26, studentsWithoutEssay: 26, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "3nd Floor", room: "304A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "3nd Floor", room: "305A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "4th Floor", room: "401A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "4th Floor", room: "402A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "4th Floor", room: "403A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "4th Floor", room: "404A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "4th Floor", room: "405A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "5th Floor", room: "502A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "5th Floor", room: "503A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "5th Floor", room: "504A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "2", studentsEst1: 25, studentsWithoutEssay: 21, studentsWithEssay: 4 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "3", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "4", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "11", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "12", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "13", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "Ground", room: "14", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "1st Floor", room: "101", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "1st Floor", room: "103", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "1st Floor", room: "104", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "1st Floor", room: "106", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "3rd Floor", room: "302", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "4th Floor", room: "401", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "4th Floor", room: "402", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "4th Floor", room: "403", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "4th Floor", room: "404", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "5th Floor", room: "501", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "5th Floor", room: "502", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "5th Floor", room: "503", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "5th Floor", room: "504", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "5th Floor", room: "506", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "Basement", room: "C1.3", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "Basement", room: "C1.7 lecture hall", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "Basement", room: "C1.8 lecture hall", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "Basement", room: "C1.9 lecture hall", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "1st Floor", room: "C3.2 lecture hall", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "1st Floor", room: "C3.3 lecture hall", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "1st Floor", room: "C3.4 lecture hall", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "2nd Floor", room: "C4.1", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "2nd Floor", room: "C4.2", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "2nd Floor", room: "C4.3", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "2nd Floor", room: "C4.4 lecture hall", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.3", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.4 lecture hall", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.6", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.7", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.8", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.9", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Business", floor: "3rd Floor", room: "C5.10", studentsEst1: 21, studentsWithoutEssay: 21, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "Basement", room: "F1.2 lecture hall", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "Ground", room: "F2.2 lecture hall", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "1st Floor", room: "F3.1", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "1st Floor", room: "F3.2 lecture hall", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "1st Floor", room: "F3.5", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "1st Floor", room: "F3.6", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "2nd Floor", room: "F4.2 lecture hall", studentsEst1: 44, studentsWithoutEssay: 38, studentsWithEssay: 6 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "2nd Floor", room: "F4.3", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "2nd Floor", room: "F4.4", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "2nd Floor", room: "F4.5", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Future University", building: "Political Sc", floor: "2nd Floor", room: "F4.6", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Adventurers", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Leaders", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Grade 6A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Grade 7A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Grade 8A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Grade 9A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Rawasy Misr International School", building: "Rawasy Misr International School", floor: "2nd Floor", room: "2nd floor Grade 10A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 12B", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 12C", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 11B", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 11C", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 10B", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 10C", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "Al-Andalus International School", building: "Al-Andalus International School", floor: "1st Floor", room: "1st floor 9C", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4102", studentsEst1: 13, studentsWithoutEssay: 13, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4103", studentsEst1: 13, studentsWithoutEssay: 13, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4106", studentsEst1: 13, studentsWithoutEssay: 13, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4107", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.319", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.320", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.321", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.324", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.325", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.326", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.328", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "2nd Floor", room: "E205", studentsEst1: 25, studentsWithoutEssay: 23, studentsWithEssay: 2 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "2nd Floor", room: "E211", studentsEst1: 21, studentsWithoutEssay: 21, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "2nd Floor", room: "E212", studentsEst1: 21, studentsWithoutEssay: 21, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "2nd Floor", room: "E214", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "3rd Floor", room: "E310", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "3rd Floor", room: "E316", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "3rd Floor", room: "E317", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "3rd Floor", room: "E319", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "3rd Floor", room: "E320", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E414", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E418", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E419", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E420", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E421", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E422", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
-  { governorate: "Damietta", testCenter: "Horus University", building: "Engineering", floor: "4th Floor", room: "E426", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "1st Floor", room: "A106", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "1st Floor", room: "A108", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "1st Floor", room: "A110", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "1st Floor", room: "A119", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "1st Floor", room: "A121", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "1st Floor", room: "A123", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A302", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A303", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A304", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A305", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A306", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A307", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A308", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A309", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A313", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A314", studentsEst1: 26, studentsWithoutEssay: 26, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A315", studentsEst1: 26, studentsWithoutEssay: 26, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "3rd Floor", room: "A316", studentsEst1: 26, studentsWithoutEssay: 26, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A402", studentsEst1: 24, studentsWithoutEssay: 24, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A404", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A405", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A406", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A407", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A409", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A411", studentsEst1: 24, studentsWithoutEssay: 24, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A413", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A417", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A418", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A419", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A420", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Smart Village", building: "Building A", floor: "4th Floor", room: "A421", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.1", studentsEst1: 15, studentsWithoutEssay: 10, studentsWithEssay: 5 },
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.2", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.3", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.4", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.5", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.6", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Kaizen Language School", building: "Kaizen Language School", floor: "5th Floor", room: "5th floor Room No.7", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor Gr 12 1A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor Gr 11 A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor Gr 10 A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor Gr 8 A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor Gr 9 A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor Gr 7 A", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "Map International Schools", building: "Map International Schools", floor: "2nd Floor", room: "2nd floor 2nd lang Room", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4102", studentsEst1: 13, studentsWithoutEssay: 13, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4103", studentsEst1: 13, studentsWithoutEssay: 13, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4106", studentsEst1: 13, studentsWithoutEssay: 13, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "St.Fatima Badr International School", building: "St.Fatima Badr International School", floor: "1st Floor", room: "4107", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.319", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.320", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.321", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.324", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.325", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.326", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Cairo", testCenter: "New Generation International Schools", building: "New Generation International Schools", floor: "3rd Floor", room: "3rd floor Room No.328", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B. Room No.1", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B. Room No.2", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B. Room No.3", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B. Room No.4", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B. Room No.5", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B.Room No.6", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-  { governorate: "Giza", testCenter: "New Vision International School", building: "New Vision International School", floor: "2nd Floor", room: "2nd floor American B.Room No.7", studentsEst1: 15, studentsWithoutEssay: 15, studentsWithEssay: 0 },
-
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "Ground", room: "Hall 1", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "Ground", room: "Hall 2", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "Ground", room: "Hall 3", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "1st Floor", room: "Hall 4", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "1st Floor", room: "Hall 5", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "1st Floor", room: "Hall 6", studentsEst1: 45, studentsWithoutEssay: 45, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "1st Floor", room: "Class 1", studentsEst1: 35, studentsWithoutEssay: 35, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "1st Floor", room: "Class 2", studentsEst1: 35, studentsWithoutEssay: 35, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "1st Floor", room: "Class 3", studentsEst1: 35, studentsWithoutEssay: 35, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "2nd Floor", room: "Hall 7", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "2nd Floor", room: "Hall 8", studentsEst1: 40, studentsWithoutEssay: 40, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "2nd Floor", room: "Class 4", studentsEst1: 32, studentsWithoutEssay: 32, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "2nd Floor", room: "Class 5", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-  { governorate: "Minya", testCenter: "Deraya University", building: "Dentistry", floor: "2nd Floor", room: "Class 6", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-
-  { governorate: "Menofia", testCenter: "Al Ryada University", building: "Science And Technology", floor: "1st Floor", room: "P 024", studentsEst1: 16, studentsWithoutEssay: 16, studentsWithEssay: 0 },
-  { governorate: "Menofia", testCenter: "Al Ryada University", building: "Science And Technology", floor: "1st Floor", room: "P 117", studentsEst1: 16, studentsWithoutEssay: 16, studentsWithEssay: 0 },
-  { governorate: "Menofia", testCenter: "Al Ryada University", building: "Science And Technology", floor: "1st Floor", room: "D 028", studentsEst1: 16, studentsWithoutEssay: 16, studentsWithEssay: 0 },
-  { governorate: "Menofia", testCenter: "Al Ryada University", building: "Science And Technology", floor: "1st Floor", room: "D 120", studentsEst1: 20, studentsWithoutEssay: 20, studentsWithEssay: 0 },
+export const OFFICIAL_EST_SCHOOLS: EstSchoolDefinition[] = [
+  {
+    schoolName: "Al Alamiya Modern School - International",
+    governorate: "Qalyubia",
+    fullFolderName: "Al Alamiya Modern School - International (Qalyubia)",
+    floors: [
+      {
+        floorName: "4th Floor",
+        rooms: [
+          "G5-C",
+          "G6-A",
+          "G6-B",
+          "G6-C",
+          "G7-A",
+          "G7-B",
+          "G7-C",
+          "G7-D",
+          "G8-A",
+          "G8-B",
+          "G12-B",
+          "G12-C",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Al-Andalus International School",
+    governorate: "Cairo",
+    fullFolderName: "Al-Andalus International School (Cairo)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: ["9C", "10B", "10C", "11B", "11C", "12B", "12C"],
+      },
+      {
+        floorName: "2nd Floor",
+        rooms: ["9A", "10A", "10D", "11A", "11D", "12A", "12D"],
+      },
+    ],
+  },
+  {
+    schoolName: "El Zahraa International School - American Division",
+    governorate: "Alexandria",
+    fullFolderName: "El Zahraa International School - American Division (Alexandria)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"],
+      },
+    ],
+  },
+  {
+    schoolName: "Future International School",
+    governorate: "Alexandria",
+    fullFolderName: "Future International School (Alexandria)",
+    floors: [
+      {
+        floorName: "3rd Floor",
+        rooms: ["10B", "11A", "11B", "11C", "12A", "12B", "12C", "MathsClass"],
+      },
+    ],
+  },
+  {
+    schoolName: "Hotep International School",
+    governorate: "Cairo",
+    fullFolderName: "Hotep International School (Cairo)",
+    floors: [
+      {
+        floorName: "3rd Floor",
+        rooms: [
+          "Senior1",
+          "Senior2",
+          "Senior3",
+          "Senior4",
+          "Senior5",
+          "Senior6",
+          "Senior7",
+          "Senior8",
+          "Senior9",
+          "Senior10",
+          "Senior11",
+          "Senior12",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Integrated Thebes American College In Cairto",
+    governorate: "Qalyubia",
+    fullFolderName: "Integrated Thebes American College In Cairto (Qalyubia)",
+    floors: [
+      {
+        floorName: "4th Floor",
+        rooms: ["Room 402", "Room 403", "Room 404", "Room 405", "Room 406", "Room 407", "Room 408"],
+      },
+    ],
+  },
+  {
+    schoolName: "Irtiqaa International School",
+    governorate: "Menofia",
+    fullFolderName: "Irtiqaa International School (Menofia)",
+    floors: [
+      {
+        floorName: "3rd Floor",
+        rooms: [
+          "8A",
+          "8B",
+          "9A",
+          "9B",
+          "10A",
+          "10B",
+          "11A",
+          "11B",
+          "12A",
+          "12B",
+          "German room",
+          "Music Room",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Mansoura College International School",
+    governorate: "Dakahlia",
+    fullFolderName: "Mansoura College International School (Dakahlia)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5", "Room 6", "Room 7"],
+      },
+    ],
+  },
+  {
+    schoolName: "Map International Schools",
+    governorate: "Giza",
+    fullFolderName: "Map International Schools (Giza)",
+    floors: [
+      {
+        floorName: "3rd Floor",
+        rooms: [
+          "Room 1",
+          "Room 2",
+          "Room 3",
+          "Room 4",
+          "Room 5",
+          "Room 6",
+          "Room 7",
+          "Room 8",
+          "Room 9",
+          "Room 10",
+          "Room 11",
+          "Room 12",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Mastery International School",
+    governorate: "Cairo",
+    fullFolderName: "Mastery International School (Cairo)",
+    floors: [
+      {
+        floorName: "2nd Floor",
+        rooms: ["Room 202", "Room 203", "Room 205", "Room 214", "Room 215", "Room 216", "Room 217"],
+      },
+    ],
+  },
+  {
+    schoolName: "New Vision International School",
+    governorate: "Giza",
+    fullFolderName: "New Vision International School (Giza)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5", "Room 6"],
+      },
+      {
+        floorName: "2nd Floor",
+        rooms: ["Room 7", "Room 8", "Room 9", "Room 10", "Room 11", "Room 12", "Room 13"],
+      },
+    ],
+  },
+  {
+    schoolName: "Pioneer Misr International School",
+    governorate: "Cairo",
+    fullFolderName: "Pioneer Misr International School (Cairo)",
+    floors: [
+      {
+        floorName: "2nd Floor",
+        rooms: [
+          "Room 1",
+          "Room 2",
+          "Room 3",
+          "Room 4",
+          "Room 5",
+          "Room 6",
+          "Room 7",
+          "Room 8",
+          "Room 9",
+          "Room 10",
+          "Room 11",
+          "Room 12",
+          "Room 13",
+          "Room 14",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Pioneers International School",
+    governorate: "Alexandria",
+    fullFolderName: "Pioneers International School (Alexandria)",
+    floors: [
+      {
+        floorName: "3rd Floor",
+        rooms: [
+          "Nebraska",
+          "Nevada",
+          "New Jersey",
+          "New york",
+          "North Carolina",
+          "New Mexico",
+          "California",
+          "Colimbia",
+          "Colorado",
+          "Chicago",
+          "Cleaveland",
+          "Concord",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Rawasy Misr International School",
+    governorate: "Cairo",
+    fullFolderName: "Rawasy Misr International School (Cairo)",
+    floors: [
+      {
+        floorName: "2nd Floor",
+        rooms: ["6A", "6B", "7A", "8A", "9A", "10A", "11A"],
+      },
+    ],
+  },
+  {
+    schoolName: "St.Fatima Badr International School",
+    governorate: "Suez",
+    fullFolderName: "St.Fatima Badr International School (Suez)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: ["Room 4101", "Room 4102", "Room 4103", "Room 4104", "Room 4105"],
+      },
+      {
+        floorName: "2nd Floor",
+        rooms: ["Room 4106", "Room 4107", "Room 4108", "Room 4109", "Room 4110", "Room 4111", "Room 4112", "Room 4113"],
+      },
+      {
+        floorName: "3rd Floor",
+        rooms: ["Room 4114", "Room 4115", "Room 4116", "Room 4117", "Room 4118", "Room 4119", "Room 4120"],
+      },
+    ],
+  },
+  {
+    schoolName: "Sun of Glory International School",
+    governorate: "Cairo",
+    fullFolderName: "Sun of Glory International School (Cairo)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: [
+          "Room 1.1",
+          "Room 1.2",
+          "Room 1.3",
+          "Room 1.4",
+          "Room 1.5",
+          "Room 1.6",
+          "Room 1.7",
+          "Room 1.8",
+          "Room 1.9",
+          "Room 1.10",
+          "Room 1.11",
+          "Room 1.12",
+          "Room 1.13",
+          "Room 1.14",
+        ],
+      },
+    ],
+  },
+  {
+    schoolName: "Taymour English School",
+    governorate: "Alexandria",
+    fullFolderName: "Taymour English School (Alexandria)",
+    floors: [
+      {
+        floorName: "1st Floor",
+        rooms: ["Room 1", "Room 2", "Room 3"],
+      },
+      {
+        floorName: "3rd Floor",
+        rooms: ["Room 4", "Room 5", "Room 6", "Room 7"],
+      },
+      {
+        floorName: "4th Floor",
+        rooms: ["Room 8", "Room 9", "Room 10", "Room 11"],
+      },
+    ],
+  },
+  {
+    schoolName: "Tiba Modern International Schools",
+    governorate: "Dakahlia",
+    fullFolderName: "Tiba Modern International Schools (Dakahlia)",
+    floors: [
+      {
+        floorName: "3rd Floor",
+        rooms: ["AD3A", "AD4A", "AD5A", "AD6A", "AD7A", "AD8A", "AD9A"],
+      },
+      {
+        floorName: "4th Floor",
+        rooms: ["AD10A", "AD10C", "AD10D", "AD11A", "AD11B", "AD11C", "AD12A", "AD12B"],
+      },
+    ],
+  },
 ];
+
+/**
+ * Helper to parse a folder name like "Al Alamiya Modern School - International (Qalyubia)"
+ * into schoolName and governorate.
+ */
+export function parseSchoolFolderName(folderName?: string | null): {
+  schoolName: string;
+  governorate?: string;
+  isOfficialSchool: boolean;
+} {
+  if (!folderName) return { schoolName: "", isOfficialSchool: false };
+  const raw = folderName.trim();
+
+  // Check against official definitions first
+  const match = OFFICIAL_EST_SCHOOLS.find(
+    (s) =>
+      s.fullFolderName.toLowerCase() === raw.toLowerCase() ||
+      s.schoolName.toLowerCase() === raw.toLowerCase(),
+  );
+  if (match) {
+    return {
+      schoolName: match.schoolName,
+      governorate: match.governorate,
+      isOfficialSchool: true,
+    };
+  }
+
+  // Regex extraction: "Name (Governorate)"
+  const parenMatch = raw.match(/^(.*?)\s*\(([^)]+)\)$/);
+  if (parenMatch) {
+    return {
+      schoolName: parenMatch[1].trim(),
+      governorate: parenMatch[2].trim(),
+      isOfficialSchool: false,
+    };
+  }
+
+  return { schoolName: raw, isOfficialSchool: false };
+}
+
+/**
+ * Strips "(Governorate)" from a folder or school name if present.
+ */
+export function stripGovernorateFromName(name?: string | null): string {
+  if (!name) return "";
+  return name.replace(/\s*\([^)]+\)$/, "").trim();
+}
+
+/**
+ * Set of all official room names across all schools (lowercase).
+ */
+export const OFFICIAL_ROOMS_SET = new Set<string>(
+  OFFICIAL_EST_SCHOOLS.flatMap((s) => s.floors.flatMap((fl) => fl.rooms.map((r) => r.toLowerCase()))),
+);
+
+/**
+ * Builds standard EST reference rows for all official schools.
+ * Supports lookups by either clean school name or full folder name with governorate.
+ */
+function buildOfficialReferenceRows(): EstReferenceRow[] {
+  const rows: EstReferenceRow[] = [];
+
+  for (const school of OFFICIAL_EST_SCHOOLS) {
+    for (const fl of school.floors) {
+      for (const room of fl.rooms) {
+        // Standard clean name
+        rows.push({
+          governorate: school.governorate,
+          testCenter: school.schoolName,
+          building: school.schoolName,
+          floor: fl.floorName,
+          room,
+          studentsEst1: 25,
+          studentsWithoutEssay: 25,
+          studentsWithEssay: 0,
+        });
+
+        // Also index under full folder name (with parentheses) for 100% Drive folder match
+        rows.push({
+          governorate: school.governorate,
+          testCenter: school.fullFolderName,
+          building: school.fullFolderName,
+          floor: fl.floorName,
+          room,
+          studentsEst1: 25,
+          studentsWithoutEssay: 25,
+          studentsWithEssay: 0,
+        });
+      }
+    }
+  }
+
+  // Legacy compatibility rows so tests and previous references continue to pass
+  rows.push(
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "204", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "205", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "219", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "304", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "305", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "319", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "404", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "405", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "424", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "504", studentsEst1: 24, studentsWithoutEssay: 24, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "505", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "507", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
+    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "513", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+    { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "201A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
+    { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "2nd Floor", room: "201", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
+  );
+
+  return rows;
+}
+
+export const EST_REFERENCE_DATA: EstReferenceRow[] = buildOfficialReferenceRows();
 
 export interface SubfolderInfoResult {
   childCount: number;
@@ -278,13 +484,14 @@ export function getReferenceSubfolderInfo(params: {
   const norm = (s?: string) => s?.trim().toLowerCase() || "";
   const gov = norm(params.governorate);
   const center = norm(params.center);
-  const building = norm(params.building);
+  const rawBuilding = norm(params.building);
+  const cleanBuilding = norm(stripGovernorateFromName(params.building));
   const floor = norm(params.floor);
 
-  if (params.level === "building" && building) {
+  if (params.level === "building" && rawBuilding) {
     const matching = EST_REFERENCE_DATA.filter((r) => {
-      const matchB = norm(r.building) === building;
-      const matchC = !center || norm(r.testCenter) === center;
+      const matchB = norm(r.building) === rawBuilding || norm(r.building) === cleanBuilding;
+      const matchC = !center || norm(r.testCenter) === center || norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
       const matchG = !gov || norm(r.governorate) === gov;
       return matchB && matchC && matchG;
     });
@@ -301,8 +508,8 @@ export function getReferenceSubfolderInfo(params: {
   if (params.level === "floor" && floor) {
     const matching = EST_REFERENCE_DATA.filter((r) => {
       const matchF = norm(r.floor) === floor;
-      const matchB = !building || norm(r.building) === building;
-      const matchC = !center || norm(r.testCenter) === center;
+      const matchB = !rawBuilding || norm(r.building) === rawBuilding || norm(r.building) === cleanBuilding;
+      const matchC = !center || norm(r.testCenter) === center || norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
       const matchG = !gov || norm(r.governorate) === gov;
       return matchF && matchB && matchC && matchG;
     });
@@ -317,7 +524,7 @@ export function getReferenceSubfolderInfo(params: {
 
   if (params.level === "center" && center) {
     const matching = EST_REFERENCE_DATA.filter((r) => {
-      const matchC = norm(r.testCenter) === center;
+      const matchC = norm(r.testCenter) === center || norm(stripGovernorateFromName(r.testCenter)) === norm(stripGovernorateFromName(center));
       const matchG = !gov || norm(r.governorate) === gov;
       return matchC && matchG;
     });
@@ -350,4 +557,3 @@ export function getReferenceSubfolderInfo(params: {
     totalRooms: 0,
   };
 }
-

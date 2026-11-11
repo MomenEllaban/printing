@@ -1000,14 +1000,18 @@ export function FileBrowser({
     setSeedConfirmOpen(false);
     const toastId = toast.loading(
       locale === "ar"
-        ? "جاري إنشاء هيكل مجلدات EST كاملاً في Google Drive..."
-        : "Creating full EST folder hierarchy in Google Drive...",
+        ? "جاري إنشاء هيكل المدارس والقاعات كاملاً لاختبارات EST 1 و EST 2 في Google Drive..."
+        : "Creating official EST 1 & EST 2 Schools hierarchy in Google Drive...",
     );
     try {
       const res = await fetch("/api/est/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduleName: "December 2026", examName: "EST 1" }),
+        body: JSON.stringify({
+          scheduleName: "December 2026",
+          examNames: ["EST 1", "EST 2"],
+          targetFolderId: currentFolder?.id ?? null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1015,8 +1019,8 @@ export function FileBrowser({
       }
       toast.success(
         locale === "ar"
-          ? `تم بنجاح إنشاء هيكل EST (${data.totalCreated} مجلد) تحت December 2026 / EST 1`
-          : `Successfully created EST structure (${data.totalCreated} folders) under December 2026 / EST 1`,
+          ? `تم بنجاح إنشاء هيكل المدارس (${data.totalCreated} مجلد، 18 مدرسة، ${data.totalRooms} قاعة) تحت EST 1 و EST 2`
+          : `Successfully created Schools hierarchy (${data.totalCreated} folders, 18 schools, ${data.totalRooms} rooms) under EST 1 & EST 2`,
         { id: toastId },
       );
       setRefreshKey((v) => v + 1);
@@ -3171,11 +3175,11 @@ export function FileBrowser({
         open={seedConfirmOpen}
         onClose={() => setSeedConfirmOpen(false)}
         onConfirm={() => void handleSeedEst()}
-        title={locale === "ar" ? "إنشاء هيكل مجلدات اختبارات EST" : "Create EST Folder Structure"}
+        title={locale === "ar" ? "إنشاء هيكل مجلدات المدارس لاختبارات EST" : "Create EST Schools Folder Structure"}
         description={
           locale === "ar"
-            ? "سيتم إنشاء هيكل مجلدات كامل للاختبارات (جميع المحافظات، السناتر، المباني، الأدوار، والقاعات) تلقائياً داخل: File Manager App / December 2026 / EST 1. هل تريد المتابعة؟"
-            : "This will automatically create the complete EST folder structure (Governorates, Test Centers, Buildings, Floors, and Rooms) inside: File Manager App / December 2026 / EST 1. Continue?"
+            ? "سيتم إنشاء هيكل المدارس الرسمي كاملاً (18 مدرسة، جميع الأدوار، و202 قاعة) تلقائياً داخل Google Drive لكل من EST 1 و EST 2 (تحت مجلد Schools). هل تريد المتابعة؟"
+            : "This will automatically create the complete official schools hierarchy (18 schools, all floors, and 202 rooms) in Google Drive for both EST 1 and EST 2 (under Schools). Continue?"
         }
         confirmLabel={locale === "ar" ? "بدء الإنشاء" : "Create Structure"}
         loading={seedingEst}
