@@ -28,6 +28,34 @@ describe("Logistics Stickers PDF Generator", () => {
     expect(pdfBytes.length).toBeGreaterThan(1000);
   });
 
+  it("generates Building Carton Sticker PDF with explicit floors and rooms directory", async () => {
+    const pdfBytes = await generateBuildingCartonStickerPdf({
+      ...baseData,
+      building: "Pharmacy",
+      floors: [
+        {
+          floor: "2nd Floor",
+          rooms: [
+            { room: "204", studentCount: 30 },
+            { room: "205", studentCount: 25 },
+            { room: "219", studentCount: 25 },
+          ],
+          totalStudents: 80,
+        },
+        {
+          floor: "3rd Floor",
+          rooms: [
+            { room: "304", studentCount: 25 },
+            { room: "305", studentCount: 25 },
+          ],
+          totalStudents: 50,
+        },
+      ],
+    });
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+  });
+
   it("generates Exam Bag Checklist PDF (A4 Portrait)", async () => {
     const pdfBytes = await generateExamBagChecklistPdf(baseData);
     expect(pdfBytes).toBeInstanceOf(Uint8Array);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Boxes,
   Package,
@@ -27,16 +28,30 @@ import { toast } from "sonner";
 export default function LogisticsHubPage() {
   const { locale } = useI18n();
   const isAr = locale === "ar";
+  const searchParams = useSearchParams();
+  const urlFolderId = searchParams.get("folderId") || undefined;
+  const urlBuilding = searchParams.get("building") || undefined;
 
   // Filter selections
   const [examType, setExamType] = useState<"EST 1" | "EST 2">("EST 1");
   const [governorate, setGovernorate] = useState<string>("Alexandria");
   const [center, setCenter] = useState<string>("Abu Qir");
-  const [building, setBuilding] = useState<string>("Pharmacy");
+  const [building, setBuilding] = useState<string>(urlBuilding || "Pharmacy");
   const [sessionDate, setSessionDate] = useState<string>("December 2026");
   const [boxNumber, setBoxNumber] = useState<number>(1);
   const [totalBoxes, setTotalBoxes] = useState<number>(1);
   const [securitySeal, setSecuritySeal] = useState<string>("");
+
+  useEffect(() => {
+    if (urlBuilding) {
+      setBuilding(urlBuilding);
+      const match = EST_REFERENCE_DATA.find((r) => r.building.toLowerCase() === urlBuilding.toLowerCase());
+      if (match) {
+        if (match.governorate) setGovernorate(match.governorate);
+        if (match.testCenter) setCenter(match.testCenter);
+      }
+    }
+  }, [urlBuilding]);
 
   // Loading & Preview state
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -98,6 +113,31 @@ export default function LogisticsHubPage() {
     };
   }, [governorate, center, building]);
 
+  // Derived floors with their rooms for the selected building
+  const buildingFloors = useMemo(() => {
+    const rows = EST_REFERENCE_DATA.filter(
+      (r) =>
+        (!governorate || r.governorate === governorate) &&
+        (!center || r.testCenter === center) &&
+        (!building || r.building === building),
+    );
+    const floorMap = new Map<string, { rooms: { room: string; studentCount: number }[]; totalStudents: number }>();
+    for (const r of rows) {
+      const fl = r.floor || "General Floor";
+      const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
+      if (r.room && !entry.rooms.some((rm) => rm.room === r.room)) {
+        entry.rooms.push({ room: r.room, studentCount: r.studentsEst1 || 25 });
+        entry.totalStudents += r.studentsEst1 || 25;
+      }
+      floorMap.set(fl, entry);
+    }
+    return Array.from(floorMap.entries()).map(([floor, data]) => ({
+      floor,
+      rooms: data.rooms,
+      totalStudents: data.totalStudents,
+    }));
+  }, [governorate, center, building]);
+
   // Execute Action (Show or Print)
   const handleLogisticsAction = useCallback(
     async (
@@ -129,9 +169,11 @@ export default function LogisticsHubPage() {
           totalRooms: String(buildingRooms.totalRooms),
           totalStudents: String(buildingRooms.totalStudents),
           roomNames: JSON.stringify(buildingRooms.rooms),
+          floors: JSON.stringify(buildingFloors),
           boxNumber: String(boxNumber),
           totalBoxes: String(totalBoxes),
         });
+        if (urlFolderId) query.set("folderId", urlFolderId);
         if (securitySeal) query.set("securitySeal", securitySeal);
 
         const res = await fetch(`/api/stickers/logistics?${query.toString()}`);
@@ -414,7 +456,9 @@ export default function LogisticsHubPage() {
           <div className="flex items-center gap-3">
             <span className="font-bold flex items-center gap-1">
               <Layers className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>{buildingRooms.totalRooms} {isAr ? "قاعة مسجلة بالمبنى" : "Rooms in Building"}</span>
+              <span>
+                {buildingFloors.length} {isAr ? "أدوار" : "Floors"} • {buildingRooms.totalRooms} {isAr ? "قاعة مسجلة" : "Rooms"}
+              </span>
             </span>
             <span className="text-muted/60">•</span>
             <span>{buildingRooms.totalStudents} {isAr ? "طالب ممتحن تقديري" : "Estimated Candidates"}</span>
@@ -446,14 +490,14 @@ export default function LogisticsHubPage() {
             </h3>
             <p className="mt-1.5 text-xs text-muted leading-relaxed">
               {isAr
-                ? "يُلصق على الكرتونة الكبيرة التي تحوي جميع أظرف وأكياس لجان المبنى بالكامل. يحتوي على مسرد كامل للقاعات (Room Directory)، إجمالي الطلاب، وخانة القفل الأمني."
-                : "Affixed to the master carton box containing all room dossiers. Includes the full room directory grid, total candidates count, and security seal tracking."}
+                ? "يُلصق على الكرتونة الكبيرة التي تحوي جميع أكياس لجان المبنى بالكامل. يعرض أدوار المبنى والقاعات التابعة لكل دور مع خانات تدقيق [✓] وإجمالي الطلاب."
+                : "Affixed to the master carton box containing all room dossiers. Displays building floors with their constituent rooms, packing checkboxes, and total candidates."}
             </p>
           </div>
 
           <div className="mt-5 pt-4 border-t border-border flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-muted">
-              {building} — {buildingRooms.totalRooms} {isAr ? "قاعة" : "Rooms"}
+              {building} — {buildingFloors.length} {isAr ? "أدوار" : "Floors"} • {buildingRooms.totalRooms} {isAr ? "قاعة" : "Rooms"}
             </span>
             <div className="flex items-center gap-2">
               <button

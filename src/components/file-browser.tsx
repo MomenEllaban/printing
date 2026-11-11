@@ -2243,7 +2243,7 @@ export function FileBrowser({
             if (regCategory !== "building_excel") return null;
             return (
               <Link
-                href={`/logistics?building=${encodeURIComponent(currentFolder.name)}`}
+                href={`/logistics?building=${encodeURIComponent(currentFolder.name)}&folderId=${encodeURIComponent(currentFolder.id)}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all shadow-xs"
                 title={
                   locale === "ar"

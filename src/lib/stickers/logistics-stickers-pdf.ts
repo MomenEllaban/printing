@@ -3,6 +3,19 @@ import path from "path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { EST_LOGO_BASE64 } from "./est-logo-base64";
+import { EST_REFERENCE_DATA } from "./est-reference-data";
+
+export interface RoomDetail {
+  room: string;
+  studentCount?: number;
+  subjectsText?: string;
+}
+
+export interface FloorRoomsData {
+  floor: string;
+  rooms: (string | RoomDetail)[];
+  totalStudents?: number;
+}
 
 export interface LogisticsStickerOptions {
   examName?: string;          // e.g. "EST 1" or "EST 2" (or "EST I" / "EST II")
@@ -13,6 +26,7 @@ export interface LogisticsStickerOptions {
   totalRooms?: number;
   totalStudents?: number;
   roomNames?: string[];       // e.g. ["M101", "M102", "M103", ...]
+  floors?: FloorRoomsData[];   // Grouped floors with their rooms & student counts
   boxNumber?: number;         // e.g. 1
   totalBoxes?: number;        // e.g. 1
   securitySeal?: string;
@@ -58,9 +72,111 @@ async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
   return await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 }
 
+export interface NormalizedFloor {
+  floor: string;
+  rooms: { room: string; studentCount?: number; subjectsText?: string }[];
+  totalStudents: number;
+}
+
+/**
+ * Normalizes floors and rooms data for building stickers.
+ * Prioritizes explicit floors from Drive / options, then reference data, then room patterns.
+ */
+export function normalizeFloorsData(options: LogisticsStickerOptions): NormalizedFloor[] {
+  // 1. If explicit floors are provided, normalize and return them
+  if (options.floors && options.floors.length > 0) {
+    return options.floors.map((f) => {
+      const normalizedRooms = f.rooms.map((r) => {
+        if (typeof r === "string") return { room: r };
+        return r;
+      });
+      const sumStudents =
+        f.totalStudents ??
+        normalizedRooms.reduce((sum, r) => sum + (r.studentCount || 25), 0);
+      return {
+        floor: f.floor,
+        rooms: normalizedRooms,
+        totalStudents: sumStudents,
+      };
+    });
+  }
+
+  // 2. If building matches EST_REFERENCE_DATA, group by floor from reference rows
+  if (options.building) {
+    const cleanB = options.building.trim().toLowerCase();
+    const refRows = EST_REFERENCE_DATA.filter((r) => {
+      const b = r.building.trim().toLowerCase();
+      return b === cleanB || cleanB.includes(b) || b.includes(cleanB);
+    });
+    if (refRows.length > 0) {
+      const floorMap = new Map<string, { rooms: { room: string; studentCount: number }[]; totalStudents: number }>();
+      for (const row of refRows) {
+        const fl = row.floor || "General Floor";
+        const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
+        if (row.room && !entry.rooms.some((rm) => rm.room === row.room)) {
+          entry.rooms.push({ room: row.room, studentCount: row.studentsEst1 || 25 });
+          entry.totalStudents += (row.studentsEst1 || 25);
+        }
+        floorMap.set(fl, entry);
+      }
+      return Array.from(floorMap.entries()).map(([floor, data]) => ({
+        floor,
+        rooms: data.rooms,
+        totalStudents: data.totalStudents,
+      }));
+    }
+  }
+
+  // 3. If roomNames provided, infer floors
+  if (options.roomNames && options.roomNames.length > 0) {
+    const floorMap = new Map<string, { rooms: { room: string }[]; totalStudents: number }>();
+    for (const rName of options.roomNames) {
+      const clean = rName.trim();
+      let fl = "General Floor";
+      const explicitFloor = clean.match(/(?:floor|دور|طابق)\s*([^\s\-_]+)/i);
+      if (explicitFloor) {
+        fl = `Floor ${explicitFloor[1]}`;
+      } else {
+        const numMatch = clean.match(/\b([1-9])\d{2,3}[A-Za-z]?\b/);
+        if (numMatch) {
+          const digit = numMatch[1];
+          const suffix = digit === "1" ? "1st" : digit === "2" ? "2nd" : digit === "3" ? "3rd" : `${digit}th`;
+          fl = `${suffix} Floor`;
+        }
+      }
+      const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
+      if (!entry.rooms.some((rm) => rm.room === clean)) {
+        entry.rooms.push({ room: clean });
+        entry.totalStudents += 25;
+      }
+      floorMap.set(fl, entry);
+    }
+    return Array.from(floorMap.entries()).map(([floor, data]) => ({
+      floor,
+      rooms: data.rooms,
+      totalStudents: data.totalStudents,
+    }));
+  }
+
+  // 4. Default fallback: 2 floors
+  return [
+    {
+      floor: "2nd Floor",
+      rooms: [{ room: "201" }, { room: "202" }, { room: "203" }],
+      totalStudents: 75,
+    },
+    {
+      floor: "3rd Floor",
+      rooms: [{ room: "301" }, { room: "302" }, { room: "303" }],
+      totalStudents: 75,
+    },
+  ];
+}
+
 /**
  * 1. Building Master Carton Sticker (A4 Landscape)
  * Affixed to the outside of the large carton box containing all room packets for that building.
+ * Displays all Floors in the building, and for each floor, lists its constituent rooms with checkboxes.
  */
 export async function generateBuildingCartonStickerPdf(
   options: LogisticsStickerOptions,
@@ -81,6 +197,12 @@ export async function generateBuildingCartonStickerPdf(
   const cardY = margin;
   const cardW = width - margin * 2;
   const cardH = height - margin * 2;
+
+  // Normalized Floors and Rooms data
+  const floors = normalizeFloorsData(options);
+  const totalFloorsCount = floors.length;
+  const totalRoomsCount = floors.reduce((sum, f) => sum + f.rooms.length, 0);
+  const totalStudentsCount = options.totalStudents || floors.reduce((sum, f) => sum + f.totalStudents, 0);
 
   // Outer framing card
   page.drawRectangle({
@@ -104,9 +226,9 @@ export async function generateBuildingCartonStickerPdf(
   });
 
   // Header Bar
-  const headerH = 65;
+  const headerH = 60;
   const headerY = cardY + cardH - headerH - 8;
-  const logoH = 46;
+  const logoH = 42;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
   const logoX = cardX + 16;
   const logoY = headerY + (headerH - logoH) / 2;
@@ -128,8 +250,8 @@ export async function generateBuildingCartonStickerPdf(
 
   page.drawText(`${examLabel} — OFFICIAL EXAMINATION LOGISTICS`, {
     x: textStartX,
-    y: headerY + 36,
-    size: 15,
+    y: headerY + 34,
+    size: 14.5,
     font,
     color: COLOR_CHARCOAL,
   });
@@ -137,15 +259,15 @@ export async function generateBuildingCartonStickerPdf(
   page.drawText(`BUILDING MASTER CARTON — ${sessionText.toUpperCase()}`, {
     x: textStartX,
     y: headerY + 16,
-    size: 10.5,
+    size: 10,
     font,
     color: COLOR_MUTED,
   });
 
-  // Right Badge: Box # / Exam badge
+  // Right Badge: Box # / Carton count
   const boxBadgeText = `CARTON BOX ${options.boxNumber || 1} OF ${options.totalBoxes || 1}`;
   const badgeW = 160;
-  const badgeH = 34;
+  const badgeH = 32;
   const badgeX = cardX + cardW - badgeW - 16;
   const badgeY = headerY + (headerH - badgeH) / 2;
 
@@ -157,11 +279,11 @@ export async function generateBuildingCartonStickerPdf(
     color: COLOR_CHARCOAL,
   });
 
-  const boxW = font.widthOfTextAtSize(boxBadgeText, 10);
+  const boxW = font.widthOfTextAtSize(boxBadgeText, 9.5);
   page.drawText(boxBadgeText, {
     x: badgeX + (badgeW - boxW) / 2,
     y: badgeY + 11,
-    size: 10,
+    size: 9.5,
     font,
     color: COLOR_GOLD,
   });
@@ -175,8 +297,8 @@ export async function generateBuildingCartonStickerPdf(
   });
 
   // Location Highlight Ribbon (Governorate - Center - Building)
-  const locRibbonY = headerY - 56;
-  const locRibbonH = 50;
+  const locRibbonY = headerY - 50;
+  const locRibbonH = 44;
 
   page.drawRectangle({
     x: cardX + 12,
@@ -193,15 +315,15 @@ export async function generateBuildingCartonStickerPdf(
   // 1. Governorate
   page.drawText("GOVERNORATE", {
     x: cardX + 22,
-    y: locRibbonY + locRibbonH - 16,
-    size: 8,
+    y: locRibbonY + locRibbonH - 14,
+    size: 7.5,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(options.governorate || "All Governorates", {
     x: cardX + 22,
-    y: locRibbonY + 10,
-    size: 14,
+    y: locRibbonY + 9,
+    size: 13,
     font,
     color: COLOR_CHARCOAL,
   });
@@ -209,15 +331,15 @@ export async function generateBuildingCartonStickerPdf(
   // 2. Test Center
   page.drawText("TEST CENTER", {
     x: cardX + 12 + locColW + 10,
-    y: locRibbonY + locRibbonH - 16,
-    size: 8,
+    y: locRibbonY + locRibbonH - 14,
+    size: 7.5,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(options.center || "Main Center", {
     x: cardX + 12 + locColW + 10,
-    y: locRibbonY + 10,
-    size: 14,
+    y: locRibbonY + 9,
+    size: 13,
     font,
     color: COLOR_CHARCOAL,
   });
@@ -225,29 +347,31 @@ export async function generateBuildingCartonStickerPdf(
   // 3. Building
   page.drawText("BUILDING", {
     x: cardX + 12 + locColW * 2 + 10,
-    y: locRibbonY + locRibbonH - 16,
-    size: 8,
+    y: locRibbonY + locRibbonH - 14,
+    size: 7.5,
     font,
     color: COLOR_MUTED,
   });
   page.drawText(options.building || "Building HQ", {
     x: cardX + 12 + locColW * 2 + 10,
-    y: locRibbonY + 10,
-    size: 16,
+    y: locRibbonY + 9,
+    size: 14.5,
     font,
     color: COLOR_CHARCOAL,
   });
 
   // Body Layout
-  const bodyTop = locRibbonY - 12;
+  const bodyTop = locRibbonY - 10;
   const bodyBottom = cardY + 12;
   const bodyH = bodyTop - bodyBottom;
-  const leftW = 260;
-  const rightW = cardW - 24 - leftW - 12;
+  const leftW = 205;
+  const rightW = cardW - 24 - leftW - 10;
   const leftX = cardX + 12;
-  const rightX = leftX + leftW + 12;
+  const rightX = leftX + leftW + 10;
 
-  // Left Column: Overview & Specifications
+  // ----------------------------------------------------
+  // LEFT COLUMN: Overview & Key Statistics
+  // ----------------------------------------------------
   page.drawRectangle({
     x: leftX,
     y: bodyBottom,
@@ -258,96 +382,154 @@ export async function generateBuildingCartonStickerPdf(
     borderWidth: 1,
   });
 
-  // Top header for Left
+  // Title for Left
   page.drawRectangle({
     x: leftX + 1,
-    y: bodyBottom + bodyH - 26,
+    y: bodyBottom + bodyH - 24,
     width: leftW - 2,
-    height: 25,
+    height: 23,
     color: COLOR_CHARCOAL,
   });
   page.drawText("CARTON SPECIFICATIONS", {
-    x: leftX + 14,
-    y: bodyBottom + bodyH - 18,
-    size: 8.5,
+    x: leftX + 12,
+    y: bodyBottom + bodyH - 16,
+    size: 8,
     font,
     color: COLOR_GOLD,
   });
 
-  // Stat Card: Total Rooms
-  const statBoxH = 68;
-  const stat1Y = bodyBottom + bodyH - 26 - statBoxH - 12;
+  // Stat Card 1: Total Floors
+  const statBoxH = 54;
+  const stat1Y = bodyBottom + bodyH - 24 - statBoxH - 8;
   page.drawRectangle({
-    x: leftX + 10,
+    x: leftX + 8,
     y: stat1Y,
-    width: leftW - 20,
+    width: leftW - 16,
     height: statBoxH,
     color: COLOR_LIGHT_BG,
     borderColor: COLOR_BORDER,
     borderWidth: 0.8,
   });
-  page.drawText("TOTAL ENCLOSED ROOM PACKETS:", {
-    x: leftX + 16,
-    y: stat1Y + statBoxH - 18,
-    size: 8,
+  page.drawText("TOTAL BUILDING FLOORS:", {
+    x: leftX + 14,
+    y: stat1Y + statBoxH - 15,
+    size: 7.5,
     font,
     color: COLOR_MUTED,
   });
-  const roomsText = `${options.totalRooms ?? (options.roomNames ? options.roomNames.length : 0)} ROOMS`;
-  page.drawText(roomsText, {
-    x: leftX + 16,
-    y: stat1Y + 16,
-    size: 24,
+  page.drawText(`${totalFloorsCount} FLOORS`, {
+    x: leftX + 14,
+    y: stat1Y + 13,
+    size: 18,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Info Card: Building & Exam Info
-  const infoBoxY = bodyBottom + 12;
-  const infoBoxH = stat1Y - infoBoxY - 12;
+  // Stat Card 2: Total Rooms
+  const stat2Y = stat1Y - statBoxH - 6;
   page.drawRectangle({
-    x: leftX + 10,
-    y: infoBoxY,
-    width: leftW - 20,
-    height: infoBoxH,
+    x: leftX + 8,
+    y: stat2Y,
+    width: leftW - 16,
+    height: statBoxH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.8,
+  });
+  page.drawText("TOTAL ENCLOSED ROOMS:", {
+    x: leftX + 14,
+    y: stat2Y + statBoxH - 15,
+    size: 7.5,
+    font,
+    color: COLOR_MUTED,
+  });
+  page.drawText(`${totalRoomsCount} ROOMS`, {
+    x: leftX + 14,
+    y: stat2Y + 13,
+    size: 18,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Stat Card 3: Total Candidates
+  const stat3Y = stat2Y - statBoxH - 6;
+  page.drawRectangle({
+    x: leftX + 8,
+    y: stat3Y,
+    width: leftW - 16,
+    height: statBoxH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.8,
+  });
+  page.drawText("ASSIGNED CANDIDATES:", {
+    x: leftX + 14,
+    y: stat3Y + statBoxH - 15,
+    size: 7.5,
+    font,
+    color: COLOR_MUTED,
+  });
+  page.drawText(`${totalStudentsCount} CANDIDATES`, {
+    x: leftX + 14,
+    y: stat3Y + 13,
+    size: 17,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Packing Checklist Card
+  const checkCardY = bodyBottom + 8;
+  const checkCardH = stat3Y - checkCardY - 8;
+  page.drawRectangle({
+    x: leftX + 8,
+    y: checkCardY,
+    width: leftW - 16,
+    height: checkCardH,
     color: COLOR_LIGHT_BG,
     borderColor: COLOR_BORDER,
     borderWidth: 0.8,
   });
 
-  page.drawText("LOGISTICS DISTRIBUTION UNIT", {
-    x: leftX + 16,
-    y: infoBoxY + infoBoxH - 18,
-    size: 8,
-    font,
-    color: COLOR_MUTED,
-  });
-
-  page.drawText(examLabel, {
-    x: leftX + 16,
-    y: infoBoxY + infoBoxH - 42,
-    size: 16,
+  page.drawText("CARTON PACKING CHECKLIST", {
+    x: leftX + 14,
+    y: checkCardY + checkCardH - 16,
+    size: 7.5,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText(`BUILDING: ${options.building || "Building HQ"}`, {
-    x: leftX + 16,
-    y: infoBoxY + infoBoxH - 64,
-    size: 10,
-    font,
-    color: COLOR_CHARCOAL,
-  });
+  const checkItems = [
+    "Floor dossiers verified",
+    "Room packets counted",
+    "Exam questions sealed",
+    "Emergency packet enclosed",
+  ];
 
-  page.drawText(`SESSION: ${sessionText}`, {
-    x: leftX + 16,
-    y: infoBoxY + 16,
-    size: 9,
-    font,
-    color: COLOR_MUTED,
-  });
+  const itemGap = Math.min(22, (checkCardH - 26) / checkItems.length);
+  for (let ci = 0; ci < checkItems.length; ci++) {
+    const cy = checkCardY + checkCardH - 26 - (ci + 1) * itemGap;
+    // Checkbox square
+    page.drawRectangle({
+      x: leftX + 14,
+      y: cy + 1,
+      width: 10,
+      height: 10,
+      color: COLOR_WHITE,
+      borderColor: COLOR_CHARCOAL,
+      borderWidth: 0.8,
+    });
+    page.drawText(checkItems[ci], {
+      x: leftX + 30,
+      y: cy + 2.5,
+      size: 7.5,
+      font,
+      color: COLOR_MUTED,
+    });
+  }
 
-  // Right Column: Rooms Directory & Manifest (Grid of room chips)
+  // ----------------------------------------------------
+  // RIGHT COLUMN: Floors & Rooms Directory
+  // ----------------------------------------------------
   page.drawRectangle({
     x: rightX,
     y: bodyBottom,
@@ -361,73 +543,160 @@ export async function generateBuildingCartonStickerPdf(
   // Top header for Right
   page.drawRectangle({
     x: rightX + 1,
-    y: bodyBottom + bodyH - 26,
+    y: bodyBottom + bodyH - 24,
     width: rightW - 2,
-    height: 25,
+    height: 23,
     color: COLOR_CHARCOAL,
   });
-  page.drawText("ROOMS DIRECTORY & PACKETS MANIFEST", {
+  page.drawText("BUILDING FLOORS & ENCLOSED ROOMS DIRECTORY", {
     x: rightX + 14,
-    y: bodyBottom + bodyH - 18,
+    y: bodyBottom + bodyH - 16,
     size: 8.5,
     font,
     color: COLOR_GOLD,
   });
 
-  // Render Rooms in a balanced grid
-  const rooms = options.roomNames && options.roomNames.length > 0
-    ? options.roomNames
-    : Array.from({ length: Math.min(options.totalRooms || 12, 30) }, (_, i) => `Room ${i + 1}`);
+  const dirSubtitle = "[ CHECK OFF [✓] EACH ROOM PACKET UPON PACKING ]";
+  const dirSubW = font.widthOfTextAtSize(dirSubtitle, 7);
+  page.drawText(dirSubtitle, {
+    x: rightX + rightW - dirSubW - 14,
+    y: bodyBottom + bodyH - 16,
+    size: 7,
+    font,
+    color: COLOR_GOLD,
+  });
 
-  const gridAreaTop = bodyBottom + bodyH - 36;
-  const gridAreaBottom = bodyBottom + 12;
-  const gridAreaH = gridAreaTop - gridAreaBottom;
-  const cols = rooms.length > 18 ? 5 : rooms.length > 10 ? 4 : 3;
-  const rows = Math.ceil(rooms.length / cols);
-  const cellW = (rightW - 24 - (cols - 1) * 8) / cols;
-  const cellH = Math.min(42, (gridAreaH - (rows - 1) * 6) / rows);
+  // Layout floors dynamically
+  const contentTop = bodyBottom + bodyH - 24 - 8;
+  const contentBottom = bodyBottom + 8;
+  const contentH = contentTop - contentBottom;
+  const contentW = rightW - 16;
 
-  for (let idx = 0; idx < rooms.length; idx++) {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const cx = rightX + 12 + col * (cellW + 8);
-    const cy = gridAreaTop - (row + 1) * cellH - row * 6;
+  const numFloors = floors.length;
+  const floorCols = numFloors <= 3 ? 1 : 2;
+  const floorRows = Math.ceil(numFloors / floorCols);
+  const gapX = 8;
+  const gapY = 8;
+  const fCardW = (contentW - (floorCols - 1) * gapX) / floorCols;
+  const fCardH = (contentH - (floorRows - 1) * gapY) / floorRows;
 
+  for (let fi = 0; fi < numFloors; fi++) {
+    const fl = floors[fi];
+    const col = fi % floorCols;
+    const row = Math.floor(fi / floorCols);
+    const fx = rightX + 8 + col * (fCardW + gapX);
+    const fy = contentTop - (row + 1) * fCardH - row * gapY;
+
+    // Floor Card Outer Box
     page.drawRectangle({
-      x: cx,
-      y: cy,
-      width: cellW,
-      height: cellH,
+      x: fx,
+      y: fy,
+      width: fCardW,
+      height: fCardH,
+      color: COLOR_WHITE,
+      borderColor: COLOR_BORDER,
+      borderWidth: 1,
+    });
+
+    // Floor Header Ribbon
+    const fHeaderH = 20;
+    const fHeaderY = fy + fCardH - fHeaderH;
+    page.drawRectangle({
+      x: fx + 0.5,
+      y: fHeaderY,
+      width: fCardW - 1,
+      height: fHeaderH,
       color: COLOR_LIGHT_BG,
       borderColor: COLOR_BORDER,
-      borderWidth: 0.8,
+      borderWidth: 0.5,
     });
 
-    // Checkbox square
-    page.drawRectangle({
-      x: cx + 6,
-      y: cy + (cellH - 12) / 2,
-      width: 12,
-      height: 12,
-      color: COLOR_WHITE,
-      borderColor: COLOR_CHARCOAL,
-      borderWidth: 0.8,
-    });
-
-    const roomText = rooms[idx];
-    let rSize = 10.5;
-    let rW = font.widthOfTextAtSize(roomText, rSize);
-    if (rW > cellW - 26) {
-      rSize = Math.max(7, ((cellW - 26) / rW) * rSize);
-      rW = font.widthOfTextAtSize(roomText, rSize);
-    }
-    page.drawText(roomText, {
-      x: cx + 22,
-      y: cy + (cellH - rSize) / 2 + 1,
-      size: rSize,
+    // Floor Title (left)
+    const floorLabel = fl.floor.toUpperCase();
+    page.drawText(floorLabel, {
+      x: fx + 8,
+      y: fHeaderY + 6,
+      size: 8.5,
       font,
       color: COLOR_CHARCOAL,
     });
+
+    // Floor Badge (right): "3 Rooms • 80 Candidates"
+    const badgeText = `${fl.rooms.length} Rooms  •  ${fl.totalStudents} Candidates`;
+    const badgeW = font.widthOfTextAtSize(badgeText, 7.5);
+    page.drawText(badgeText, {
+      x: fx + fCardW - badgeW - 8,
+      y: fHeaderY + 6,
+      size: 7.5,
+      font,
+      color: COLOR_MUTED,
+    });
+
+    // Rooms Grid inside Floor Card
+    const rAreaTop = fHeaderY - 4;
+    const rAreaBottom = fy + 4;
+    const rAreaH = rAreaTop - rAreaBottom;
+    const rAreaW = fCardW - 12;
+
+    const rCount = fl.rooms.length;
+    const rCols = floorCols === 1
+      ? (rCount > 6 ? 4 : rCount > 3 ? 3 : rCount)
+      : (rCount > 6 ? 3 : rCount > 2 ? 2 : rCount);
+    const rRows = Math.max(1, Math.ceil(rCount / Math.max(1, rCols)));
+    const rGapX = 5;
+    const rGapY = 4;
+    const rCellW = (rAreaW - (rCols - 1) * rGapX) / rCols;
+    const rCellH = Math.min(26, (rAreaH - (rRows - 1) * rGapY) / rRows);
+
+    for (let ri = 0; ri < rCount; ri++) {
+      const rm = fl.rooms[ri];
+      const rCol = ri % rCols;
+      const rRow = Math.floor(ri / rCols);
+      const rcx = fx + 6 + rCol * (rCellW + rGapX);
+      const rcy = rAreaTop - (rRow + 1) * rCellH - rRow * rGapY;
+
+      // Room Chip Background
+      page.drawRectangle({
+        x: rcx,
+        y: rcy,
+        width: rCellW,
+        height: rCellH,
+        color: COLOR_LIGHT_BG,
+        borderColor: COLOR_BORDER,
+        borderWidth: 0.6,
+      });
+
+      // Checkbox square (10x10)
+      page.drawRectangle({
+        x: rcx + 5,
+        y: rcy + (rCellH - 10) / 2,
+        width: 10,
+        height: 10,
+        color: COLOR_WHITE,
+        borderColor: COLOR_CHARCOAL,
+        borderWidth: 0.8,
+      });
+
+      // Room Name & Student Count Label
+      let label = rm.room;
+      if (rm.studentCount) {
+        label += ` (${rm.studentCount})`;
+      }
+      let fSize = 8;
+      let textW = font.widthOfTextAtSize(label, fSize);
+      if (textW > rCellW - 20) {
+        fSize = Math.max(6.5, ((rCellW - 20) / textW) * fSize);
+        textW = font.widthOfTextAtSize(label, fSize);
+      }
+
+      page.drawText(label, {
+        x: rcx + 18,
+        y: rcy + (rCellH - fSize) / 2 + 1,
+        size: fSize,
+        font,
+        color: COLOR_CHARCOAL,
+      });
+    }
   }
 
   return await pdfDoc.save();
