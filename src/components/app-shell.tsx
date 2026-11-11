@@ -5,11 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Boxes,
+  ChevronDown,
   Clock,
   FileImage,
   FileSpreadsheet,
   FileText,
   Files,
+  FolderArchive,
   HardDrive,
   LayoutDashboard,
   Menu,
@@ -83,6 +85,9 @@ const primaryNav: NavItem[] = [
     bgColor: "bg-indigo-500/10 dark:bg-indigo-500/20",
     activeBg: "bg-indigo-600 text-white shadow-md shadow-indigo-500/25",
   },
+];
+
+const fileTypesNav: NavItem[] = [
   {
     href: "/files/pdf",
     labelKey: "nav.pdfFiles",
@@ -172,6 +177,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
+  const [fileTypesOpen, setFileTypesOpen] = useState(false);
 
   const brandName = appName && appName !== "مدير الملفات" && appName !== "File Manager" ? appName : t("app.name");
 
@@ -274,6 +280,67 @@ export function AppShell({
                 </Link>
               );
             })}
+
+            {/* Collapsible File Types Section (Closed by default) */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setFileTypesOpen((prev) => !prev)}
+                className={cn(
+                  "group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm font-semibold transition-all cursor-pointer",
+                  fileTypesNav.some((item) => isActive(pathname, item))
+                    ? "text-foreground bg-surface-soft/80"
+                    : "text-muted hover:bg-surface-soft hover:text-foreground",
+                )}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-500/10 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 group-hover:scale-110 transition-transform">
+                    <FolderArchive className="size-4" />
+                  </span>
+                  <span className="truncate">{t("nav.fileTypes")}</span>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    "size-4 shrink-0 text-muted transition-transform duration-200",
+                    fileTypesOpen && "rotate-180 text-foreground",
+                  )}
+                />
+              </button>
+
+              {fileTypesOpen && (
+                <div className="mt-1 space-y-1 ps-4 border-s-2 border-border/60 ms-4.5">
+                  {fileTypesNav.map((item) => {
+                    const Icon = item.icon;
+                    const active = isActive(pathname, item);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setOpen(false)}
+                        className={cn(
+                          "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                          active
+                            ? cn(item.activeBg)
+                            : "text-muted hover:bg-surface-soft hover:text-foreground",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex size-6 shrink-0 items-center justify-center rounded-md transition-transform",
+                            active
+                              ? "bg-white/20 text-white"
+                              : cn(item.bgColor, item.color, "group-hover:scale-110"),
+                          )}
+                        >
+                          <Icon className="size-3.5" />
+                        </span>
+                        <span className="truncate">{t(item.labelKey)}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -445,6 +512,23 @@ export function AppShell({
             </Link>
           );
         })}
+
+        <button
+          type="button"
+          onClick={() => {
+            setDesktopCollapsed(false);
+            setFileTypesOpen(true);
+          }}
+          title={t("nav.fileTypes")}
+          aria-label={t("nav.fileTypes")}
+          className={cn(
+            "group relative flex size-10 items-center justify-center rounded-xl bg-slate-500/10 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 hover:scale-110 hover:shadow-md transition-all cursor-pointer",
+            fileTypesNav.some((item) => isActive(pathname, item)) && "ring-2 ring-indigo-500/40",
+          )}
+        >
+          <FolderArchive className="size-5 transition-transform group-hover:scale-110" />
+          <span className="sr-only">{t("nav.fileTypes")}</span>
+        </button>
 
         <div className="w-8 my-1 border-t border-border/60" />
 
