@@ -6,13 +6,14 @@ import { buildBreadcrumbs, getFileMeta, getFolderDescendants } from "@/lib/drive
 import { getDemoBreadcrumbs, getDemoDescendants, isDemoEnabled } from "@/lib/demo";
 import { getSettings } from "@/lib/settings";
 import { buildStickerContent, type StickerContent, type StickerSubfolderInfo } from "@/lib/stickers/sticker-content";
-import { generateBatchStickerPdf } from "@/lib/stickers/sticker-pdf";
+import { generateBatchStickerPdf, generateBatchExamStickersPdf } from "@/lib/stickers/sticker-pdf";
 import { AppError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
 const batchStickersSchema = z.object({
   folderIds: z.array(z.string().min(1)).min(1).max(200),
+  type: z.enum(["regular", "exam"]).optional().default("regular"),
   includeChildren: z.boolean().optional().default(false),
   paperMode: z.enum(["custom", "a4"]).optional(),
   orientation: z.enum(["portrait", "landscape"]).optional(),
@@ -121,6 +122,51 @@ export async function POST(request: Request) {
       throw new AppError("Could not resolve any valid folder hierarchies for stickers", {
         status: 404,
         code: "notFound",
+      });
+    }
+
+    if (body.type === "exam") {
+      const examRooms: Array<{
+        content: StickerContent;
+        litCount?: number;
+        mathCount?: number;
+        essayCount?: number;
+      }> = [];
+
+      for (const c of contents) {
+        if (c.level === "room" || c.room) {
+          examRooms.push({
+            content: c,
+            litCount: c.litCount,
+            mathCount: c.mathCount,
+            essayCount: c.essayCount,
+          });
+        }
+      }
+
+      // If no strictly-flagged room folders, treat all requested contents as room items
+      const targetRooms = examRooms.length > 0 ? examRooms : contents.map((c) => ({
+        content: c,
+        litCount: c.litCount,
+        mathCount: c.mathCount,
+        essayCount: c.essayCount,
+      }));
+
+      const pdfBytes = await generateBatchExamStickersPdf({
+        rooms: targetRooms,
+      });
+
+      const safeFilename = `EST-Exam-Stickers-Batch-${targetRooms.length}-Rooms.pdf`;
+
+      return new NextResponse(Buffer.from(pdfBytes), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${safeFilename}"`,
+          "Content-Length": String(pdfBytes.length),
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          "X-Stickers-Count": String(targetRooms.length),
+        },
       });
     }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Layers, Loader2, Printer, Tag, X } from "lucide-react";
+import { Eye, Files, Layers, Loader2, Printer, Tag, X } from "lucide-react";
 import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
 import type { DriveItem } from "@/lib/types";
@@ -11,8 +11,10 @@ interface BatchStickersDialogProps {
   onClose: () => void;
   selectedFolders: Array<{ id: string; name?: string | null }>;
   currentFolder?: { id: string; name?: string | null } | null;
+  initialType?: "regular" | "exam";
   onExecute: (options: {
     action: "show" | "print";
+    type: "regular" | "exam";
     includeChildren: boolean;
     orientation: "landscape" | "portrait";
   }) => Promise<void>;
@@ -24,10 +26,12 @@ export function BatchStickersDialog({
   onClose,
   selectedFolders,
   currentFolder,
+  initialType = "regular",
   onExecute,
   loading = false,
 }: BatchStickersDialogProps) {
   const { locale } = useI18n();
+  const [stickerType, setStickerType] = useState<"regular" | "exam">(initialType);
   const [includeChildren, setIncludeChildren] = useState(false);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [activeAction, setActiveAction] = useState<"show" | "print" | null>(null);
@@ -45,6 +49,7 @@ export function BatchStickersDialog({
     try {
       await onExecute({
         action,
+        type: stickerType,
         includeChildren,
         orientation,
       });
@@ -59,14 +64,22 @@ export function BatchStickersDialog({
       open={open}
       onClose={onClose}
       title={
-        locale === "ar"
+        stickerType === "exam"
+          ? locale === "ar"
+            ? "طباعة استيكرات الامتحانات (EST I Exam Stickers)"
+            : "Print EST I Exam Stickers"
+          : locale === "ar"
           ? "طباعة استيكرات EST للمحدد"
           : "Print EST Stickers for Selected"
       }
       description={
-        locale === "ar"
-          ? `تجهيز استيكرات A4 رسمية تحمل شعار EST لـ ${effectiveFolders.length} مجلد محدد.`
-          : `Prepare official A4 EST placards with logo for ${effectiveFolders.length} selected folder(s).`
+        stickerType === "exam"
+          ? locale === "ar"
+            ? `توليد استيكرات الامتحانات الرسمية (نسختين لكل مادة: Literacy, Math, و Essay إن وجدت) لـ ${effectiveFolders.length} مجلد.`
+            : `Generate official exam paper stickers (2 copies per subject: Literacy, Math, and Essay if applicable) for ${effectiveFolders.length} folders.`
+          : locale === "ar"
+          ? `تجهيز استيكرات A4 رسمية تحمل شعار EST وإجمالي الطلاب لـ ${effectiveFolders.length} مجلد محدد.`
+          : `Prepare official A4 EST placards with logo and total student counts for ${effectiveFolders.length} selected folder(s).`
       }
       size="md"
       footer={
@@ -80,12 +93,16 @@ export function BatchStickersDialog({
               variant="secondary"
               onClick={() => handleAction("show")}
               disabled={loading || effectiveFolders.length === 0}
-              className="flex items-center gap-1.5 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 cursor-pointer"
+              className={`flex items-center gap-1.5 cursor-pointer ${
+                stickerType === "exam"
+                  ? "border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                  : "border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10"
+              }`}
             >
               {loading && activeAction === "show" ? (
-                <Loader2 className="size-4 animate-spin text-indigo-600" />
+                <Loader2 className="size-4 animate-spin text-current" />
               ) : (
-                <Eye className="size-4 text-indigo-600 dark:text-indigo-400" />
+                <Eye className="size-4" />
               )}
               <span>{locale === "ar" ? "معاينة الكل (PDF موحد)" : "Preview Unified PDF"}</span>
             </Button>
@@ -94,7 +111,11 @@ export function BatchStickersDialog({
               variant="primary"
               onClick={() => handleAction("print")}
               disabled={loading || effectiveFolders.length === 0}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+              className={`flex items-center gap-1.5 text-white cursor-pointer ${
+                stickerType === "exam"
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-indigo-600 hover:bg-indigo-700"
+              }`}
             >
               {loading && activeAction === "print" ? (
                 <Loader2 className="size-4 animate-spin text-white" />
@@ -108,10 +129,59 @@ export function BatchStickersDialog({
       }
     >
       <div className="space-y-4">
+        {/* Type Selector: Regular vs Exam Stickers */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-foreground block">
+            {locale === "ar" ? "نوع الاستيكرات المطلوب طباعتها:" : "Sticker Type:"}
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => setStickerType("regular")}
+              className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-start transition-all cursor-pointer ${
+                stickerType === "regular"
+                  ? "border-indigo-600 bg-indigo-500/10 ring-2 ring-indigo-500/20"
+                  : "border-border bg-surface hover:bg-surface-soft"
+              }`}
+            >
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Tag className="size-3.5 text-indigo-600" />
+                {locale === "ar" ? "استيكر الغرفة / الملف (عادي)" : "Regular Room / Folder Sticker"}
+              </span>
+              <span className="text-[11px] text-muted">
+                {locale === "ar"
+                  ? "ملصق دوسيه الغرفة يوضح رقم القاعة وإجمالي عدد الطلاب."
+                  : "Dossier sticker showing room number and total student count."}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStickerType("exam")}
+              className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-start transition-all cursor-pointer ${
+                stickerType === "exam"
+                  ? "border-amber-600 bg-amber-500/10 ring-2 ring-amber-500/20"
+                  : "border-border bg-surface hover:bg-surface-soft"
+              }`}
+            >
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Files className="size-3.5 text-amber-600" />
+                {locale === "ar" ? "استيكرات الامتحانات (EST I)" : "EST I Exam Stickers"}
+              </span>
+              <span className="text-[11px] text-muted">
+                {locale === "ar"
+                  ? "ملصقات أوراق الامتحان: نسختان لكل مادة (Literacy, Math, Essay)."
+                  : "Exam paper stickers: 2 copies per subject (Literacy, Math, Essay)."}
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* Scope selector */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-foreground block">
-            {locale === "ar" ? "نطاق الاستيكرات المطلوب طباعتها:" : "Sticker Scope:"}
+            {locale === "ar" ? "نطاق المجلدات المشمولة:" : "Folder Scope:"}
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -132,8 +202,8 @@ export function BatchStickersDialog({
               </span>
               <span className="text-[11px] text-muted">
                 {locale === "ar"
-                  ? "استيكر واحد لكل مجلد تم اختياره في القائمة مباشرة."
-                  : "One sticker per explicitly selected folder."}
+                  ? "استيكرات للمجلدات المختارة مباشرة في القائمة."
+                  : "Stickers for explicitly selected folders."}
               </span>
             </button>
 
@@ -162,36 +232,38 @@ export function BatchStickersDialog({
         </div>
 
         {/* Orientation Selector */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-foreground block">
-            {locale === "ar" ? "اتجاه ورقة الاستيكر (مقاس A4):" : "Sticker Orientation (A4):"}
-          </label>
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
-              <input
-                type="radio"
-                name="sticker-orientation"
-                value="landscape"
-                checked={orientation === "landscape"}
-                onChange={() => setOrientation("landscape")}
-                className="size-4 accent-indigo-600 cursor-pointer"
-              />
-              <span>{locale === "ar" ? "أفقي (Landscape) — موصى به للأبواب والقاعات" : "Landscape (Recommended)"}</span>
+        {stickerType === "regular" && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-foreground block">
+              {locale === "ar" ? "اتجاه ورقة الاستيكر (مقاس A4):" : "Sticker Orientation (A4):"}
             </label>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="sticker-orientation"
+                  value="landscape"
+                  checked={orientation === "landscape"}
+                  onChange={() => setOrientation("landscape")}
+                  className="size-4 accent-indigo-600 cursor-pointer"
+                />
+                <span>{locale === "ar" ? "أفقي (Landscape) — موصى به للأبواب والقاعات" : "Landscape (Recommended)"}</span>
+              </label>
 
-            <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
-              <input
-                type="radio"
-                name="sticker-orientation"
-                value="portrait"
-                checked={orientation === "portrait"}
-                onChange={() => setOrientation("portrait")}
-                className="size-4 accent-indigo-600 cursor-pointer"
-              />
-              <span>{locale === "ar" ? "رأسي (Portrait)" : "Portrait"}</span>
-            </label>
+              <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="sticker-orientation"
+                  value="portrait"
+                  checked={orientation === "portrait"}
+                  onChange={() => setOrientation("portrait")}
+                  className="size-4 accent-indigo-600 cursor-pointer"
+                />
+                <span>{locale === "ar" ? "رأسي (Portrait)" : "Portrait"}</span>
+              </label>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Selected Items preview */}
         <div className="space-y-1.5">

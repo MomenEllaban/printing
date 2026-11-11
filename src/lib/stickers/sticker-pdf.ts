@@ -329,6 +329,10 @@ function drawA4PlacardPage(params: {
         height: bottomAreaHeight,
         badgeText: "ROOM",
         valueText: content.room || "",
+        subText:
+          typeof content.totalStudents === "number" && content.totalStudents > 0
+            ? `${content.totalStudents} STUDENTS`
+            : undefined,
         accentColor: COLOR_GOLD,
       });
 
@@ -377,6 +381,10 @@ function drawA4PlacardPage(params: {
         height: heroHeight,
         badgeText: "ROOM",
         valueText: content.room || "",
+        subText:
+          typeof content.totalStudents === "number" && content.totalStudents > 0
+            ? `${content.totalStudents} STUDENTS`
+            : undefined,
         accentColor: COLOR_GOLD,
       });
 
@@ -1375,7 +1383,9 @@ function drawQuarterPlacard(params: {
 
   const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
   const subText = isRoom
-    ? "ROOM DOSSIER"
+    ? typeof content.totalStudents === "number" && content.totalStudents > 0
+      ? `${content.totalStudents} STUDENTS`
+      : "ROOM DOSSIER"
     : childRoomsCount > 0
     ? `${childRoomsCount} ROOMS INCLUDED`
     : "SENIOR DOSSIER";
@@ -1522,4 +1532,644 @@ function drawQuarterPlacard(params: {
       });
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// EST I Exam Stickers Implementation (Quarter-A4, 2 Copies Per Subject)
+// ---------------------------------------------------------------------------
+
+export interface ExamStickerItem {
+  room: string;
+  examName?: string;
+  governorate?: string;
+  center?: string;
+  building?: string;
+  floor?: string;
+  subject: string;
+  subjectCode: "LIT" | "MATH" | "ESSAY";
+  studentCount: number;
+  copyIndex: number;
+  totalCopies: number;
+}
+
+export interface GenerateExamStickersPdfOptions {
+  content: StickerContent;
+  litCount?: number;
+  mathCount?: number;
+  essayCount?: number;
+}
+
+export interface BatchExamStickersPdfOptions {
+  rooms?: Array<{
+    content: StickerContent;
+    litCount?: number;
+    mathCount?: number;
+    essayCount?: number;
+  }>;
+  contents?: StickerContent[];
+}
+
+/**
+ * Draws a single EST I Exam Sticker inside one quadrant of an A4 page (approx 421 x 298 pt).
+ * Exactly one-quarter of an A4 page, maintaining full visual harmony with the regular stickers.
+ */
+function drawQuarterExamSticker(params: {
+  page: any;
+  font: any;
+  logoImg: any;
+  item: ExamStickerItem;
+  slotX: number;
+  slotY: number;
+  slotWidth: number;
+  slotHeight: number;
+}) {
+  const { page, font, logoImg, item, slotX, slotY, slotWidth, slotHeight } = params;
+
+  const margin = 8;
+  const x = slotX + margin;
+  const y = slotY + margin;
+  const width = slotWidth - margin * 2;
+  const height = slotHeight - margin * 2;
+
+  // Outer framing card
+  page.drawRectangle({
+    x,
+    y,
+    width,
+    height,
+    color: COLOR_WHITE,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1.6,
+  });
+
+  // Inner gold border
+  page.drawRectangle({
+    x: x + 2.5,
+    y: y + 2.5,
+    width: width - 5,
+    height: height - 5,
+    borderColor: COLOR_GOLD,
+    borderWidth: 0.75,
+  });
+
+  // Header: Logo & Exam title
+  const logoH = 22;
+  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
+  const logoX = x + 10;
+  const logoY = y + height - 8 - logoH;
+
+  if (logoImg) {
+    page.drawImage(logoImg, {
+      x: logoX,
+      y: logoY,
+      width: logoW,
+      height: logoH,
+    });
+  }
+
+  const textStartX = logoImg ? logoX + logoW + 8 : x + 10;
+  const examTitle = `${item.examName || "EST I"} — OFFICIAL EXAMINATION`;
+  page.drawText(examTitle, {
+    x: textStartX,
+    y: logoY + 11,
+    size: 8.5,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  page.drawText("EXAMINATION PAPERS & MATERIALS DOSSIER", {
+    x: textStartX,
+    y: logoY + 2,
+    size: 6.5,
+    font,
+    color: COLOR_MUTED,
+  });
+
+  // Copy badge at top right
+  const copyText = `COPY ${item.copyIndex} OF ${item.totalCopies}`;
+  const copySize = 6.8;
+  const copyW = font.widthOfTextAtSize(copyText, copySize);
+  const copyBadgeW = copyW + 10;
+  const copyBadgeH = 14;
+  const copyBadgeX = x + width - copyBadgeW - 8;
+  const copyBadgeY = logoY + (logoH - copyBadgeH) / 2;
+
+  page.drawRectangle({
+    x: copyBadgeX,
+    y: copyBadgeY,
+    width: copyBadgeW,
+    height: copyBadgeH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.5,
+  });
+
+  page.drawText(copyText, {
+    x: copyBadgeX + 5,
+    y: copyBadgeY + 3.5,
+    size: copySize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  const headerBottom = logoY - 4;
+
+  // Gold divider
+  page.drawLine({
+    start: { x: x + 6, y: headerBottom },
+    end: { x: x + width - 6, y: headerBottom },
+    thickness: 1,
+    color: COLOR_GOLD,
+  });
+
+  // Location ribbon
+  const ribbonH = 14;
+  const ribbonY = headerBottom - 3 - ribbonH;
+  page.drawRectangle({
+    x: x + 6,
+    y: ribbonY,
+    width: width - 12,
+    height: ribbonH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.5,
+  });
+
+  const locItems = [
+    item.governorate,
+    item.center,
+    item.building,
+    item.floor,
+  ].filter(Boolean);
+  const locText = locItems.join("  •  ");
+  let locSize = 7.2;
+  let locWidth = font.widthOfTextAtSize(locText, locSize);
+  if (locWidth > width - 24) {
+    locSize = Math.max(6, ((width - 24) / locWidth) * locSize);
+    locWidth = font.widthOfTextAtSize(locText, locSize);
+  }
+  page.drawText(locText, {
+    x: x + (width - locWidth) / 2,
+    y: ribbonY + (ribbonH - locSize) / 2 + 1,
+    size: locSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Body layout
+  const bodyTop = ribbonY - 5;
+  const bodyBottom = y + 6;
+  const bodyH = bodyTop - bodyBottom;
+  const bodyW = width - 12;
+
+  const leftW = Math.round(bodyW * 0.36);
+  const gap = 6;
+  const rightW = bodyW - leftW - gap;
+  const leftX = x + 6;
+  const rightX = leftX + leftW + gap;
+
+  const bannerH = 19;
+  const bannerY = bodyBottom + bodyH - bannerH;
+
+  // 1. LEFT HERO: ROOM
+  page.drawRectangle({
+    x: leftX,
+    y: bodyBottom,
+    width: leftW,
+    height: bodyH,
+    color: COLOR_WHITE,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1.2,
+  });
+
+  // Hero Room Banner
+  page.drawRectangle({
+    x: leftX + 1,
+    y: bannerY,
+    width: leftW - 2,
+    height: bannerH - 1,
+    color: COLOR_CHARCOAL,
+  });
+
+  const badgeText = "ROOM";
+  const badgeSize = 8.5;
+  const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
+  page.drawText(badgeText, {
+    x: leftX + (leftW - badgeW) / 2,
+    y: bannerY + (bannerH - badgeSize) / 2,
+    size: badgeSize,
+    font,
+    color: COLOR_GOLD,
+  });
+
+  // Bottom Sub-banner
+  const subH = 17;
+  const subY = bodyBottom + 2;
+  page.drawRectangle({
+    x: leftX + 2,
+    y: subY,
+    width: leftW - 4,
+    height: subH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_BORDER,
+    borderWidth: 0.5,
+  });
+
+  const subText = "EXAM PAPERS";
+  const subSize = 6.5;
+  const subW = font.widthOfTextAtSize(subText, subSize);
+  page.drawText(subText, {
+    x: leftX + (leftW - subW) / 2,
+    y: subY + (subH - subSize) / 2 + 1,
+    size: subSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Hero room number
+  const heroAvailH = bannerY - (subY + subH);
+  const heroValue = item.room || "";
+  let heroSize = 34;
+  let heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  if (heroW > leftW - 12) {
+    heroSize = Math.max(14, ((leftW - 12) / heroW) * heroSize);
+    heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  }
+  page.drawText(heroValue, {
+    x: leftX + (leftW - heroW) / 2,
+    y: subY + subH + (heroAvailH - heroSize) / 2 + 2,
+    size: heroSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // 2. RIGHT DETAILS: EXAM SUBJECT & STUDENTS COUNT
+  page.drawRectangle({
+    x: rightX,
+    y: bodyBottom,
+    width: rightW,
+    height: bodyH,
+    color: COLOR_WHITE,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1.2,
+  });
+
+  // Right Top Banner
+  page.drawRectangle({
+    x: rightX + 1,
+    y: bannerY,
+    width: rightW - 2,
+    height: bannerH - 1,
+    color: COLOR_CHARCOAL,
+  });
+
+  const bannerTitle = "EXAM SUBJECT & CANDIDATES";
+  const bannerTitleSize = 7.5;
+  const bannerTitleW = font.widthOfTextAtSize(bannerTitle, bannerTitleSize);
+  page.drawText(bannerTitle, {
+    x: rightX + (rightW - bannerTitleW) / 2,
+    y: bannerY + (bannerH - bannerTitleSize) / 2,
+    size: bannerTitleSize,
+    font,
+    color: COLOR_GOLD,
+  });
+
+  // Subject Box
+  const subjectBoxH = 34;
+  const subjectBoxY = bannerY - subjectBoxH - 6;
+
+  page.drawRectangle({
+    x: rightX + 6,
+    y: subjectBoxY,
+    width: rightW - 12,
+    height: subjectBoxH,
+    color: COLOR_LIGHT_BG,
+    borderColor: COLOR_CHARCOAL,
+    borderWidth: 1,
+  });
+
+  const subjText = item.subject.toUpperCase();
+  let subjSize = 13.5;
+  let subjW = font.widthOfTextAtSize(subjText, subjSize);
+  if (subjW > rightW - 20) {
+    subjSize = Math.max(9.5, ((rightW - 20) / subjW) * subjSize);
+    subjW = font.widthOfTextAtSize(subjText, subjSize);
+  }
+  page.drawText(subjText, {
+    x: rightX + 6 + (rightW - 12 - subjW) / 2,
+    y: subjectBoxY + (subjectBoxH - subjSize) / 2 + 2,
+    size: subjSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Students Count Box
+  const countBoxH = 46;
+  const countBoxY = subjectBoxY - countBoxH - 6;
+
+  page.drawRectangle({
+    x: rightX + 6,
+    y: countBoxY,
+    width: rightW - 12,
+    height: countBoxH,
+    color: COLOR_WHITE,
+    borderColor: COLOR_GOLD,
+    borderWidth: 1.2,
+  });
+
+  const countLabel = "ASSIGNED CANDIDATES FOR THIS EXAM:";
+  const countLabelSize = 6.2;
+  page.drawText(countLabel, {
+    x: rightX + 12,
+    y: countBoxY + countBoxH - 12,
+    size: countLabelSize,
+    font,
+    color: COLOR_MUTED,
+  });
+
+  const countValue = `${item.studentCount} STUDENTS`;
+  const countValSize = 17;
+  const countValW = font.widthOfTextAtSize(countValue, countValSize);
+  page.drawText(countValue, {
+    x: rightX + 6 + (rightW - 12 - countValW) / 2,
+    y: countBoxY + 8,
+    size: countValSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Bottom section: Verification & Sign-off
+  const verifyY = bodyBottom + 4;
+  const verifyH = countBoxY - verifyY - 3;
+
+  page.drawLine({
+    start: { x: rightX + 6, y: verifyY + verifyH },
+    end: { x: rightX + rightW - 6, y: verifyY + verifyH },
+    thickness: 0.5,
+    color: COLOR_BORDER,
+  });
+
+  page.drawText("Packet: [ ] Sealed    [ ] Count Verified", {
+    x: rightX + 8,
+    y: verifyY + 12,
+    size: 6.2,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  page.drawText("Proctor Signature: ____________________________", {
+    x: rightX + 8,
+    y: verifyY + 2,
+    size: 6.2,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+}
+
+/**
+ * Builds the list of ExamStickerItems for a room:
+ * - 2 identical copies for Literacy
+ * - 2 identical copies for Math
+ * - 2 identical copies for Essay ONLY if essayCount > 0
+ */
+function buildExamStickerItemsForRoom(params: {
+  content: StickerContent;
+  litCount: number;
+  mathCount: number;
+  essayCount: number;
+}): ExamStickerItem[] {
+  const { content, litCount, mathCount, essayCount } = params;
+  const room = content.room || "Room";
+  const items: ExamStickerItem[] = [];
+
+  // 1. Literacy (2 copies)
+  items.push({
+    room,
+    examName: content.examName,
+    governorate: content.governorate,
+    center: content.center,
+    building: content.building,
+    floor: content.floor,
+    subject: "EST I – Literacy",
+    subjectCode: "LIT",
+    studentCount: litCount,
+    copyIndex: 1,
+    totalCopies: 2,
+  });
+  items.push({
+    room,
+    examName: content.examName,
+    governorate: content.governorate,
+    center: content.center,
+    building: content.building,
+    floor: content.floor,
+    subject: "EST I – Literacy",
+    subjectCode: "LIT",
+    studentCount: litCount,
+    copyIndex: 2,
+    totalCopies: 2,
+  });
+
+  // 2. Math (2 copies)
+  items.push({
+    room,
+    examName: content.examName,
+    governorate: content.governorate,
+    center: content.center,
+    building: content.building,
+    floor: content.floor,
+    subject: "EST I – Math",
+    subjectCode: "MATH",
+    studentCount: mathCount,
+    copyIndex: 1,
+    totalCopies: 2,
+  });
+  items.push({
+    room,
+    examName: content.examName,
+    governorate: content.governorate,
+    center: content.center,
+    building: content.building,
+    floor: content.floor,
+    subject: "EST I – Math",
+    subjectCode: "MATH",
+    studentCount: mathCount,
+    copyIndex: 2,
+    totalCopies: 2,
+  });
+
+  // 3. Essay (2 copies ONLY if room has students taking Essay)
+  if (essayCount > 0) {
+    items.push({
+      room,
+      examName: content.examName,
+      governorate: content.governorate,
+      center: content.center,
+      building: content.building,
+      floor: content.floor,
+      subject: "EST I – Essay",
+      subjectCode: "ESSAY",
+      studentCount: essayCount,
+      copyIndex: 1,
+      totalCopies: 2,
+    });
+    items.push({
+      room,
+      examName: content.examName,
+      governorate: content.governorate,
+      center: content.center,
+      building: content.building,
+      floor: content.floor,
+      subject: "EST I – Essay",
+      subjectCode: "ESSAY",
+      studentCount: essayCount,
+      copyIndex: 2,
+      totalCopies: 2,
+    });
+  }
+
+  return items;
+}
+
+/**
+ * Draws an A4 page with up to 4 exam stickers in a 2x2 grid.
+ */
+function drawA4FourUpExamStickersPage(params: {
+  pdfDoc: PDFDocument;
+  font: any;
+  logoImg: any;
+  items: ExamStickerItem[];
+}) {
+  const { pdfDoc, font, logoImg, items } = params;
+
+  // A4 Landscape: 841.89 x 595.28 pt
+  const a4Width = 841.89;
+  const a4Height = 595.28;
+  const page = pdfDoc.addPage([a4Width, a4Height]);
+
+  const midX = a4Width / 2;
+  const midY = a4Height / 2;
+
+  // Center cutting guide lines
+  page.drawLine({
+    start: { x: midX, y: 0 },
+    end: { x: midX, y: a4Height },
+    thickness: 0.5,
+    color: COLOR_BORDER,
+    dashArray: [4, 4],
+  });
+
+  page.drawLine({
+    start: { x: 0, y: midY },
+    end: { x: a4Width, y: midY },
+    thickness: 0.5,
+    color: COLOR_BORDER,
+    dashArray: [4, 4],
+  });
+
+  const quadrants = [
+    { x: 0, y: midY, width: midX, height: midY },    // Top-Left
+    { x: midX, y: midY, width: midX, height: midY }, // Top-Right
+    { x: 0, y: 0, width: midX, height: midY },       // Bottom-Left
+    { x: midX, y: 0, width: midX, height: midY },    // Bottom-Right
+  ];
+
+  for (let i = 0; i < items.length && i < 4; i++) {
+    const q = quadrants[i];
+    drawQuarterExamSticker({
+      page,
+      font,
+      logoImg,
+      item: items[i],
+      slotX: q.x,
+      slotY: q.y,
+      slotWidth: q.width,
+      slotHeight: q.height,
+    });
+  }
+}
+
+/**
+ * Generates an official EST I Exam Stickers PDF for a single room.
+ * Produces:
+ * - 2 copies of EST I – Literacy
+ * - 2 copies of EST I – Math
+ * - 2 copies of EST I – Essay (only if essayCount > 0)
+ * Each sticker occupies exactly one-quarter of an A4 page (4-up on A4 Landscape).
+ */
+export async function generateExamStickersPdf(
+  options: GenerateExamStickersPdfOptions,
+): Promise<Uint8Array> {
+  const content = options.content;
+  if (!content) {
+    throw new Error("Cannot generate exam stickers PDF without sticker content");
+  }
+
+  const litCount = options.litCount ?? content.litCount ?? 25;
+  const mathCount = options.mathCount ?? content.mathCount ?? 25;
+  const essayCount = options.essayCount ?? content.essayCount ?? 0;
+
+  return generateBatchExamStickersPdf({
+    rooms: [
+      {
+        content,
+        litCount,
+        mathCount,
+        essayCount,
+      },
+    ],
+  });
+}
+
+/**
+ * Generates unified multi-page EST I Exam Stickers PDF for multiple rooms.
+ * Each room's exam stickers start on a fresh page.
+ */
+export async function generateBatchExamStickersPdf(
+  options: BatchExamStickersPdfOptions,
+): Promise<Uint8Array> {
+  const rooms =
+    options.rooms ??
+    options.contents?.map((c) => ({
+      content: c,
+      litCount: c.litCount,
+      mathCount: c.mathCount,
+      essayCount: c.essayCount,
+    })) ??
+    [];
+  if (rooms.length === 0) {
+    throw new Error("Cannot generate batch exam stickers PDF with no rooms");
+  }
+
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
+
+  const font = await loadStickerFont(pdfDoc);
+  const logoImg = await loadLogoImage(pdfDoc);
+
+  for (const r of rooms) {
+    const litCount = r.litCount ?? r.content.litCount ?? 25;
+    const mathCount = r.mathCount ?? r.content.mathCount ?? 25;
+    const essayCount = r.essayCount ?? r.content.essayCount ?? 0;
+
+    const items = buildExamStickerItemsForRoom({
+      content: r.content,
+      litCount,
+      mathCount,
+      essayCount,
+    });
+
+    // Chunk items 4 per page
+    for (let i = 0; i < items.length; i += 4) {
+      const pageItems = items.slice(i, i + 4);
+      drawA4FourUpExamStickersPage({
+        pdfDoc,
+        font,
+        logoImg,
+        items: pageItems,
+      });
+    }
+  }
+
+  return await pdfDoc.save();
 }

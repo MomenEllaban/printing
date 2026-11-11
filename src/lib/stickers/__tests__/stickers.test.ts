@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { buildStickerContent } from "../sticker-content";
-import { generateStickerPdf, generateBatchStickerPdf } from "../sticker-pdf";
+import {
+  generateStickerPdf,
+  generateBatchStickerPdf,
+  generateExamStickersPdf,
+  generateBatchExamStickersPdf,
+} from "../sticker-pdf";
+import {
+  parseEst1FileName,
+  formatEst1FileName,
+  getRoomExamCounts,
+} from "../est-room-data";
 import { generateProctorRegisterPdf } from "../proctor-register-pdf";
 import { generateControlRegisterPdf } from "../control-register-pdf";
 import { generateStudentRegisterPdf } from "../student-register-pdf";
@@ -736,6 +746,161 @@ describe("generateStickerPdf", () => {
 
       const pdfDoc = await PDFDocument.load(pdfBytes);
       expect(pdfDoc.getPageCount()).toBe(1);
+    });
+  });
+
+  describe("EST I – Room Stickers & Exam Stickers System", () => {
+    describe("PDF File Naming Convention (EST I)", () => {
+      it("formats valid EST I file names correctly with Essay", () => {
+        const name = formatEst1FileName("E426", 35, 28, 12);
+        expect(name).toBe("E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf");
+      });
+
+      it("formats valid EST I file names correctly without Essay", () => {
+        const name = formatEst1FileName("204", 30, 30, 0);
+        expect(name).toBe("204 | LIT-30 | MATH-30 | ESSAY-NO-0.pdf");
+      });
+
+      it("parses valid EST I room file name with Essay", () => {
+        const parsed = parseEst1FileName("E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf");
+        expect(parsed).toMatchObject({
+          room: "E426",
+          litCount: 35,
+          mathCount: 28,
+          essayCount: 12,
+          hasEssay: true,
+        });
+      });
+
+      it("parses valid EST I room file name without Essay (ESSAY-NO-0)", () => {
+        const parsed = parseEst1FileName("204 | LIT-30 | MATH-30 | ESSAY-NO-0.pdf");
+        expect(parsed).toMatchObject({
+          room: "204",
+          litCount: 30,
+          mathCount: 30,
+          essayCount: 0,
+          hasEssay: false,
+        });
+      });
+
+      it("returns null for non-matching file names", () => {
+        expect(parseEst1FileName("Proctor Attendance.xlsx")).toBeNull();
+        expect(parseEst1FileName("Control Register.pdf")).toBeNull();
+      });
+    });
+
+    describe("getRoomExamCounts", () => {
+      it("prioritizes child file with EST1 pattern when available", () => {
+        const counts = getRoomExamCounts({
+          room: "E426",
+          folderFiles: [
+            { name: "E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf" },
+            { name: "other.pdf" },
+          ],
+        });
+        expect(counts.room).toBe("E426");
+        expect(counts.litCount).toBe(35);
+        expect(counts.mathCount).toBe(28);
+        expect(counts.essayCount).toBe(12);
+        expect(counts.hasEssay).toBe(true);
+        expect(counts.totalStudents).toBe(35);
+      });
+
+      it("falls back to EST reference data when no matching child file exists", () => {
+        // Room 201 exists in EST_REFERENCE_DATA
+        const counts = getRoomExamCounts({ room: "201" });
+        expect(counts.room).toBe("201");
+        expect(counts.litCount).toBeGreaterThan(0);
+        expect(counts.mathCount).toBeGreaterThan(0);
+      });
+    });
+
+    describe("Regular Room Sticker with Student Count", () => {
+      it("buildStickerContent populates totalStudents for room folders", () => {
+        const content = buildStickerContent(
+          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "201"],
+          {
+            childFiles: ["201 | LIT-30 | MATH-30 | ESSAY-YES-5.pdf"],
+          }
+        );
+        expect(content.level).toBe("room");
+        expect(content.room).toBe("201");
+        expect(content.totalStudents).toBe(30);
+        expect(content.litCount).toBe(30);
+        expect(countsLabel(content.totalStudents)).toBe("30 STUDENTS");
+      });
+
+      function countsLabel(n?: number) {
+        return n !== undefined && n > 0 ? `${n} STUDENTS` : "ROOM DOSSIER";
+      }
+
+      it("generates a regular room sticker PDF with student count in sub-banner", async () => {
+        const content = buildStickerContent(
+          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "E426"],
+          {
+            childFiles: ["E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf"],
+          }
+        );
+        const pdfBytes = await generateStickerPdf({
+          content,
+          paperMode: "a4",
+        });
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        expect(pdfDoc.getPageCount()).toBe(1);
+      });
+    });
+
+    describe("EST I Exam Stickers Generation", () => {
+      it("generates exactly 4 stickers (1 A4 page, 2 Lit + 2 Math) when room has NO Essay", async () => {
+        const content = buildStickerContent(
+          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "204"],
+          {
+            childFiles: ["204 | LIT-30 | MATH-30 | ESSAY-NO-0.pdf"],
+          }
+        );
+        const pdfBytes = await generateExamStickersPdf({
+          content,
+        });
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // 4 stickers fit on exactly 1 4-up A4 Landscape page
+        expect(pdfDoc.getPageCount()).toBe(1);
+        const size = pdfDoc.getPage(0).getSize();
+        expect(size.width).toBeCloseTo(841.89, 0);
+        expect(size.height).toBeCloseTo(595.28, 0);
+      });
+
+      it("generates exactly 6 stickers (2 A4 pages, 2 Lit + 2 Math + 2 Essay) when room HAS Essay", async () => {
+        const content = buildStickerContent(
+          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "E426"],
+          {
+            childFiles: ["E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf"],
+          }
+        );
+        const pdfBytes = await generateExamStickersPdf({
+          content,
+        });
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // 6 stickers: 4 on page 1, 2 on page 2 -> 2 pages
+        expect(pdfDoc.getPageCount()).toBe(2);
+      });
+
+      it("batch generates exam stickers for multiple rooms", async () => {
+        const content1 = buildStickerContent(
+          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "E426"],
+          { childFiles: ["E426 | LIT-35 | MATH-28 | ESSAY-YES-12.pdf"] }
+        );
+        const content2 = buildStickerContent(
+          ["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "1st Floor", "204"],
+          { childFiles: ["204 | LIT-30 | MATH-30 | ESSAY-NO-0.pdf"] }
+        );
+
+        const pdfBytes = await generateBatchExamStickersPdf({
+          contents: [content1, content2],
+        });
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // 6 stickers (E426) + 4 stickers (204) = 10 stickers total -> 3 A4 pages (4 + 4 + 2)
+        expect(pdfDoc.getPageCount()).toBe(3);
+      });
     });
   });
 });

@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { requireSession, enforceRateLimit, jsonError } from "@/lib/api-utils";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
 import { buildBreadcrumbs, getFileMeta } from "@/lib/drive";
-import { getDemoBreadcrumbs, isDemoEnabled } from "@/lib/demo";
+import { getDemoBreadcrumbs, getDemoDescendants, isDemoEnabled } from "@/lib/demo";
 import { getSettings } from "@/lib/settings";
 import { buildStickerContent, type StickerSubfolderInfo } from "@/lib/stickers/sticker-content";
-import { generateStickerPdf } from "@/lib/stickers/sticker-pdf";
+import { generateStickerPdf, generateExamStickersPdf } from "@/lib/stickers/sticker-pdf";
+import { getRoomExamCounts } from "@/lib/stickers/est-room-data";
 import { AppError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export async function GET(request: Request, context: Context) {
 
     const url = new URL(request.url);
     const customChainParam = url.searchParams.get("chain");
+    const stickerType = url.searchParams.get("type"); // "regular" | "exam"
     const settings = await getSettings();
 
     const widthMm = Math.max(
@@ -41,6 +43,7 @@ export async function GET(request: Request, context: Context) {
 
     let breadcrumbs: Array<{ id?: string; name?: string | null }> = [];
     let driveSubfolderInfo: StickerSubfolderInfo | undefined;
+    let folderFiles: Array<{ name: string }> = [];
 
     if (customChainParam) {
       try {
@@ -68,6 +71,10 @@ export async function GET(request: Request, context: Context) {
         if (breadcrumbs.length === 0 && demoData.currentFolder) {
           breadcrumbs = [demoData.currentFolder];
         }
+        try {
+          const desc = getDemoDescendants([folderId]);
+          folderFiles = desc.files.map((f) => ({ name: f.name }));
+        } catch {}
       } else {
         const { drive, rootFolderId } = await getDriveContextWithRoot();
 
@@ -107,6 +114,20 @@ export async function GET(request: Request, context: Context) {
         } catch (err) {
           console.warn("[sticker] Error querying direct subfolders:", err);
         }
+
+        // Query direct files to check for EST I room file naming patterns
+        try {
+          const filesRes = await drive.files.list({
+            q: `'${resolvedFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: "files(id, name)",
+            pageSize: 50,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          });
+          folderFiles = (filesRes.data.files || []).map((f) => ({ name: f.name || "" }));
+        } catch (err) {
+          console.warn("[sticker] Error querying direct files:", err);
+        }
       }
     }
 
@@ -118,17 +139,50 @@ export async function GET(request: Request, context: Context) {
     }
 
     const stickerContent = buildStickerContent(breadcrumbs, driveSubfolderInfo);
-    const pdfBytes = await generateStickerPdf({
-      content: stickerContent,
-      lines: stickerContent.lines,
-      widthMm,
-      heightMm,
-      paperMode,
-      orientation,
-    });
-
     const targetName = breadcrumbs[breadcrumbs.length - 1]?.name || "EST";
-    const safeFilename = `Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    const targetRoom = stickerContent.room || (stickerContent.level === "room" ? targetName : undefined);
+
+    const roomCounts = targetRoom
+      ? getRoomExamCounts({
+          room: targetRoom,
+          building: stickerContent.building,
+          center: stickerContent.center,
+          governorate: stickerContent.governorate,
+          floor: stickerContent.floor,
+          folderFiles,
+        })
+      : null;
+
+    if (roomCounts) {
+      stickerContent.totalStudents = roomCounts.totalStudents;
+      stickerContent.litCount = roomCounts.litCount;
+      stickerContent.mathCount = roomCounts.mathCount;
+      stickerContent.essayCount = roomCounts.essayCount;
+      stickerContent.hasEssay = roomCounts.hasEssay;
+    }
+
+    let pdfBytes: Uint8Array;
+    let safeFilename: string;
+
+    if (stickerType === "exam") {
+      pdfBytes = await generateExamStickersPdf({
+        content: stickerContent,
+        litCount: roomCounts?.litCount,
+        mathCount: roomCounts?.mathCount,
+        essayCount: roomCounts?.essayCount,
+      });
+      safeFilename = `Exam-Stickers-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    } else {
+      pdfBytes = await generateStickerPdf({
+        content: stickerContent,
+        lines: stickerContent.lines,
+        widthMm,
+        heightMm,
+        paperMode,
+        orientation,
+      });
+      safeFilename = `Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    }
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,

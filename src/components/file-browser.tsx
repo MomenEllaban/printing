@@ -18,6 +18,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  Files,
   FileSpreadsheet,
   FileText,
   FolderPlus,
@@ -514,6 +515,8 @@ export function FileBrowser({
 
   const [busyStickerId, setBusyStickerId] = useState<string | null>(null);
   const [stickerAction, setStickerAction] = useState<"show" | "print" | null>(null);
+  const [busyExamStickerId, setBusyExamStickerId] = useState<string | null>(null);
+  const [examStickerAction, setExamStickerAction] = useState<"show" | "print" | null>(null);
   const [previewPdfState, setPreviewPdfState] = useState<{
     open: boolean;
     url: string | null;
@@ -860,6 +863,114 @@ export function FileBrowser({
     [handleStickerAction],
   );
 
+  const handleExamStickerAction = useCallback(
+    async (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      action: "show" | "print",
+    ) => {
+      if (e) e.stopPropagation();
+      if (!target.id || busyExamStickerId) return;
+
+      setBusyExamStickerId(target.id);
+      setExamStickerAction(action);
+      const toastId = toast.loading(
+        action === "show"
+          ? (locale === "ar"
+            ? `جاري تجهيز معاينة استيكرات الامتحانات (EST I) للقاعة "${target.name || "EST"}"...`
+            : `Loading exam stickers preview for "${target.name || "EST"}"...`)
+          : (locale === "ar"
+            ? `جاري تجهيز استيكرات الامتحانات (EST I) للقاعة "${target.name || "EST"}" للطباعة...`
+            : `Preparing exam stickers for "${target.name || "EST"}" for printing...`),
+      );
+
+      try {
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=exam`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(
+            errorData.message ||
+              (locale === "ar" ? "فشل إنشاء استيكرات الامتحانات" : "Failed to generate exam stickers PDF"),
+          );
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+
+        if (action === "show") {
+          setPreviewStickerState({
+            open: true,
+            url: objectUrl,
+            title: `EST I Exam Stickers - ${target.name || "Room"}`,
+            customTitle:
+              locale === "ar"
+                ? `استيكرات الامتحانات (EST I) — قاعة ${target.name || ""}`
+                : `EST I Exam Stickers — Room ${target.name || ""}`,
+            customDescription:
+              locale === "ar"
+                ? "ملصقات أوراق الامتحان الرسمية (نسختان لكل مادة: Literacy, Math, و Essay إن وجدت) — مقاس ربع صفحة A4."
+                : "Official exam paper dossiers (2 copies per subject: Literacy, Math, and Essay if applicable) — Quarter A4.",
+          });
+          toast.success(
+            locale === "ar" ? "تم فتح معاينة استيكرات الامتحانات بنجاح" : "Exam stickers preview opened",
+            { id: toastId },
+          );
+        } else {
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.right = "0";
+          iframe.style.bottom = "0";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "0";
+          iframe.src = objectUrl;
+          document.body.appendChild(iframe);
+          iframe.onload = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              const w = window.open(objectUrl, "_blank");
+              w?.focus();
+              w?.print();
+            }
+          };
+          toast.success(
+            locale === "ar" ? "تم إرسال استيكرات الامتحانات للطباعة بنجاح" : "Exam stickers sent to printer",
+            { id: toastId },
+          );
+        }
+      } catch (err) {
+        console.error("[exam-sticker] Failed:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : locale === "ar"
+            ? "حدث خطأ أثناء معالجة استيكرات الامتحانات"
+            : "Error processing exam stickers",
+          { id: toastId },
+        );
+      } finally {
+        setBusyExamStickerId(null);
+        setExamStickerAction(null);
+      }
+    },
+    [busyExamStickerId, locale],
+  );
+
+  const handleShowExamStickers = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleExamStickerAction(e, target, "show"),
+    [handleExamStickerAction],
+  );
+
+  const handlePrintExamStickers = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleExamStickerAction(e, target, "print"),
+    [handleExamStickerAction],
+  );
+
   const [seedConfirmOpen, setSeedConfirmOpen] = useState(false);
   const [seedingEst, setSeedingEst] = useState(false);
 
@@ -1033,6 +1144,16 @@ export function FileBrowser({
     () => selectedItems.filter((i) => !i.isFolder).length,
     [selectedItems],
   );
+
+  const isCurrentFolderRoom = useMemo(() => {
+    if (!currentFolder) return false;
+    const cat = getFolderRegisterCategory({
+      folder: currentFolder,
+      breadcrumbs,
+      isCurrentFolder: true,
+    });
+    return cat === "student";
+  }, [currentFolder, breadcrumbs]);
 
   const displayItems = useMemo(() => {
     if (printFilter === "all") return items;
@@ -1329,10 +1450,12 @@ export function FileBrowser({
   const handleBatchStickersAction = useCallback(
     async ({
       action,
+      type = "regular",
       includeChildren = false,
       orientation,
     }: {
       action: "show" | "print";
+      type?: "regular" | "exam";
       includeChildren?: boolean;
       orientation?: "landscape" | "portrait";
     }) => {
@@ -1359,10 +1482,14 @@ export function FileBrowser({
       const toastId = toast.loading(
         action === "show"
           ? (locale === "ar"
-            ? `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للمعاينة...`
+            ? type === "exam"
+              ? `جاري تجهيز استيكرات الامتحانات (${targetFolders.length} مجلد) للمعاينة...`
+              : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للمعاينة...`
             : `Generating sticker preview for ${targetFolders.length} folder(s)...`)
           : (locale === "ar"
-            ? `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للطباعة...`
+            ? type === "exam"
+              ? `جاري تجهيز استيكرات الامتحانات (${targetFolders.length} مجلد) للطباعة...`
+              : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للطباعة...`
             : `Preparing stickers for ${targetFolders.length} folder(s)...`),
       );
 
@@ -1372,6 +1499,7 @@ export function FileBrowser({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             folderIds: targetFolders.map((f) => f.id),
+            type,
             includeChildren,
             orientation,
           }),
@@ -1394,9 +1522,25 @@ export function FileBrowser({
             open: true,
             url: objectUrl,
             title:
-              locale === "ar"
+              type === "exam"
+                ? locale === "ar"
+                  ? `استيكرات الامتحانات (EST I) — (${targetFolders.length} مجلد)`
+                  : `EST I Exam Stickers (${targetFolders.length} Folders)`
+                : locale === "ar"
                 ? `استيكرات مجمعة (${targetFolders.length} مجلد)`
                 : `Batch Stickers (${targetFolders.length} Folders)`,
+            customTitle:
+              type === "exam"
+                ? locale === "ar"
+                  ? `استيكرات الامتحانات الرسمية (EST I) — ${targetFolders.length} مجلد`
+                  : `Official EST I Exam Stickers — ${targetFolders.length} Folders`
+                : undefined,
+            customDescription:
+              type === "exam"
+                ? locale === "ar"
+                  ? "نسختان لكل مادة: Literacy, Math, و Essay (إن وجدت) بمقاس ربع صفحة A4."
+                  : "2 copies per subject: Literacy, Math, and Essay (if applicable) at quarter-A4 size."
+                : undefined,
           });
           toast.success(
             locale === "ar"
@@ -2360,6 +2504,8 @@ export function FileBrowser({
                           onTogglePrint={() => void togglePrintStatus(item)}
                           onShowSticker={(folder) => handleShowSticker(null, folder)}
                           onPrintSticker={(folder) => handlePrintSticker(null, folder)}
+                          onShowExamStickers={(folder) => handleShowExamStickers(null, folder)}
+                          onPrintExamStickers={(folder) => handlePrintExamStickers(null, folder)}
                           onOpenProctorDialog={handleOpenProctorDialog}
                           onShowProctorFile={handleShowProctorFile}
                           onPrintProctorFile={handlePrintProctorFile}
@@ -2690,12 +2836,16 @@ export function FileBrowser({
                     onUploadToFolder={handleOpenUploadForFolder}
                     onShowSticker={handleShowSticker}
                     onPrintSticker={handlePrintSticker}
+                    onShowExamStickers={handleShowExamStickers}
+                    onPrintExamStickers={handlePrintExamStickers}
                     onOpenProctorDialog={handleOpenProctorDialog}
                     onShowProctorFile={handleShowProctorFile}
                     onPrintProctorFile={handlePrintProctorFile}
                     breadcrumbs={breadcrumbs}
                     busyStickerId={busyStickerId}
                     stickerAction={stickerAction}
+                    busyExamStickerId={busyExamStickerId}
+                    examStickerAction={examStickerAction}
                     draggedItem={draggedItem}
                     dragOverFolderId={dragOverFolderId}
                     onDragStartItem={handleDragStartItem}
@@ -2959,6 +3109,63 @@ export function FileBrowser({
               </button>
             </div>
 
+            {/* Exam Stickers Action Button (when inside an exam room) */}
+            {isCurrentFolderRoom && currentFolder && (
+              <div className="inline-flex items-center rounded-xl border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setBatchStickersOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 rounded-s-lg border-e border-amber-500/25 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الامتحانات (EST I) للقاعة"
+                      : "Print EST I Exam Stickers for room"
+                  }
+                >
+                  <Files className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>{locale === "ar" ? "استيكرات الامتحانات" : "Exam Stickers"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => handleShowExamStickers(e, currentFolder)}
+                  disabled={busyExamStickerId === currentFolder.id}
+                  className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "معاينة استيكرات الامتحانات للقاعة (Show)"
+                      : "Preview exam stickers for room (Show)"
+                  }
+                  aria-label="Preview Exam Stickers"
+                >
+                  {busyExamStickerId === currentFolder.id && examStickerAction === "show" ? (
+                    <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Eye className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => handlePrintExamStickers(e, currentFolder)}
+                  disabled={busyExamStickerId === currentFolder.id}
+                  className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الامتحانات للقاعة مباشرة (Print)"
+                      : "Print exam stickers for room directly"
+                  }
+                  aria-label="Print Exam Stickers"
+                >
+                  {busyExamStickerId === currentFolder.id && examStickerAction === "print" ? (
+                    <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  )}
+                </button>
+              </div>
+            )}
+
             <Button
               variant="primary"
               onClick={handleBatchPrint}
@@ -3097,6 +3304,8 @@ function ItemMenu({
   onTogglePrint,
   onShowSticker,
   onPrintSticker,
+  onShowExamStickers,
+  onPrintExamStickers,
   onOpenProctorDialog,
   onShowProctorFile,
   onPrintProctorFile,
@@ -3118,6 +3327,8 @@ function ItemMenu({
   onTogglePrint?: () => void;
   onShowSticker?: (folder: DriveItem) => void;
   onPrintSticker?: (folder: DriveItem) => void;
+  onShowExamStickers?: (folder: DriveItem) => void;
+  onPrintExamStickers?: (folder: DriveItem) => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
@@ -3296,9 +3507,47 @@ function ItemMenu({
                 }}
               >
                 <Printer className="size-4" />
-                <span>{locale === "ar" ? "طباعة الاستيكر" : "Print Sticker"}</span>
+                <span>{locale === "ar" ? "طباعة استيكر الغرفة (عادي)" : "Print Room Sticker (Regular)"}</span>
               </button>
             )}
+            {item.isFolder && onShowExamStickers && (() => {
+              const regCat = registerCategory ?? getFolderRegisterCategory({
+                folder: item,
+                breadcrumbs,
+                isCurrentFolder: false,
+              });
+              if (regCat !== "student") return null;
+              return (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item cursor-pointer text-amber-700 dark:text-amber-400 font-semibold"
+                    onClick={() => {
+                      onShowExamStickers(item);
+                      onClose();
+                    }}
+                  >
+                    <Files className="size-4" />
+                    <span>{locale === "ar" ? "معاينة استيكرات الامتحانات (EST I)" : "Preview Exam Stickers (EST I)"}</span>
+                  </button>
+                  {onPrintExamStickers && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item cursor-pointer text-amber-700 dark:text-amber-400 font-semibold"
+                      onClick={() => {
+                        onPrintExamStickers(item);
+                        onClose();
+                      }}
+                    >
+                      <Printer className="size-4" />
+                      <span>{locale === "ar" ? "طباعة استيكرات الامتحانات (EST I)" : "Print Exam Stickers (EST I)"}</span>
+                    </button>
+                  )}
+                </>
+              );
+            })()}
             {item.isFolder && onOpenProctorDialog && (() => {
               const regCategory = registerCategory ?? getFolderRegisterCategory({
                 folder: item,
@@ -3515,12 +3764,16 @@ interface TreeRowProps {
   onUploadToFolder: (folder: DriveItem) => void;
   onShowSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onShowExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onPrintExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   breadcrumbs?: Breadcrumb[];
   busyStickerId: string | null;
   stickerAction: "show" | "print" | null;
+  busyExamStickerId?: string | null;
+  examStickerAction?: "show" | "print" | null;
   draggedItem: DriveItem | null;
   dragOverFolderId: string | null;
   onDragStartItem: (e: React.DragEvent, item: DriveItem) => void;
@@ -3556,12 +3809,16 @@ function TreeRow({
   onUploadToFolder,
   onShowSticker,
   onPrintSticker,
+  onShowExamStickers,
+  onPrintExamStickers,
   onOpenProctorDialog,
   onShowProctorFile,
   onPrintProctorFile,
   breadcrumbs,
   busyStickerId,
   stickerAction,
+  busyExamStickerId,
+  examStickerAction,
   draggedItem,
   dragOverFolderId,
   onDragStartItem,
@@ -3753,51 +4010,6 @@ function TreeRow({
                   <span className="hidden sm:inline">{locale === "ar" ? "+ ملف" : "+ File"}</span>
                 </button>
 
-                <div className="inline-flex items-center rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-0.5 shadow-2xs">
-                  <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 border-e border-indigo-500/20 select-none">
-                    <Tag className="size-3 text-indigo-600 dark:text-indigo-400" />
-                    <span className="hidden sm:inline">{locale === "ar" ? "استيكر" : "Sticker"}</span>
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={(e) => onShowSticker(e, item)}
-                    disabled={busyStickerId === item.id}
-                    className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
-                    title={
-                      locale === "ar"
-                        ? `معاينة استيكر "${item.name}" (عرض)`
-                        : `Preview sticker for "${item.name}" (Show)`
-                    }
-                    aria-label="Preview Sticker"
-                  >
-                    {busyStickerId === item.id && stickerAction === "show" ? (
-                      <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
-                    ) : (
-                      <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => onPrintSticker(e, item)}
-                    disabled={busyStickerId === item.id}
-                    className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
-                    title={
-                      locale === "ar"
-                        ? `طباعة استيكر "${item.name}" مباشرة`
-                        : `Print sticker for "${item.name}" directly`
-                    }
-                    aria-label="Print Sticker"
-                  >
-                    {busyStickerId === item.id && stickerAction === "print" ? (
-                      <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
-                    ) : (
-                      <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-                    )}
-                  </button>
-                </div>
-
                 {(() => {
                   const regCategory = getFolderRegisterCategory({
                     folder: item,
@@ -3805,103 +4017,220 @@ function TreeRow({
                     depth,
                     isCurrentFolder: false,
                   });
-                  if (!regCategory) return null;
-
-                  const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
-                  const theme = getRegisterTheme(regCategory);
-                  const regNameAr = theme.nameAr;
-                  const regNameEn = theme.nameEn;
-                  const chipLabel = locale === "ar" ? theme.shortAr : theme.shortEn;
-                  const chipAddLabel = locale === "ar" ? theme.addLabelAr : theme.addLabelEn;
-                  const canAdd = canProfileAddRegister(activeProfile.id, regCategory);
-
-                  if (regFile) {
-                    return (
-                      <div className={cn("inline-flex items-center rounded-lg border p-0.5 shadow-2xs", theme.chipBorderClass, theme.chipBgClass)}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenProctorDialog?.(item);
-                          }}
-                          className={cn(
-                            "flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold border-e rounded-s cursor-pointer select-none",
-                            theme.textClass,
-                            theme.chipBorderClass,
-                            theme.hoverBgClass,
-                          )}
-                          title={
-                            locale === "ar"
-                              ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة — المسؤول: ${theme.ownerAr})`
-                              : `${regNameEn}: "${regFile.name}" (Click to manage — Owner: ${theme.ownerEn})`
-                          }
-                        >
-                          <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
-                          <span className="hidden sm:inline">{chipLabel}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onShowProctorFile?.(regFile, item);
-                          }}
-                          className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer transition-all", theme.hoverBgClass, theme.textClass)}
-                          title={
-                            locale === "ar"
-                              ? `معاينة ${regNameAr} "${item.name}" (عرض)`
-                              : `Preview ${regNameEn.toLowerCase()} for "${item.name}" (Show)`
-                          }
-                          aria-label={`Preview ${regNameEn}`}
-                        >
-                          <Eye className={cn("size-3.5", theme.iconColorClass)} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPrintProctorFile?.(regFile, item);
-                          }}
-                          className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer transition-all", theme.hoverBgClass, theme.textClass)}
-                          title={
-                            locale === "ar"
-                              ? `طباعة ${regNameAr} "${item.name}" مباشرة`
-                              : `Print ${regNameEn.toLowerCase()} for "${item.name}" directly`
-                          }
-                          aria-label={`Print ${regNameEn}`}
-                        >
-                          <Printer className={cn("size-3.5", theme.iconColorClass)} />
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  if (!canAdd) return null;
+                  const isRoomFolder = regCategory === "student";
 
                   return (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenProctorDialog?.(item);
-                      }}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs",
-                        theme.borderClass,
-                        theme.bgClass,
-                        theme.textClass,
-                        theme.hoverBgClass,
+                    <>
+                      {/* Button 1: Regular Room Sticker */}
+                      <div className="inline-flex items-center rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-0.5 shadow-2xs">
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 border-e border-indigo-500/20 select-none">
+                          <Tag className="size-3 text-indigo-600 dark:text-indigo-400" />
+                          <span className="hidden sm:inline">
+                            {isRoomFolder
+                              ? locale === "ar"
+                                ? "استيكر الغرفة"
+                                : "Room Sticker"
+                              : locale === "ar"
+                              ? "استيكر"
+                              : "Sticker"}
+                          </span>
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => onShowSticker(e, item)}
+                          disabled={busyStickerId === item.id}
+                          className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                          title={
+                            locale === "ar"
+                              ? isRoomFolder
+                                ? `معاينة استيكر الغرفة "${item.name}" (عرض)`
+                                : `معاينة استيكر "${item.name}" (عرض)`
+                              : `Preview sticker for "${item.name}" (Show)`
+                          }
+                          aria-label="Preview Sticker"
+                        >
+                          {busyStickerId === item.id && stickerAction === "show" ? (
+                            <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                          ) : (
+                            <Eye className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => onPrintSticker(e, item)}
+                          disabled={busyStickerId === item.id}
+                          className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                          title={
+                            locale === "ar"
+                              ? isRoomFolder
+                                ? `طباعة استيكر الغرفة "${item.name}" مباشرة`
+                                : `طباعة استيكر "${item.name}" مباشرة`
+                              : `Print sticker for "${item.name}" directly`
+                          }
+                          aria-label="Print Sticker"
+                        >
+                          {busyStickerId === item.id && stickerAction === "print" ? (
+                            <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                          ) : (
+                            <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Button 2: Exam Stickers (EST I) - 2 copies per subject */}
+                      {isRoomFolder && onShowExamStickers && onPrintExamStickers && (
+                        <div className="inline-flex items-center rounded-lg border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-2xs">
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-amber-800 dark:text-amber-200 border-e border-amber-500/25 select-none">
+                            <Files className="size-3 text-amber-600 dark:text-amber-400" />
+                            <span className="hidden sm:inline">
+                              {locale === "ar" ? "استيكرات الامتحانات" : "Exam Stickers"}
+                            </span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onShowExamStickers(e, item)}
+                            disabled={busyExamStickerId === item.id}
+                            className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
+                            title={
+                              locale === "ar"
+                                ? `معاينة استيكرات الامتحانات (EST I) للقاعة "${item.name}" (عرض)`
+                                : `Preview exam stickers (EST I) for "${item.name}" (Show)`
+                            }
+                            aria-label="Preview Exam Stickers"
+                          >
+                            {busyExamStickerId === item.id && examStickerAction === "show" ? (
+                              <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                            ) : (
+                              <Eye className="size-3.5 text-amber-600 dark:text-amber-400" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintExamStickers(e, item)}
+                            disabled={busyExamStickerId === item.id}
+                            className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
+                            title={
+                              locale === "ar"
+                                ? `طباعة استيكرات الامتحانات (EST I) للقاعة "${item.name}" مباشرة (Print)`
+                                : `Print exam stickers (EST I) for "${item.name}" directly (Print)`
+                            }
+                            aria-label="Print Exam Stickers"
+                          >
+                            {busyExamStickerId === item.id && examStickerAction === "print" ? (
+                              <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                            ) : (
+                              <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
+                            )}
+                          </button>
+                        </div>
                       )}
-                      title={
-                        locale === "ar"
-                          ? `إضافة ${regNameAr} (PDF) داخل "${item.name}" (المسؤول: ${theme.ownerAr})`
-                          : `Add ${regNameEn} (PDF) into "${item.name}" (Responsible: ${theme.ownerEn})`
-                      }
-                    >
-                      <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
-                      <span className="hidden sm:inline">{chipAddLabel}</span>
-                    </button>
+
+                      {/* Register File / Chip */}
+                      {(() => {
+                        if (!regCategory) return null;
+
+                        const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
+                        const theme = getRegisterTheme(regCategory);
+                        const regNameAr = theme.nameAr;
+                        const regNameEn = theme.nameEn;
+                        const chipLabel = locale === "ar" ? theme.shortAr : theme.shortEn;
+                        const chipAddLabel = locale === "ar" ? theme.addLabelAr : theme.addLabelEn;
+                        const canAdd = canProfileAddRegister(activeProfile.id, regCategory);
+
+                        if (regFile) {
+                          return (
+                            <div className={cn("inline-flex items-center rounded-lg border p-0.5 shadow-2xs", theme.chipBorderClass, theme.chipBgClass)}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenProctorDialog?.(item);
+                                }}
+                                className={cn(
+                                  "flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold border-e rounded-s cursor-pointer select-none",
+                                  theme.textClass,
+                                  theme.chipBorderClass,
+                                  theme.hoverBgClass,
+                                )}
+                                title={
+                                  locale === "ar"
+                                    ? `${regNameAr}: "${regFile.name}" (اضغط للإدارة — المسؤول: ${theme.ownerAr})`
+                                    : `${regNameEn}: "${regFile.name}" (Click to manage — Owner: ${theme.ownerEn})`
+                                }
+                              >
+                                <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
+                                <span className="hidden sm:inline">{chipLabel}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onShowProctorFile?.(regFile, item);
+                                }}
+                                className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer transition-all", theme.hoverBgClass, theme.textClass)}
+                                title={
+                                  locale === "ar"
+                                    ? `معاينة ${regNameAr} "${item.name}" (عرض)`
+                                    : `Preview ${regNameEn.toLowerCase()} for "${item.name}" (Show)`
+                                }
+                                aria-label={`Preview ${regNameEn}`}
+                              >
+                                <Eye className={cn("size-3.5", theme.iconColorClass)} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onPrintProctorFile?.(regFile, item);
+                                }}
+                                className={cn("inline-flex items-center justify-center size-6 rounded cursor-pointer transition-all", theme.hoverBgClass, theme.textClass)}
+                                title={
+                                  locale === "ar"
+                                    ? `طباعة ${regNameAr} "${item.name}" مباشرة`
+                                    : `Print ${regNameEn.toLowerCase()} for "${item.name}" directly`
+                                }
+                                aria-label={`Print ${regNameEn}`}
+                              >
+                                <Printer className={cn("size-3.5", theme.iconColorClass)} />
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        if (!canAdd) return null;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenProctorDialog?.(item);
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs",
+                              theme.borderClass,
+                              theme.bgClass,
+                              theme.textClass,
+                              theme.hoverBgClass,
+                            )}
+                            title={
+                              locale === "ar"
+                                ? `إضافة ${regNameAr} (PDF) داخل "${item.name}" (المسؤول: ${theme.ownerAr})`
+                                : `Add ${regNameEn} (PDF) into "${item.name}" (Responsible: ${theme.ownerEn})`
+                            }
+                          >
+                            <RegisterIcon category={regCategory} className={cn("size-3", theme.iconColorClass)} />
+                            <span className="hidden sm:inline">{chipAddLabel}</span>
+                          </button>
+                        );
+                      })()}
+                    </>
                   );
                 })()}
               </div>
@@ -3951,6 +4280,8 @@ function TreeRow({
                   onTogglePrint={() => onTogglePrintStatus(item)}
                   onShowSticker={(folder) => onShowSticker(null, folder)}
                   onPrintSticker={(folder) => onPrintSticker(null, folder)}
+                  onShowExamStickers={(folder) => onShowExamStickers?.(null, folder)}
+                  onPrintExamStickers={(folder) => onPrintExamStickers?.(null, folder)}
                   onOpenProctorDialog={onOpenProctorDialog}
                   onShowProctorFile={onShowProctorFile}
                   onPrintProctorFile={onPrintProctorFile}
@@ -4027,12 +4358,16 @@ function TreeRow({
               onUploadToFolder={onUploadToFolder}
               onShowSticker={onShowSticker}
               onPrintSticker={onPrintSticker}
+              onShowExamStickers={onShowExamStickers}
+              onPrintExamStickers={onPrintExamStickers}
               onOpenProctorDialog={onOpenProctorDialog}
               onShowProctorFile={onShowProctorFile}
               onPrintProctorFile={onPrintProctorFile}
               breadcrumbs={breadcrumbs}
               busyStickerId={busyStickerId}
               stickerAction={stickerAction}
+              busyExamStickerId={busyExamStickerId}
+              examStickerAction={examStickerAction}
               draggedItem={draggedItem}
               dragOverFolderId={dragOverFolderId}
               onDragStartItem={onDragStartItem}

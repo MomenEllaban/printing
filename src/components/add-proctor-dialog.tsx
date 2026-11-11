@@ -22,7 +22,12 @@ import { generateProctorRegisterPdf } from "@/lib/stickers/proctor-register-pdf"
 import { generateControlRegisterPdf } from "@/lib/stickers/control-register-pdf";
 import { generateStudentRegisterPdf } from "@/lib/stickers/student-register-pdf";
 import { generateBuildingExcelWorkbook } from "@/lib/stickers/building-excel";
-import { getRegisterTheme, type RegisterCategory } from "@/lib/stickers/register-utils";
+import {
+  getRegisterTheme,
+  formatEst1FileName,
+  getRoomExamCounts,
+  type RegisterCategory,
+} from "@/lib/stickers/register-utils";
 import type { DriveItem } from "@/lib/types";
 
 interface AddProctorDialogProps {
@@ -250,6 +255,13 @@ export function AddProctorDialog({
           });
           outFileName = `Control_Register_${sanitizedName}.pdf`;
         } else if (isStudent) {
+          const counts = getRoomExamCounts({
+            room: folder.name,
+            building: hierarchyInfo?.building,
+            center: hierarchyInfo?.center,
+            governorate: hierarchyInfo?.governorate,
+            floor: hierarchyInfo?.floor,
+          });
           pdfBytes = await generateStudentRegisterPdf({
             examName: hierarchyInfo?.examName || "EST 1",
             governorate: hierarchyInfo?.governorate,
@@ -258,7 +270,12 @@ export function AddProctorDialog({
             floor: hierarchyInfo?.floor,
             room: folder.name,
           });
-          outFileName = `Student_Register_${sanitizedName}.pdf`;
+          outFileName = formatEst1FileName(
+            folder.name,
+            counts.litCount,
+            counts.mathCount,
+            counts.essayCount,
+          );
         } else {
           pdfBytes = await generateProctorRegisterPdf({
             examName: hierarchyInfo?.examName || "EST 1",

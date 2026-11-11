@@ -1,4 +1,5 @@
 import { getReferenceSubfolderInfo } from "./est-reference-data";
+import { getRoomExamCounts } from "./est-room-data";
 
 export type StickerLevel = "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom";
 
@@ -13,7 +14,13 @@ export interface StickerSubfolderInfo {
   childCount?: number;
   childLabel?: string;
   childNames?: string[];
+  childFiles?: Array<{ name: string }> | string[];
   totalRooms?: number;
+  totalStudents?: number;
+  litCount?: number;
+  mathCount?: number;
+  essayCount?: number;
+  hasEssay?: boolean;
 }
 
 export interface StickerContent {
@@ -33,6 +40,12 @@ export interface StickerContent {
   childLabel?: string;
   childNames?: string[];
   totalRooms?: number;
+  // Room candidate counts (EST I)
+  totalStudents?: number;
+  litCount?: number;
+  mathCount?: number;
+  essayCount?: number;
+  hasEssay?: boolean;
 }
 
 /**
@@ -157,6 +170,33 @@ export function buildStickerContent(
   const childNames = subfolderInfo?.childNames ?? refInfo.childNames;
   const totalRooms = subfolderInfo?.totalRooms ?? refInfo.totalRooms;
 
+  let totalStudents = subfolderInfo?.totalStudents;
+  let litCount = subfolderInfo?.litCount;
+  let mathCount = subfolderInfo?.mathCount;
+  let essayCount = subfolderInfo?.essayCount;
+  let hasEssay = subfolderInfo?.hasEssay;
+
+  if (level === "room" && room) {
+    if (typeof totalStudents !== "number") {
+      const folderFiles = subfolderInfo?.childFiles?.map((f) =>
+        typeof f === "string" ? { name: f } : f
+      );
+      const counts = getRoomExamCounts({
+        room,
+        building,
+        center,
+        governorate,
+        floor,
+        folderFiles,
+      });
+      totalStudents = counts.totalStudents;
+      litCount = counts.litCount;
+      mathCount = counts.mathCount;
+      essayCount = counts.essayCount;
+      hasEssay = counts.hasEssay;
+    }
+  }
+
   return {
     level,
     lines,
@@ -173,5 +213,10 @@ export function buildStickerContent(
     childLabel,
     childNames,
     totalRooms,
+    totalStudents,
+    litCount,
+    mathCount,
+    essayCount,
+    hasEssay,
   };
 }

@@ -1,6 +1,7 @@
 import type { Breadcrumb, DriveItem, DriveStats, FileCategory } from "./types";
 import { MIME, categoryFor, extensionOf } from "./file-utils";
 import { EST_REFERENCE_DATA } from "./stickers/est-reference-data";
+import { formatEst1FileName } from "./stickers/est-room-data";
 
 interface DemoRecord {
   id: string;
@@ -126,10 +127,15 @@ function buildEstDemoRecords(): DemoRecord[] {
         modifiedOffsetDays: 2,
       });
 
-      // Sample exam PDFs inside each room
+      // Sample exam PDFs inside each room (following official EST I naming convention)
+      const lit = row.studentsEst1;
+      const math = row.studentsEst1;
+      const essay = row.studentsWithEssay;
+      const examFileName = formatEst1FileName(row.room, lit, math, essay);
+
       records.push({
         id: `${rmId}-student-register`,
-        name: `Student_Register_${row.room}.pdf`,
+        name: examFileName,
         mimeType: MIME.pdf,
         size: 154_200,
         parentId: rmId,
