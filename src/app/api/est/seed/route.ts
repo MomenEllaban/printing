@@ -8,6 +8,18 @@ import type { drive_v3 } from "googleapis";
 
 export const dynamic = "force-dynamic";
 
+const OFFICIAL_GOVERNORATES = [
+  "Alexandria",
+  "Cairo",
+  "Giza",
+  "Qalyubia",
+  "Dakahlia",
+  "Menofia",
+  "Suez",
+  "Minya",
+  "Damietta",
+];
+
 async function getOrCreateSubFolder(
   drive: drive_v3.Drive,
   parentId: string,
@@ -47,7 +59,22 @@ async function seedSchoolsHierarchy(
   cache: Map<string, string>,
   onProgress?: (msg: string) => void,
 ): Promise<{ schoolsCreated: number; roomsCreated: number }> {
-  // 1. Schools Folder
+  // 1. Remove any accidentally nested exam folders inside this exam folder (e.g. EST 1 inside EST 1)
+  try {
+    const nestedRes = await drive.files.list({
+      q: `'${examFolderId}' in parents and (name = 'EST 1' or name = 'EST 2') and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: "files(id, name)",
+    });
+    for (const nested of nestedRes.data.files || []) {
+      if (nested.id) {
+        await drive.files.update({ fileId: nested.id, requestBody: { trashed: true } });
+      }
+    }
+  } catch (err) {
+    console.warn("[seed] Could not clean nested exam folders:", err);
+  }
+
+  // 2. Schools Folder directly under exam
   const schoolsFolderId = await getOrCreateSubFolder(drive, examFolderId, "Schools", cache);
 
   let roomsCreated = 0;
@@ -70,6 +97,27 @@ async function seedSchoolsHierarchy(
     }
   }
 
+  // 3. Ensure all governorate folders exist directly under exam folder, and empty their contents
+  for (const gov of OFFICIAL_GOVERNORATES) {
+    const govId = await getOrCreateSubFolder(drive, examFolderId, gov, cache);
+
+    // Empty previous contents inside governorate folder so it's clean and empty
+    try {
+      const childrenRes = await drive.files.list({
+        q: `'${govId}' in parents and trashed = false`,
+        fields: "files(id, name)",
+        pageSize: 100,
+      });
+      for (const child of childrenRes.data.files || []) {
+        if (child.id) {
+          await drive.files.update({ fileId: child.id, requestBody: { trashed: true } });
+        }
+      }
+    } catch (err) {
+      console.warn(`[seed] Failed to empty contents of ${gov}:`, err);
+    }
+  }
+
   return { schoolsCreated: OFFICIAL_EST_SCHOOLS.length, roomsCreated };
 }
 
@@ -89,48 +137,66 @@ export async function POST(request: Request) {
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const body = await request.json().catch(() => ({}));
 
-    // Target parent folder ID (optional, defaults to root or schedule folder)
-    const targetFolderId = typeof body.targetFolderId === "string" && body.targetFolderId.trim()
-      ? body.targetFolderId.trim()
-      : null;
-
-    const scheduleName = typeof body.scheduleName === "string" ? body.scheduleName.trim() : "December 2026";
-
-    // Support seeding both EST 1 and EST 2 by default
-    const examNames: string[] = Array.isArray(body.examNames) && body.examNames.length > 0
-      ? body.examNames
-      : typeof body.examName === "string" && body.examName.trim()
-        ? [body.examName.trim()]
-        : ["EST 1", "EST 2"];
+    // Target parent folder ID (optional)
+    const targetFolderId =
+      typeof body.targetFolderId === "string" && body.targetFolderId.trim()
+        ? body.targetFolderId.trim()
+        : null;
 
     const cache = new Map<string, string>();
 
-    // Determine root parent for exams
-    let parentForExams = targetFolderId || rootFolderId;
-    let scheduleFolderId: string | undefined;
+    // 1. Resolve December 2026 folder
+    let dec2026Id: string;
+    if (targetFolderId) {
+      try {
+        const meta = await drive.files.get({
+          fileId: targetFolderId,
+          fields: "id, name, parents",
+        });
+        const name = (meta.data.name || "").trim();
 
-    if (!targetFolderId && scheduleName) {
-      scheduleFolderId = await getOrCreateSubFolder(drive, rootFolderId, scheduleName, cache);
-      parentForExams = scheduleFolderId;
+        if (/^EST\s*[12]$/i.test(name)) {
+          // targetFolderId is EST 1 or EST 2 itself! Parent is December 2026
+          const parentId = meta.data.parents?.[0];
+          dec2026Id = parentId || (await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache));
+        } else if (/december\s*2026/i.test(name)) {
+          dec2026Id = targetFolderId;
+        } else {
+          dec2026Id = await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache);
+        }
+      } catch {
+        dec2026Id = await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache);
+      }
+    } else {
+      dec2026Id = await getOrCreateSubFolder(drive, rootFolderId, "December 2026", cache);
     }
+
+    // 2. Resolve both EST 1 and EST 2 directly under December 2026
+    const est1Id = await getOrCreateSubFolder(drive, dec2026Id, "EST 1", cache);
+    const est2Id = await getOrCreateSubFolder(drive, dec2026Id, "EST 2", cache);
+
+    const examTargets = [
+      { name: "EST 1", id: est1Id },
+      { name: "EST 2", id: est2Id },
+    ];
 
     const seededExams: Array<{ examName: string; examFolderId: string; roomsCreated: number }> = [];
 
-    for (const examName of examNames) {
-      const examFolderId = await getOrCreateSubFolder(drive, parentForExams, examName, cache);
-      const { roomsCreated } = await seedSchoolsHierarchy(drive, examFolderId, cache);
-      seededExams.push({ examName, examFolderId, roomsCreated });
+    // Seed both EST 1 and EST 2
+    for (const exam of examTargets) {
+      const { roomsCreated } = await seedSchoolsHierarchy(drive, exam.id, cache);
+      seededExams.push({ examName: exam.name, examFolderId: exam.id, roomsCreated });
     }
 
     const totalRooms = seededExams.reduce((acc, e) => acc + e.roomsCreated, 0);
 
     return NextResponse.json({
       success: true,
-      message: `Successfully created official EST schools hierarchy (${cache.size} total folders, ${totalRooms} rooms) for ${examNames.join(" & ")}`,
+      message: `Successfully created Schools folder (18 schools, 202 rooms) and initialized empty governorates under EST 1 & EST 2`,
       totalCreated: cache.size,
       totalRooms,
       totalSchools: OFFICIAL_EST_SCHOOLS.length,
-      scheduleFolderId,
+      scheduleFolderId: dec2026Id,
       seededExams,
     });
   } catch (err) {

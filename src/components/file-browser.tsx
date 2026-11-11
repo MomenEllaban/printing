@@ -2357,6 +2357,44 @@ export function FileBrowser({
         </nav>
       )}
 
+      {/* Quick EST Schools Seed Banner if inside EST 1 / EST 2 and Schools folder is missing */}
+      {!demoActive &&
+        currentFolder &&
+        /^EST\s*[12]$/i.test(currentFolder.name.trim()) &&
+        !items.some((i) => i.isFolder && /^schools$/i.test(i.name.trim())) && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-sm text-indigo-950 dark:text-indigo-200">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                <FolderTree className="size-5" />
+              </span>
+              <div>
+                <p className="font-bold text-foreground">
+                  {locale === "ar"
+                    ? "مجلد المدارس (Schools) غير موجود هنا بعد"
+                    : "Schools folder is not created here yet"}
+                </p>
+                <p className="text-xs text-muted">
+                  {locale === "ar"
+                    ? "اضغط هنا لإنشاء فولدر Schools بالـ 18 مدرسة وأدوارها وقاعاتها وتفريغ المحافظات فوراً"
+                    : "Click here to create Schools folder with all 18 schools, floors, rooms, and clear governorate folders"}
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setSeedConfirmOpen(true)}
+              disabled={seedingEst}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shrink-0 cursor-pointer shadow-sm shadow-indigo-500/25"
+            >
+              {seedingEst ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              <span>{locale === "ar" ? "إنشاء مجلد Schools الآن" : "Create Schools Folder Now"}</span>
+            </Button>
+          </div>
+        )}
+
       <div className="card p-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[180px] flex-1">
