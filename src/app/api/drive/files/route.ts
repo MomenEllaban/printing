@@ -19,7 +19,7 @@ import { OWNER_ID } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const CATEGORIES: FileCategory[] = ["pdf", "excel", "word", "image", "other"];
+const CATEGORIES: FileCategory[] = ["pdf", "excel", "word", "image", "video", "other"];
 
 function parseCategory(value: string | null): FileCategory | null {
   return value && CATEGORIES.includes(value as FileCategory) ? (value as FileCategory) : null;

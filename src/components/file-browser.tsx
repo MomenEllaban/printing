@@ -128,12 +128,13 @@ const SORTS = [
   "size_asc",
 ] as const;
 
-const CATEGORIES: { value: "" | FileCategory; labelKey: "common.all" | "common.category.pdf" | "common.category.excel" | "common.category.word" | "common.category.image" | "common.category.other" }[] = [
+const CATEGORIES: { value: "" | FileCategory; labelKey: "common.all" | "common.category.pdf" | "common.category.excel" | "common.category.word" | "common.category.image" | "common.category.video" | "common.category.other" }[] = [
   { value: "", labelKey: "common.all" },
   { value: "pdf", labelKey: "common.category.pdf" },
   { value: "excel", labelKey: "common.category.excel" },
   { value: "word", labelKey: "common.category.word" },
   { value: "image", labelKey: "common.category.image" },
+  { value: "video", labelKey: "common.category.video" },
   { value: "other", labelKey: "common.category.other" },
 ];
 
