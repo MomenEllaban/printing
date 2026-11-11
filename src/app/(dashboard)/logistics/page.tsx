@@ -637,32 +637,30 @@ export default function LogisticsHubPage() {
               </span>
               {loadingExams && <Loader2 className="size-3 animate-spin text-muted" />}
             </label>
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-surface border border-border h-10 items-center">
+            <select
+              value={selectedExamId}
+              onChange={(e) => {
+                const found = exams.find((ex) => ex.id === e.target.value);
+                if (found) {
+                  setSelectedExamId(found.id);
+                  setSelectedExamName(found.name);
+                }
+              }}
+              disabled={loadingExams || exams.length === 0}
+              className="w-full h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-border bg-surface text-foreground cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+            >
               {exams.length > 0 ? (
                 exams.map((ex) => (
-                  <button
-                    key={ex.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedExamId(ex.id);
-                      setSelectedExamName(ex.name);
-                    }}
-                    className={cn(
-                      "h-8 text-xs font-bold rounded-lg transition-all cursor-pointer text-center flex items-center justify-center gap-1",
-                      selectedExamId === ex.id
-                        ? "bg-indigo-600 text-white shadow-xs"
-                        : "text-muted hover:text-foreground",
-                    )}
-                  >
-                    <span>{ex.name}</span>
-                  </button>
+                  <option key={ex.id} value={ex.id}>
+                    📋 {ex.name}
+                  </option>
                 ))
               ) : (
-                <div className="col-span-2 text-center text-xs text-muted">
-                  {loadingExams ? (isAr ? "جاري التحميل..." : "Loading...") : "EST 1 / EST 2"}
-                </div>
+                <option value="">
+                  {loadingExams ? (isAr ? "جاري التحميل..." : "Loading...") : (isAr ? "لا توجد مجلدات اختبار" : "No exam folders")}
+                </option>
               )}
-            </div>
+            </select>
           </div>
 
           {/* Step 3: School / Center / Building Folder (المدرسة أو المبنى) */}
