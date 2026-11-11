@@ -1,5 +1,5 @@
 import type { DriveItem, Breadcrumb } from "@/lib/types";
-import { OFFICIAL_ROOMS_SET } from "./est-reference-data";
+import { OFFICIAL_ROOMS_SET, OFFICIAL_EST_SCHOOLS } from "./est-reference-data";
 
 export type RegisterCategory = "building_excel" | "student" | "control" | "proctor" | null;
 
@@ -378,9 +378,20 @@ export function getFolderRegisterCategory(params: {
     /center|سنتر|مركز|campus|aast|academy|أكاديمية|جامعة|مجمع/i.test(n) &&
     !/building|مبنى|faculty|كلية|management|pharmacy|engineering|قسم/i.test(n);
 
-  // 5. Explicit Building detection by name -> Building Excel!
+  // 5. Official EST Schools or College / Building detection by name -> Building Excel!
+  const isOfficialEstSchool = OFFICIAL_EST_SCHOOLS.some(
+    (s) =>
+      s.fullFolderName.toLowerCase() === folderName.toLowerCase() ||
+      s.schoolName.toLowerCase() === folderName.toLowerCase() ||
+      folderName.toLowerCase().includes(s.schoolName.toLowerCase()) ||
+      folderName.toLowerCase().includes("integrated thebes"),
+  );
+  if (isOfficialEstSchool) {
+    return "building_excel";
+  }
+
   if (
-    /building|مبنى|قسم|faculty|كلية|pharmacy|dentistry|engineering|management|technology|campus|architecture|business|صيدلة|هندسة|إدارة|طب|أسنان|علوم|تجارة|حقوق|ألسن|science|arts|commerce|law|languages|nursing|computer|it\b|ai\b|school|مدرسة|academy|أكاديمية|institute|معهد|hall|block|جناح|tower|برج|main|رئيسي|annex|ملحق|administration|admin\b|primary|secondary|prep|high\s*school|ابتدائي|إعدادي|ثانوي|بنين|بنات|girls|boys/i.test(
+    /building|مبنى|قسم|faculty|college|كلية|pharmacy|dentistry|engineering|management|technology|campus|architecture|business|صيدلة|هندسة|إدارة|طب|أسنان|علوم|تجارة|حقوق|ألسن|science|arts|commerce|law|languages|nursing|computer|it\b|ai\b|school|مدرسة|academy|أكاديمية|institute|معهد|hall|block|جناح|tower|برج|main|رئيسي|annex|ملحق|administration|admin\b|primary|secondary|prep|high\s*school|ابتدائي|إعدادي|ثانوي|بنين|بنات|girls|boys/i.test(
       folderName,
     )
   ) {
@@ -388,7 +399,7 @@ export function getFolderRegisterCategory(params: {
   }
 
   // 6. Parent Folder Analysis:
-  // If the parent folder is a Center, then ANY subfolder inside it (that is not a floor or room) is a Building!
+  // If parent folder is "Schools" or a Center, then ANY subfolder inside it (that is not a floor or room) is a Building/School!
   const parentFolder = isCurrentFolder
     ? breadcrumbs && breadcrumbs.length >= 2
       ? breadcrumbs[breadcrumbs.length - 2]
@@ -398,9 +409,21 @@ export function getFolderRegisterCategory(params: {
     : null;
 
   if (parentFolder) {
-    const parentName = (parentFolder.name || "").trim();
-    if (isCenterName(parentName) || /center|سنتر|مركز|sheraton|abu\s*qir/i.test(parentName)) {
-      // Child of a Center is a Building!
+    const parentName = (parentFolder.name || "").trim().toLowerCase();
+    if (
+      parentName === "schools" ||
+      parentName.includes("school") ||
+      isCenterName(parentName) ||
+      /center|سنتر|مركز|sheraton|abu\s*qir/i.test(parentName)
+    ) {
+      // Child of Schools or a Center is a School / Building!
+      return "building_excel";
+    }
+  }
+
+  // 7. Breadcrumbs check: if anywhere in path we are inside "Schools"
+  if (breadcrumbs && breadcrumbs.some((b) => (b.name || "").trim().toLowerCase() === "schools")) {
+    if (!isFloorFolderName(folderName) && !isRoomFolderName(folderName)) {
       return "building_excel";
     }
   }

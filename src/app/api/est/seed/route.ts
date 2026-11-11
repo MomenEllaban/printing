@@ -7,6 +7,7 @@ import { AppError } from "@/lib/errors";
 import type { drive_v3 } from "googleapis";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export const OFFICIAL_GOVERNORATES = [
   "Alexandria",
@@ -79,30 +80,17 @@ async function getOrCreateSubFolderFast(
 }
 
 /**
- * Highly optimized Seeding of the official Schools / Floors / Rooms hierarchy
+ * Highly optimized seeding of the 18 official schools, floors and rooms inside a given Schools folder
  */
-async function seedSchoolsHierarchyFast(
+async function seedSchoolsInsideFolder(
   drive: drive_v3.Drive,
-  examFolderId: string,
+  schoolsFolderId: string,
 ): Promise<{ schoolsCreated: number; roomsCreated: number }> {
-  // 1. Get existing folders under the exam folder (Schools, Menofia, Minya, etc.)
-  const examChildrenMap = await getExistingChildFoldersMap(drive, examFolderId);
-
-  // 2. Ensure "Schools" folder exists
-  const schoolsFolderId = await getOrCreateSubFolderFast(
-    drive,
-    examFolderId,
-    "Schools",
-    examChildrenMap,
-  );
-
-  // 3. Get existing schools under the Schools folder
   const existingSchoolsMap = await getExistingChildFoldersMap(drive, schoolsFolderId);
-
   let roomsCreated = 0;
 
-  // Process schools in controlled parallel batches of 3
-  const batchSize = 3;
+  // Process schools in controlled parallel batches of 6 for speed
+  const batchSize = 6;
   for (let i = 0; i < OFFICIAL_EST_SCHOOLS.length; i += batchSize) {
     const chunk = OFFICIAL_EST_SCHOOLS.slice(i, i + batchSize);
     await Promise.all(
@@ -139,19 +127,42 @@ async function seedSchoolsHierarchyFast(
       }),
     );
   }
+  return { schoolsCreated: OFFICIAL_EST_SCHOOLS.length, roomsCreated };
+}
+
+/**
+ * Highly optimized Seeding of the official Schools / Floors / Rooms hierarchy
+ */
+async function seedSchoolsHierarchyFast(
+  drive: drive_v3.Drive,
+  examFolderId: string,
+): Promise<{ schoolsCreated: number; roomsCreated: number }> {
+  // 1. Get existing folders under the exam folder (Schools, Menofia, Minya, etc.)
+  const examChildrenMap = await getExistingChildFoldersMap(drive, examFolderId);
+
+  // 2. Ensure "Schools" folder exists
+  const schoolsFolderId = await getOrCreateSubFolderFast(
+    drive,
+    examFolderId,
+    "Schools",
+    examChildrenMap,
+  );
+
+  // 3. Populate schools inside the Schools folder
+  const res = await seedSchoolsInsideFolder(drive, schoolsFolderId);
 
   // 4. Ensure all governorate folders exist directly under exam folder
   for (const gov of OFFICIAL_GOVERNORATES) {
     await getOrCreateSubFolderFast(drive, examFolderId, gov, examChildrenMap);
   }
 
-  return { schoolsCreated: OFFICIAL_EST_SCHOOLS.length, roomsCreated };
+  return res;
 }
 
 export async function POST(request: Request) {
   try {
     await requireSession(request);
-    enforceRateLimit(request, "est:seed", 15, 60_000);
+    enforceRateLimit(request, "est:seed", 20, 60_000);
 
     const connection = await getConnection();
     if (connection?.connectionStatus !== "connected") {
@@ -170,7 +181,7 @@ export async function POST(request: Request) {
         ? body.targetFolderId.trim()
         : null;
 
-    // Check if targetFolderId is EST 1 or EST 2 directly
+    // Check if targetFolderId points to Schools, an Exam, or a Cycle
     if (targetFolderId) {
       try {
         const meta = await drive.files.get({
@@ -179,7 +190,18 @@ export async function POST(request: Request) {
         });
         const targetName = (meta.data.name || "").trim();
 
-        // CASE A: User is directly inside EST 1 or EST 2 (e.g. December 2026 / EST 1)
+        // CASE 1: User is inside the "Schools" folder itself
+        if (targetName.toLowerCase() === "schools") {
+          const result = await seedSchoolsInsideFolder(drive, targetFolderId);
+          return NextResponse.json({
+            success: true,
+            message: `Successfully verified/created 18 schools, floors & rooms inside Schools folder`,
+            totalSchools: result.schoolsCreated,
+            totalRooms: result.roomsCreated,
+          });
+        }
+
+        // CASE 2: User is directly inside EST 1 or EST 2 (e.g. December 2026 / EST 1)
         if (/^EST\s*[-_]?\s*[12]\b/i.test(targetName)) {
           const result = await seedSchoolsHierarchyFast(drive, targetFolderId);
           return NextResponse.json({
@@ -189,17 +211,35 @@ export async function POST(request: Request) {
             totalRooms: result.roomsCreated,
           });
         }
+
+        // CASE 3: User is inside a cycle folder (e.g. December 2026)
+        if (/^(december|january|march|cycle|session)\b/i.test(targetName)) {
+          const cycleChildrenMap = await getExistingChildFoldersMap(drive, targetFolderId);
+          const est1Id = await getOrCreateSubFolderFast(drive, targetFolderId, "EST 1", cycleChildrenMap);
+          const est2Id = await getOrCreateSubFolderFast(drive, targetFolderId, "EST 2", cycleChildrenMap);
+          const res1 = await seedSchoolsHierarchyFast(drive, est1Id);
+          const res2 = await seedSchoolsHierarchyFast(drive, est2Id);
+          return NextResponse.json({
+            success: true,
+            message: `Successfully seeded Schools & Governorates inside ${targetName} for EST 1 & EST 2`,
+            totalSchools: res1.schoolsCreated + res2.schoolsCreated,
+            totalRooms: res1.roomsCreated + res2.roomsCreated,
+          });
+        }
       } catch (err) {
         console.warn("[seed] Could not inspect direct targetFolderId:", err);
       }
     }
 
-    // CASE B: Seed Cycle folders (prioritizing December 2026 first)
+    // CASE 4: Seed Cycle folders (default to single active cycle "December 2026" to prevent timeout)
     const rootChildrenMap = await getExistingChildFoldersMap(drive, rootFolderId);
 
     let cyclesToSeed: string[] = ["December 2026"];
-    if (Array.isArray(body.cycles) && body.cycles.length > 0) {
-      cyclesToSeed = body.cycles.map((c: string) => String(c).trim()).filter(Boolean);
+    if (typeof body.cycle === "string" && body.cycle.trim()) {
+      cyclesToSeed = [body.cycle.trim()];
+    } else if (Array.isArray(body.cycles) && body.cycles.length > 0) {
+      // Pick first requested cycle to avoid gateway timeout
+      cyclesToSeed = [String(body.cycles[0]).trim()];
     } else if (typeof body.scheduleName === "string" && body.scheduleName.trim()) {
       cyclesToSeed = [body.scheduleName.trim()];
     }

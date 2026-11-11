@@ -1030,7 +1030,6 @@ export function FileBrowser({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cycles: ["December 2026", "January 2027", "March 2027"],
           targetFolderId: currentFolder?.id ?? null,
         }),
       });
@@ -1039,9 +1038,10 @@ export function FileBrowser({
         throw new Error(data.message || (locale === "ar" ? "فشل إنشاء المجلدات" : "Failed to create folders"));
       }
       toast.success(
-        locale === "ar"
-          ? `تم بنجاح إنشاء وتحديث هيكل الدورات والمدارس (${data.totalCreated} مجلد، 18 مدرسة) للدورات: December 2026, January 2027, March 2027`
-          : `Successfully created Schools & Cycles hierarchy (${data.totalCreated} folders, 18 schools) for December 2026, January 2027, March 2027`,
+        data.message ||
+          (locale === "ar"
+            ? "تم بنجاح إنشاء وتحديث هيكل المدارس الرسمية (18 مدرسة) في Google Drive"
+            : "Successfully created/updated official Schools hierarchy in Google Drive"),
         { id: toastId },
       );
       setRefreshKey((v) => v + 1);

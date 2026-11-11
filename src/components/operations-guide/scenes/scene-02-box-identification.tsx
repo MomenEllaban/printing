@@ -331,3 +331,4 @@ export function Scene02BoxIdentification() {
     </div>
   );
 }
+

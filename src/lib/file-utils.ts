@@ -99,6 +99,7 @@ export const DEFAULT_ALLOWED_EXTENSIONS = [
 ];
 
 export function extensionOf(name: string, mimeType?: string | null): string | null {
+  if (mimeType === MIME.folder || mimeType === "application/vnd.google-apps.folder") return null;
   if (mimeType === MIME.googleDoc) return "gdoc";
   if (mimeType === MIME.googleSheet) return "gsheet";
   if (mimeType === MIME.googleSlides) return "gslides";

@@ -247,3 +247,4 @@ export function Scene11GrayFile() {
     </div>
   );
 }
+

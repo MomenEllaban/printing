@@ -25,8 +25,8 @@ export function toDriveItem(file: drive_v3.Schema$File, favoriteIds?: Set<string
   const rawMimeType = file.mimeType ?? "application/octet-stream";
   const effectiveMimeType = isShortcut && targetMimeType ? targetMimeType : rawMimeType;
   const name = file.name ?? "(untitled)";
-  const extension = file.fileExtension ?? extensionOf(name, effectiveMimeType);
-  const isFolder = effectiveMimeType === FOLDER_MIME && !file.fileExtension && !extension;
+  const isFolder = effectiveMimeType === FOLDER_MIME;
+  const extension = isFolder ? null : (file.fileExtension ?? extensionOf(name, effectiveMimeType));
   const primaryId = isShortcut && targetId ? targetId : file.id ?? "";
 
   return {

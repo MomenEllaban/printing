@@ -243,3 +243,4 @@ export function Scene14AssnRoomStickers() {
     </div>
   );
 }
+

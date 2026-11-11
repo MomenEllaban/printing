@@ -168,3 +168,4 @@ export function Scene04HeadControlBag() {
     </div>
   );
 }
+

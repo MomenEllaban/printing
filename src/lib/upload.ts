@@ -235,8 +235,8 @@ export async function uploadSessionRequest(
 export function itemFromDriveFile(file: drive_v3.Schema$File): DriveItem {
   const mimeType = file.mimeType ?? "application/octet-stream";
   const name = file.name ?? "untitled";
-  const extension = file.fileExtension ?? extensionOf(name, mimeType);
-  const isFolder = mimeType === "application/vnd.google-apps.folder" && !file.fileExtension && !extension;
+  const isFolder = mimeType === "application/vnd.google-apps.folder";
+  const extension = isFolder ? null : (file.fileExtension ?? extensionOf(name, mimeType));
   return {
     id: file.id ?? "",
     name,

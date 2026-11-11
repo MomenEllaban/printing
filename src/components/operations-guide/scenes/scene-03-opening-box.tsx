@@ -270,3 +270,4 @@ export function Scene03OpeningBox() {
     </div>
   );
 }
+

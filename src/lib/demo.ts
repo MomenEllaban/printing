@@ -363,8 +363,8 @@ function modifiedDate(offsetDays: number): string {
 }
 
 function toItem(record: DemoRecord): DriveItem {
-  const extension = extensionOf(record.name, record.mimeType);
-  const isFolder = record.mimeType === MIME.folder && !extension;
+  const isFolder = record.mimeType === MIME.folder;
+  const extension = isFolder ? null : extensionOf(record.name, record.mimeType);
   return {
     id: record.id,
     name: record.name,
