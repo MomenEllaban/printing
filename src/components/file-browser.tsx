@@ -291,6 +291,7 @@ export function FileBrowser({
   const [uploadTargetFolder, setUploadTargetFolder] = useState<{ id: string; name: string } | null>(null);
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
   const [emptyDropDragging, setEmptyDropDragging] = useState(false);
+  const [directUploading, setDirectUploading] = useState(false);
   const emptyDropInputRef = useRef<HTMLInputElement>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderTargetParent, setNewFolderTargetParent] = useState<{ id: string; name: string } | null>(null);
@@ -599,6 +600,111 @@ export function FileBrowser({
       setUploadOpen(true);
     },
     [requireWritable],
+  );
+
+  const handleDirectFilesUpload = useCallback(
+    async (files: File[]) => {
+      if (demoActive) {
+        toast.error(t("upload.demoBlocked"));
+        return;
+      }
+      if (!requireWritable()) return;
+
+      const maxBytes = maxUploadSizeMb * 1024 * 1024;
+      const allowed = new Set(allowedExtensions.map((item) => item.toLowerCase()));
+
+      const validFiles: File[] = [];
+      for (const file of files) {
+        const dot = file.name.lastIndexOf(".");
+        const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : "";
+        if (file.size > maxBytes) {
+          toast.error(`${file.name}: ${t("error.fileTooLarge")}`);
+          continue;
+        }
+        if (!allowed.has(ext)) {
+          toast.error(`${file.name}: ${t("upload.rejected")}`);
+          continue;
+        }
+        validFiles.push(file);
+      }
+
+      if (validFiles.length === 0) return;
+
+      setDirectUploading(true);
+      const toastId = toast.loading(
+        locale === "ar"
+          ? `جاري رفع ${validFiles.length > 1 ? `${validFiles.length} ملفات` : validFiles[0].name}...`
+          : `Uploading ${validFiles.length > 1 ? `${validFiles.length} files` : validFiles[0].name}...`,
+      );
+
+      let successCount = 0;
+      for (const file of validFiles) {
+        try {
+          if (file.size <= 4.2 * 1024 * 1024) {
+            const formData = new FormData();
+            formData.append("file", file);
+            if (folderId) formData.append("parentId", folderId);
+
+            const directRes = await fetch("/api/drive/upload/direct", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await directRes.json().catch(() => ({}));
+            if (!directRes.ok) throw new Error(data.message || t("common.uploadFailed"));
+            successCount++;
+          } else {
+            const initRes = await fetch("/api/drive/upload/init", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: file.name,
+                mimeType: file.type || "application/octet-stream",
+                size: file.size,
+                parentId: folderId || undefined,
+              }),
+            });
+            const init = await initRes.json().catch(() => ({}));
+            if (!initRes.ok) throw new Error(init.message || t("error.uploadInit"));
+
+            const uploadPutRes = await fetch(init.uploadUrl, {
+              method: "PUT",
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+              body: file,
+            });
+            const putData = await uploadPutRes.json().catch(() => ({}));
+            const fileId = putData.id;
+            if (!fileId) throw new Error(t("common.uploadFailed"));
+
+            const completeRes = await fetch("/api/drive/upload/complete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fileId, pendingToken: init.pendingToken }),
+            });
+            if (!completeRes.ok) {
+              const compData = await completeRes.json().catch(() => ({}));
+              throw new Error(compData.message || t("common.uploadFailed"));
+            }
+            successCount++;
+          }
+        } catch (err) {
+          toast.error(`${file.name}: ${err instanceof Error ? err.message : t("common.uploadFailed")}`);
+        }
+      }
+
+      setDirectUploading(false);
+      if (successCount > 0) {
+        toast.success(
+          locale === "ar"
+            ? `تم رفع ${successCount > 1 ? `${successCount} ملفات` : validFiles[0].name} بنجاح`
+            : `Uploaded ${successCount > 1 ? `${successCount} files` : validFiles[0].name} successfully`,
+          { id: toastId },
+        );
+        setRefreshKey((v) => v + 1);
+      } else {
+        toast.dismiss(toastId);
+      }
+    },
+    [allowedExtensions, demoActive, folderId, locale, maxUploadSizeMb, requireWritable, t],
   );
 
   const [busyStickerId, setBusyStickerId] = useState<string | null>(null);
@@ -2879,7 +2985,7 @@ export function FileBrowser({
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              if (!demoActive) setEmptyDropDragging(true);
+              if (!demoActive && !directUploading) setEmptyDropDragging(true);
             }}
             onDragLeave={(e) => {
               e.preventDefault();
@@ -2890,67 +2996,78 @@ export function FileBrowser({
               e.preventDefault();
               e.stopPropagation();
               setEmptyDropDragging(false);
-              if (demoActive) return;
+              if (demoActive || directUploading) return;
               if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 const filesList = Array.from(e.dataTransfer.files);
-                setPendingUploadFiles(filesList);
-                setUploadTargetFolder(null);
-                setUploadOpen(true);
+                void handleDirectFilesUpload(filesList);
               }
             }}
             onClick={() => {
-              if (!demoActive) emptyDropInputRef.current?.click();
+              if (!demoActive && !directUploading) emptyDropInputRef.current?.click();
             }}
             className={cn(
               "group relative flex flex-col items-center justify-center rounded-3xl border-2 border-dashed p-8 sm:p-14 text-center transition-all cursor-pointer",
               emptyDropDragging
                 ? "border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 scale-[1.01]"
                 : "border-border/80 bg-surface/40 hover:border-emerald-500/60 hover:bg-surface-soft hover:shadow-md",
-              demoActive && "opacity-60 cursor-not-allowed",
+              (demoActive || directUploading) && "opacity-60 cursor-not-allowed",
             )}
           >
-            <div
-              className={cn(
-                "mb-4 flex size-16 items-center justify-center rounded-2xl transition-transform duration-200",
-                emptyDropDragging
-                  ? "bg-emerald-500 text-white scale-110"
-                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110",
-              )}
-            >
-              <CloudUpload className="size-8" />
-            </div>
+            {directUploading ? (
+              <div className="flex flex-col items-center justify-center py-4 animate-in fade-in-50">
+                <Loader2 className="size-12 animate-spin text-emerald-600 dark:text-emerald-400 mb-3" />
+                <p className="text-base sm:text-lg font-bold text-foreground">
+                  {locale === "ar" ? "جاري رفع الملفات مباشرة داخل هذا المجلد..." : "Uploading files directly into this folder..."}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {locale === "ar" ? "يرجى الانتظار، سيتم حفظ الملفات بأسمائها الأصلية فوراً" : "Please wait, files will be saved with their exact original names"}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={cn(
+                    "mb-4 flex size-16 items-center justify-center rounded-2xl transition-transform duration-200",
+                    emptyDropDragging
+                      ? "bg-emerald-500 text-white scale-110"
+                      : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110",
+                  )}
+                >
+                  <CloudUpload className="size-8" />
+                </div>
 
-            <p className="text-base sm:text-lg font-bold text-foreground">
-              {emptyDropDragging ? (
-                t("upload.dragActive")
-              ) : (
-                <>
-                  <span>{t("common.dropFiles")}</span>{" "}
-                  <span className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-500/50 group-hover:decoration-emerald-500 transition-colors">
-                    {t("common.browse")}
-                  </span>
-                </>
-              )}
-            </p>
+                <p className="text-base sm:text-lg font-bold text-foreground">
+                  {emptyDropDragging ? (
+                    t("upload.dragActive")
+                  ) : (
+                    <>
+                      <span>{t("common.dropFiles")}</span>{" "}
+                      <span className="text-emerald-600 dark:text-emerald-400 underline decoration-emerald-500/50 group-hover:decoration-emerald-500 transition-colors">
+                        {t("common.browse")}
+                      </span>
+                    </>
+                  )}
+                </p>
 
-            <p className="mt-2 text-xs text-muted max-w-sm">
-              {locale === "ar"
-                ? "اسحب ملفات PDF أو Excel أو أي مستندات هنا لرفعها مباشرة داخل هذا المجلد"
-                : "Drop PDF, Excel, or any files here to upload directly into this folder"}
-            </p>
+                <p className="mt-2 text-xs text-muted max-w-sm">
+                  {locale === "ar"
+                    ? "اسحب ملفات PDF أو Excel أو أي مستندات هنا لرفعها مباشرة داخل هذا المجلد"
+                    : "Drop PDF, Excel, or any files here to upload directly into this folder"}
+                </p>
+              </>
+            )}
 
             <input
               ref={emptyDropInputRef}
               type="file"
               multiple
+              disabled={directUploading || demoActive}
               className="hidden"
               accept={allowedExtensions.map((ext) => `.${ext}`).join(",")}
               onChange={(e) => {
                 if (e.target.files && e.target.files.length > 0) {
                   const filesList = Array.from(e.target.files);
-                  setPendingUploadFiles(filesList);
-                  setUploadTargetFolder(null);
-                  setUploadOpen(true);
+                  void handleDirectFilesUpload(filesList);
                   e.target.value = "";
                 }
               }}

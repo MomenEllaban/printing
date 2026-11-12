@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     }
 
     const isExam = Boolean(body.examMetadata?.enabled);
-    const targetName = isExam ? buildExamFileName(body.name, body.examMetadata) : body.name;
+    const targetName = body.name;
 
     const { drive, rootFolderId } = await getDriveContextWithRoot();
     const parentId = await resolveUploadFolder(

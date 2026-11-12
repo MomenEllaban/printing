@@ -52,3 +52,4 @@ export const GUIDE_THEME = {
   btnGhost:
     "p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent hover:border-slate-700 transition-colors cursor-pointer",
 };
+

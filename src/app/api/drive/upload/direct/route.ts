@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     }
 
     const isExam = Boolean(examMetadata?.enabled);
-    const targetName = isExam ? buildExamFileName(name, examMetadata) : name;
+    const targetName = name;
 
     const connection = await getConnection();
     const connected = connection?.connectionStatus === "connected";

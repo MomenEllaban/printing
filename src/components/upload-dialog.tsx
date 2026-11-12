@@ -7,8 +7,6 @@ import { Modal, Button, Input, ProgressBar, Spinner } from "./ui";
 import { useI18n } from "./locale-provider";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/file-utils";
-import { buildExamFileName, type ExamLevel, type ExamRegisterType, type ExamUploadMeta } from "@/lib/exam-utils";
-import { isRoomFolderName } from "@/lib/stickers/register-utils";
 import type { Locale } from "@/lib/types";
 import { useActiveProfile } from "./profile-provider";
 
@@ -21,7 +19,6 @@ interface QueueItem {
   progress: number;
   error?: string;
   uploadedName?: string;
-  room?: string;
 }
 
 interface UploadDialogProps {
@@ -62,39 +59,6 @@ export function UploadDialog({
   const [starting, setStarting] = useState(false);
   const activeRef = useRef<Record<string, XMLHttpRequest | null>>({});
   const uploadedRef = useRef(false);
-
-  // Exam registration metadata states - disabled by default so normal files upload as-is
-  const [isExamRegister, setIsExamRegister] = useState(false);
-  const [registerType, setRegisterType] = useState<ExamRegisterType | "">("");
-  const [institution, setInstitution] = useState("");
-  const [examType, setExamType] = useState<ExamLevel | "">("");
-  const [floor, setFloor] = useState("");
-  const [room, setRoom] = useState("");
-  const [autoFolder, setAutoFolder] = useState(!targetFolderId);
-
-  useEffect(() => {
-    if (open) {
-      // If user is inside a folder, default to direct upload into this folder (autoFolder = false)
-      // Only enable autoFolder hierarchy by default when uploading from root (targetFolderId is falsy)
-      setAutoFolder(!targetFolderId);
-
-      const isTargetRoom = targetFolderName ? isRoomFolderName(targetFolderName) : false;
-
-      // If uploading directly into a room folder, any file is treated as a Student Register!
-      if (isTargetRoom) {
-        setIsExamRegister(true);
-        setRegisterType("student");
-        if (targetFolderName) setRoom(targetFolderName);
-      } else if (activeProfile.id === "dina") {
-        setIsExamRegister(true);
-        setRegisterType("proctor");
-        setRoom("");
-      } else if (activeProfile.id === "nabil") {
-        setIsExamRegister(true);
-        setRegisterType("student");
-      }
-    }
-  }, [open, targetFolderId, targetFolderName, activeProfile.id]);
 
   const maxBytes = maxUploadSizeMb * 1024 * 1024;
   const allowed = useMemo(() => new Set(allowedExtensions.map((item) => item.toLowerCase())), [allowedExtensions]);
@@ -142,28 +106,6 @@ export function UploadDialog({
       new Promise(async (resolve) => {
         update(item.key, { status: "uploading", progress: 0, error: undefined });
         try {
-          const finalRegisterType: ExamRegisterType | undefined =
-            activeProfile.id === "dina"
-              ? "proctor"
-              : activeProfile.id === "nabil"
-                ? "student"
-                : (registerType || undefined);
-
-          const isExamEnabled =
-            activeProfile.id === "dina" || activeProfile.id === "nabil" ? true : isExamRegister;
-
-          const examMetadata: ExamUploadMeta | undefined = isExamEnabled
-            ? {
-              enabled: true,
-              registerType: finalRegisterType,
-              institution: institution.trim() || undefined,
-              examType: examType || undefined,
-              floor: floor.trim() || undefined,
-              room: finalRegisterType === "student" ? (item.room || room).trim() || undefined : undefined,
-              autoFolder,
-            }
-            : undefined;
-
           const initResponse = await fetch("/api/drive/upload/init", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -172,7 +114,6 @@ export function UploadDialog({
               mimeType: item.file.type || "application/octet-stream",
               size: item.file.size,
               parentId: targetFolderId || undefined,
-              examMetadata,
             }),
           });
           const init = await initResponse.json().catch(() => ({}));
@@ -227,9 +168,6 @@ export function UploadDialog({
               if (targetFolderId) {
                 formData.append("parentId", targetFolderId);
               }
-              if (examMetadata) {
-                formData.append("examMetadata", JSON.stringify(examMetadata));
-              }
 
               const directResponse = await fetch("/api/drive/upload/direct", {
                 method: "POST",
@@ -276,7 +214,7 @@ export function UploadDialog({
           resolve(false);
         }
       }),
-    [activeProfile.id, autoFolder, examType, floor, institution, isExamRegister, registerType, room, targetFolderId, t, update],
+    [targetFolderId, t, update],
   );
 
   const start = useCallback(async () => {
@@ -354,70 +292,6 @@ export function UploadDialog({
       }
     >
       <div className="space-y-4">
-        {/* Active Profile Dedicated Banner */}
-        {activeProfile.id === "dina" && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 flex items-center justify-between gap-3 animate-in fade-in-50">
-            <div className="flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white text-xl shadow-md">
-                👩‍💼
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm text-foreground">
-                    {locale === "ar" ? "حساب دينا (منسقة كشوف المراقبين)" : "Dina Profile (Proctor Coordinator)"}
-                  </span>
-                  <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                    {locale === "ar" ? "كشوف مراقبين فقط" : "Proctors Only"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted mt-0.5">
-                  {locale === "ar"
-                    ? "تم تفعيل وتثبيت نوع الكشف تلقائياً على (كشف مراقبين 📋) لمنع أي تداخل أو خلط مع كشوف الطلاب."
-                    : "Exam classification is locked to Proctor Register 📋 to prevent any mix-up with students."}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeProfile.id === "nabil" && (
-          <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-3.5 flex items-center justify-between gap-3 animate-in fade-in-50">
-            <div className="flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white text-xl shadow-md">
-                👨‍💼
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm text-foreground">
-                    {locale === "ar" ? "حساب نبيل (منسق كشوف الطلاب)" : "Nabil Profile (Student Coordinator)"}
-                  </span>
-                  <span className="rounded-md bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
-                    {locale === "ar" ? "كشوف طلاب فقط" : "Students Only"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted mt-0.5">
-                  {locale === "ar"
-                    ? "تم تفعيل وتثبيت نوع الكشف تلقائياً على (كشف طلاب 🎓 مع رقم اللجنة) لمنع أي تداخل أو خلط مع كشوف المراقبين."
-                    : "Exam classification is locked to Student Register 🎓 with room/committee to prevent any mix-up with proctors."}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeProfile.id === "printing" && (
-          <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-3 py-2 flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-foreground font-semibold">
-              <span className="text-base">🖨️</span>
-              <span>
-                {locale === "ar"
-                  ? "حساب البرنتنج (الإدارة الشاملة): تحكم كامل في رفع أي ملفات، كشوف طلاب أو كشوف مراقبين."
-                  : "Printing Admin: Full upload control over regular files, student registers, or proctor registers."}
-              </span>
-            </div>
-          </div>
-        )}
-
         {demo && (
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
             {t("upload.demoBlocked")}
@@ -436,9 +310,7 @@ export function UploadDialog({
               </span>
             </div>
             <span className="rounded-md bg-accent/20 px-2 py-0.5 text-[11px] font-bold text-accent-strong">
-              {autoFolder
-                ? (locale === "ar" ? "تفرع مجلدات إضافي" : "Nested subfolders")
-                : (locale === "ar" ? "✓ رفع مباشر في هذا المجلد" : "✓ Direct upload in this folder")}
+              {locale === "ar" ? "✓ رفع مباشر في هذا المجلد" : "✓ Direct upload in this folder"}
             </span>
           </div>
         ) : (
@@ -449,307 +321,6 @@ export function UploadDialog({
             <span>{t("upload.maxSize", { size: formatBytes(maxBytes, locale as Locale) })}</span>
           </div>
         )}
-
-        {/* Optional Exam Classification Card */}
-        <div className="rounded-2xl border border-border bg-surface-soft p-4 transition-all">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-accent/10 text-accent text-sm">
-                📋
-              </span>
-              <div>
-                <span className="text-xs sm:text-sm font-bold text-foreground block">
-                  {t("upload.examClassificationToggle")}
-                </span>
-                <p className="text-[11px] text-muted">
-                  {activeProfile.id === "dina"
-                    ? locale === "ar"
-                      ? "مثبت تلقائياً لكشوف المراقبين الخاصة بحساب دينا"
-                      : "Locked to Proctor Registers for Dina"
-                    : activeProfile.id === "nabil"
-                      ? locale === "ar"
-                        ? "مثبت تلقائياً لكشوف الطلاب الخاصة بحساب نبيل"
-                        : "Locked to Student Registers for Nabil"
-                      : t("upload.examClassificationHint")}
-                </p>
-              </div>
-            </div>
-
-            {activeProfile.id === "printing" ? (
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input
-                  type="checkbox"
-                  checked={isExamRegister}
-                  onChange={(e) => {
-                    const next = e.target.checked;
-                    setIsExamRegister(next);
-                    if (next && !registerType) {
-                      setRegisterType("student");
-                    }
-                    if (next && !examType) {
-                      setExamType("EST 1");
-                    }
-                  }}
-                  className="sr-only peer"
-                />
-                <div className="w-10 h-5 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-accent cursor-pointer"></div>
-              </label>
-            ) : (
-              <span className="rounded-md bg-accent/20 px-2 py-0.5 text-[10px] font-bold text-accent-strong">
-                {locale === "ar" ? "مفعّل تلقائياً" : "Auto Locked"}
-              </span>
-            )}
-          </div>
-
-          {!isExamRegister ? (
-            <div className="mt-2.5 flex items-center justify-between rounded-xl border border-border/70 bg-surface px-3 py-2 text-[11px] text-muted">
-              <span className="flex items-center gap-1.5 font-medium text-foreground">
-                <span className="text-emerald-500 font-bold">✓</span>
-                <span>{t("upload.examClassificationNone")}</span>
-              </span>
-              <span className="font-mono text-[10px] text-muted truncate max-w-[200px]">
-                {queue[0]?.file.name || "example.xlsx"}
-              </span>
-            </div>
-          ) : (
-            <div className="mt-3.5 pt-3.5 border-t border-border/60 space-y-3.5 animate-in slide-in-from-top-2 duration-200">
-              {/* Row 1: Register Type (Role-partitioned) */}
-              <div>
-                <label className="text-xs font-semibold text-foreground mb-1.5 block">
-                  {t("upload.registerType")}{" "}
-                  <span className="text-[10px] text-muted font-normal">
-                    {activeProfile.id === "dina"
-                      ? locale === "ar"
-                        ? "(مثبت لدينا - كشف مراقبين)"
-                        : "(Locked to Dina - Proctor)"
-                      : activeProfile.id === "nabil"
-                        ? locale === "ar"
-                          ? "(مثبت لنبيل - كشف طلاب)"
-                          : "(Locked to Nabil - Student)"
-                        : locale === "ar"
-                          ? "(اضغط للإلغاء أو التبديل)"
-                          : "(click to toggle/deselect)"}
-                  </span>
-                </label>
-
-                {activeProfile.id === "dina" ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled
-                      className="flex items-center justify-center gap-2 rounded-xl border border-border/40 bg-surface/40 px-3 py-2 text-xs font-semibold text-muted/40 cursor-not-allowed"
-                      title={locale === "ar" ? "غير متاح لدينا (مخصص لنبيل فقط)" : "Not available for Dina (Nabil only)"}
-                    >
-                      <span>🎓</span>
-                      <span>{t("upload.registerTypeStudent")} 🚫</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="flex items-center justify-center gap-2 rounded-xl border border-emerald-600 bg-emerald-600 text-white px-3 py-2 text-xs font-semibold shadow-sm cursor-default"
-                    >
-                      <span>📋</span>
-                      <span>{t("upload.registerTypeProctor")} ✓</span>
-                    </button>
-                  </div>
-                ) : activeProfile.id === "nabil" ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      className="flex items-center justify-center gap-2 rounded-xl border border-accent bg-accent text-white px-3 py-2 text-xs font-semibold shadow-sm cursor-default"
-                    >
-                      <span>🎓</span>
-                      <span>{t("upload.registerTypeStudent")} ✓</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled
-                      className="flex items-center justify-center gap-2 rounded-xl border border-border/40 bg-surface/40 px-3 py-2 text-xs font-semibold text-muted/40 cursor-not-allowed"
-                      title={locale === "ar" ? "غير متاح لنبيل (مخصص لدينا فقط)" : "Not available for Nabil (Dina only)"}
-                    >
-                      <span>📋</span>
-                      <span>{t("upload.registerTypeProctor")} 🚫</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRegisterType((curr) => (curr === "student" ? "" : "student"))}
-                      className={cn(
-                        "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
-                        registerType === "student"
-                          ? "border-accent bg-accent text-white shadow-sm"
-                          : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
-                      )}
-                    >
-                      <span>🎓</span>
-                      <span>{t("upload.registerTypeStudent")}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRegisterType((curr) => (curr === "proctor" ? "" : "proctor"));
-                        setRoom("");
-                      }}
-                      className={cn(
-                        "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
-                        registerType === "proctor"
-                          ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
-                          : "border-border bg-surface text-muted hover:text-foreground hover:bg-surface-soft",
-                      )}
-                    >
-                      <span>📋</span>
-                      <span>{t("upload.registerTypeProctor")}</span>
-                    </button>
-                  </div>
-                )}
-                {registerType === "proctor" && (
-                  <p className="mt-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                    <span>ℹ️</span>
-                    <span>{t("upload.proctorNote")}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Row 2: Institution & Exam Level */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-semibold text-foreground mb-1 block">
-                    {t("upload.institution")}
-                  </label>
-                  <Input
-                    value={institution}
-                    onChange={(e) => setInstitution(e.target.value)}
-                    placeholder={t("upload.institutionPlaceholder")}
-                    className="text-xs py-1.5"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-foreground mb-1 block">
-                    {t("upload.examType")}{" "}
-                    <span className="text-[10px] text-muted font-normal">
-                      ({locale === "ar" ? "اختياري" : "opt"})
-                    </span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setExamType((curr) => (curr === "EST 1" ? "" : "EST 1"))}
-                      className={cn(
-                        "rounded-xl border py-1.5 text-xs font-bold transition-all cursor-pointer",
-                        examType === "EST 1"
-                          ? "border-accent bg-accent text-white shadow-sm"
-                          : "border-border bg-surface text-muted hover:text-foreground",
-                      )}
-                    >
-                      EST 1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExamType((curr) => (curr === "EST 2" ? "" : "EST 2"))}
-                      className={cn(
-                        "rounded-xl border py-1.5 text-xs font-bold transition-all cursor-pointer",
-                        examType === "EST 2"
-                          ? "border-accent bg-accent text-white shadow-sm"
-                          : "border-border bg-surface text-muted hover:text-foreground",
-                      )}
-                    >
-                      EST 2
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 3: Floor & Room */}
-              <div
-                className={cn(
-                  "grid gap-3 transition-all",
-                  (registerType === "student" || !registerType) && activeProfile.id !== "dina" ? "grid-cols-2" : "grid-cols-1",
-                )}
-              >
-                <div>
-                  <label className="text-xs font-semibold text-foreground mb-1 block">
-                    {t("upload.floor")}
-                  </label>
-                  <Input
-                    value={floor}
-                    onChange={(e) => setFloor(e.target.value)}
-                    placeholder={t("upload.floorPlaceholder")}
-                    className="text-xs py-1.5"
-                  />
-                </div>
-
-                {registerType !== "proctor" && activeProfile.id !== "dina" && (
-                  <div>
-                    <label className="text-xs font-semibold text-foreground mb-1 block">
-                      {t("upload.room")}
-                    </label>
-                    <Input
-                      value={room}
-                      onChange={(e) => setRoom(e.target.value)}
-                      placeholder={t("upload.roomPlaceholder")}
-                      className="text-xs py-1.5"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Auto Folder Option */}
-              <div className="pt-2 border-t border-border/40">
-                <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={autoFolder}
-                    onChange={(e) => setAutoFolder(e.target.checked)}
-                    className="mt-0.5 size-4 rounded border-border accent-accent cursor-pointer"
-                  />
-                  <div className="text-xs">
-                    <span className="font-semibold text-foreground">
-                      {targetFolderId
-                        ? locale === "ar"
-                          ? `إنشاء مجلدات فرعية جديدة داخل "${targetFolderName || "المجلد الحالي"}"`
-                          : `Create nested subfolders inside "${targetFolderName || "current folder"}"`
-                        : t("upload.autoFolder")}
-                    </span>
-                    <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
-                      {targetFolderId
-                        ? locale === "ar"
-                          ? "افتراضياً (غير مفعّل): يتم حفظ الملف مباشرة داخل هذا المجلد بدون إنشاء أي مجلدات داخله."
-                          : "Default (unchecked): file is placed directly in this folder without creating subfolders."
-                        : locale === "ar"
-                          ? "يتم تنظيم الملفات تلقائياً في مجلدات (المؤسسة > نوع الامتحان > الدور)"
-                          : "Auto-organizes files into (Institution > Exam Level > Floor)"}
-                    </p>
-                  </div>
-                </label>
-              </div>
-
-              {/* Live Preview of File Name */}
-              <div className="rounded-xl border border-border/80 bg-surface px-3 py-2 text-[11px]">
-                <span className="font-semibold text-muted block mb-0.5">{t("upload.generatedName")}</span>
-                <span className="font-mono text-accent-strong break-all">
-                  {buildExamFileName(queue[0]?.file.name || "attendance_sheet.pdf", {
-                    enabled: true,
-                    registerType:
-                      activeProfile.id === "dina"
-                        ? "proctor"
-                        : activeProfile.id === "nabil"
-                          ? "student"
-                          : registerType || undefined,
-                    institution: institution.trim() || undefined,
-                    examType: examType || undefined,
-                    floor: floor.trim() || undefined,
-                    room:
-                      (activeProfile.id === "nabil" || registerType === "student") && activeProfile.id !== "dina"
-                        ? room.trim() || undefined
-                        : undefined,
-                  })}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
 
         <div
           onDragOver={(event) => {
@@ -826,38 +397,8 @@ export function UploadDialog({
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {item.uploadedName ||
-                          (isExamRegister
-                            ? buildExamFileName(item.file.name, {
-                                enabled: true,
-                                registerType:
-                                  activeProfile.id === "dina"
-                                    ? "proctor"
-                                    : activeProfile.id === "nabil"
-                                      ? "student"
-                                      : registerType || undefined,
-                                institution: institution.trim() || undefined,
-                                examType: examType || undefined,
-                                floor: floor.trim() || undefined,
-                                room:
-                                  (activeProfile.id === "nabil" || registerType === "student") && activeProfile.id !== "dina"
-                                    ? (item.room || room).trim() || undefined
-                                    : undefined,
-                              })
-                            : item.file.name)}
+                        {item.uploadedName || item.file.name}
                       </p>
-                      {allowMultiple && registerType === "student" && item.status === "queued" && (
-                        <div className="mt-1 flex items-center gap-2 text-xs">
-                          <span className="text-muted">{t("upload.room")}:</span>
-                          <input
-                            type="text"
-                            value={item.room ?? room}
-                            onChange={(e) => update(item.key, { room: e.target.value })}
-                            placeholder={room || "101"}
-                            className="input py-0.5 px-2 text-xs w-28 h-7"
-                          />
-                        </div>
-                      )}
                       <p className="text-[11px] text-muted">
                         {formatBytes(item.file.size, locale as Locale)} Â·{" "}
                         {item.status === "queued"
