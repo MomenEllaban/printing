@@ -5,8 +5,12 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDown,
+  ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  ArrowUpToLine,
   Boxes,
   Building2,
   CheckCircle2,
@@ -27,11 +31,14 @@ import {
   FolderTree,
   GraduationCap,
   Grid2X2,
+  GripVertical,
   List,
   Loader2,
   MoreVertical,
   Move,
   Pencil,
+  Pin,
+  PinOff,
   Printer,
   RefreshCw,
   Search,
@@ -121,6 +128,7 @@ function getStoredView(): "grid" | "list" {
 }
 
 const SORTS = [
+  "custom",
   "modified_desc",
   "modified_asc",
   "name_asc",
@@ -141,6 +149,8 @@ const CATEGORIES: { value: "" | FileCategory; labelKey: "common.all" | "common.c
 
 function sortLabelKey(sort: string) {
   switch (sort) {
+    case "custom":
+      return "common.sortCustom";
     case "modified_asc":
       return "common.sortModifiedAsc";
     case "name_asc":
@@ -299,6 +309,37 @@ export function FileBrowser({
   const [deleting, setDeleting] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
+  // Pinning & custom ordering state
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const stored = window.localStorage.getItem("fm_pinned_items");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) return new Set(parsed);
+        }
+      }
+    } catch {}
+    return new Set<string>();
+  });
+
+  const [customOrder, setCustomOrder] = useState<string[]>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const storageKey = `fm_folder_order_${initialFolderId || "root"}`;
+        const stored = window.localStorage.getItem(storageKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch {}
+    return [];
+  });
+
+  const [reorderDraggedId, setReorderDraggedId] = useState<string | null>(null);
+  const [reorderOverId, setReorderOverId] = useState<string | null>(null);
+
   // Print status tracking & filtering
   const [printedIds, setPrintedIds] = useState<Set<string>>(new Set());
   const [printFilter, setPrintFilter] = useState<"all" | "printed" | "pending">("all");
@@ -335,6 +376,24 @@ export function FileBrowser({
   useEffect(() => {
     setFolderId(initialFolderId ?? null);
   }, [initialFolderId]);
+
+  // Load custom folder order from localStorage when folderId changes
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const storageKey = `fm_folder_order_${folderId || "root"}`;
+        const stored = window.localStorage.getItem(storageKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setCustomOrder(parsed);
+            return;
+          }
+        }
+        setCustomOrder([]);
+      }
+    } catch {}
+  }, [folderId]);
 
   // Sync state when initialSearch prop changes
   useEffect(() => {
@@ -1202,13 +1261,214 @@ export function FileBrowser({
   }, [currentFolder, breadcrumbs]);
 
   const displayItems = useMemo(() => {
-    if (printFilter === "all") return items;
-    return items.filter((item) => {
-      if (item.isFolder) return false;
-      const isPrinted = printedIds.has(item.id);
-      return printFilter === "printed" ? isPrinted : !isPrinted;
-    });
-  }, [items, printFilter, printedIds]);
+    let filtered = items;
+    if (printFilter !== "all") {
+      filtered = items.filter((item) => {
+        if (item.isFolder) return false;
+        const isPrinted = printedIds.has(item.id);
+        return printFilter === "printed" ? isPrinted : !isPrinted;
+      });
+    }
+
+    let orderedList: DriveItem[];
+    if (sort === "custom" && customOrder.length > 0) {
+      const orderMap = new Map<string, number>();
+      customOrder.forEach((id, idx) => orderMap.set(id, idx));
+      orderedList = [...filtered].sort((a, b) => {
+        const idxA = orderMap.has(a.id) ? orderMap.get(a.id)! : 999999;
+        const idxB = orderMap.has(b.id) ? orderMap.get(b.id)! : 999999;
+        if (idxA !== idxB) return idxA - idxB;
+        return a.name.localeCompare(b.name);
+      });
+    } else {
+      orderedList = filtered;
+    }
+
+    const isItemPinned = (i: DriveItem) => pinnedIds.has(i.id) || Boolean(i.isPinned);
+    const pinned: DriveItem[] = [];
+    const unpinned: DriveItem[] = [];
+
+    for (const item of orderedList) {
+      if (isItemPinned(item)) {
+        pinned.push({ ...item, isPinned: true });
+      } else {
+        unpinned.push(item);
+      }
+    }
+
+    return [...pinned, ...unpinned];
+  }, [items, printFilter, printedIds, sort, customOrder, pinnedIds]);
+
+  const togglePin = useCallback(
+    async (item: DriveItem) => {
+      const isCurrentlyPinned = pinnedIds.has(item.id) || Boolean(item.isPinned);
+      const nextPinned = new Set(pinnedIds);
+      if (isCurrentlyPinned) {
+        nextPinned.delete(item.id);
+      } else {
+        nextPinned.add(item.id);
+      }
+      setPinnedIds(nextPinned);
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("fm_pinned_items", JSON.stringify(Array.from(nextPinned)));
+        }
+      } catch {}
+
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, isPinned: !isCurrentlyPinned } : i))
+      );
+
+      toast.success(
+        isCurrentlyPinned
+          ? (locale === "ar" ? `تم إلغاء تثبيت "${item.name}"` : `Unpinned "${item.name}"`)
+          : (locale === "ar" ? `تم تثبيت "${item.name}" في البداية 📌` : `Pinned "${item.name}" to top 📌`),
+      );
+
+      try {
+        await fetch("/api/drive/custom-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: isCurrentlyPinned ? "unpin" : "pin",
+            fileId: item.id,
+          }),
+        });
+      } catch {}
+    },
+    [pinnedIds, locale],
+  );
+
+  const handleReorderItem = useCallback(
+    async (itemId: string, direction: "top" | "up" | "down" | "bottom") => {
+      const currentList = [...displayItems];
+      const index = currentList.findIndex((i) => i.id === itemId);
+      if (index === -1) return;
+
+      const [movedItem] = currentList.splice(index, 1);
+      let targetIndex = 0;
+      if (direction === "top") {
+        targetIndex = 0;
+      } else if (direction === "bottom") {
+        targetIndex = currentList.length;
+      } else if (direction === "up") {
+        targetIndex = Math.max(0, index - 1);
+      } else if (direction === "down") {
+        targetIndex = Math.min(currentList.length, index + 1);
+      }
+      currentList.splice(targetIndex, 0, movedItem);
+
+      const newOrder = currentList.map((i) => i.id);
+      setCustomOrder(newOrder);
+      setSort("custom");
+
+      try {
+        if (typeof window !== "undefined") {
+          const storageKey = `fm_folder_order_${folderId || "root"}`;
+          window.localStorage.setItem(storageKey, JSON.stringify(newOrder));
+        }
+      } catch {}
+
+      toast.success(
+        direction === "top"
+          ? (locale === "ar" ? `تم نقل "${movedItem.name}" إلى البداية بنجاح ⏫` : `Moved "${movedItem.name}" to top ⏫`)
+          : direction === "bottom"
+          ? (locale === "ar" ? `تم نقل "${movedItem.name}" إلى النهاية بنجاح ⏬` : `Moved "${movedItem.name}" to bottom ⏬`)
+          : (locale === "ar" ? `تم تغيير ترتيب "${movedItem.name}" بنجاح` : `Reordered "${movedItem.name}" successfully`),
+      );
+
+      try {
+        await fetch("/api/drive/custom-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set_order",
+            folderId: folderId || "root",
+            orderedIds: newOrder,
+          }),
+        });
+      } catch {}
+    },
+    [displayItems, folderId, locale],
+  );
+
+  const handleReorderDragStart = useCallback(
+    (e: React.DragEvent, item: DriveItem) => {
+      if (demoActive) return;
+      e.stopPropagation();
+      setReorderDraggedId(item.id);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", `reorder:${item.id}`);
+    },
+    [demoActive],
+  );
+
+  const handleReorderDragEnd = useCallback(() => {
+    setReorderDraggedId(null);
+    setReorderOverId(null);
+  }, []);
+
+  const handleReorderDragOver = useCallback(
+    (e: React.DragEvent, item: DriveItem) => {
+      if (!reorderDraggedId || reorderDraggedId === item.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      if (reorderOverId !== item.id) {
+        setReorderOverId(item.id);
+      }
+    },
+    [reorderDraggedId, reorderOverId],
+  );
+
+  const handleReorderDrop = useCallback(
+    async (e: React.DragEvent, targetItem: DriveItem) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const sourceId = reorderDraggedId;
+      setReorderDraggedId(null);
+      setReorderOverId(null);
+      if (!sourceId || sourceId === targetItem.id) return;
+
+      const currentList = [...displayItems];
+      const fromIdx = currentList.findIndex((i) => i.id === sourceId);
+      const toIdx = currentList.findIndex((i) => i.id === targetItem.id);
+      if (fromIdx === -1 || toIdx === -1) return;
+
+      const [moved] = currentList.splice(fromIdx, 1);
+      currentList.splice(toIdx, 0, moved);
+
+      const newOrder = currentList.map((i) => i.id);
+      setCustomOrder(newOrder);
+      setSort("custom");
+
+      try {
+        if (typeof window !== "undefined") {
+          const storageKey = `fm_folder_order_${folderId || "root"}`;
+          window.localStorage.setItem(storageKey, JSON.stringify(newOrder));
+        }
+      } catch {}
+
+      toast.success(
+        locale === "ar"
+          ? `تم نقل "${moved.name}" إلى الموضع المحدد بنجاح`
+          : `Moved "${moved.name}" to new position`,
+      );
+
+      try {
+        await fetch("/api/drive/custom-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set_order",
+            folderId: folderId || "root",
+            orderedIds: newOrder,
+          }),
+        });
+      } catch {}
+    },
+    [reorderDraggedId, displayItems, folderId, locale],
+  );
 
   const getDescendantIdsRecursively = useCallback(
     (fId: string): string[] => {
@@ -1821,6 +2081,21 @@ export function FileBrowser({
         const data = (await response.json().catch(() => ({}))) as DriveListResult & { message?: string; error?: string };
         if (!response.ok) throw new Error(data.message || t("common.error"));
         setItems(data.items ?? []);
+        if (Array.isArray(data.pinnedIds) && data.pinnedIds.length > 0) {
+          setPinnedIds((prev) => {
+            const next = new Set(prev);
+            data.pinnedIds?.forEach((id) => next.add(id));
+            return next;
+          });
+        }
+        if (Array.isArray(data.customOrder) && data.customOrder.length > 0) {
+          setCustomOrder((prev) => (prev.length > 0 ? prev : (data.customOrder ?? [])));
+        }
+        (data.items ?? []).forEach((item) => {
+          if (item.isPinned) {
+            setPinnedIds((prev) => new Set(prev).add(item.id));
+          }
+        });
         setNextToken(data.nextPageToken ?? null);
         setBreadcrumbs(data.breadcrumbs ?? []);
         setCurrentFolder(data.currentFolder ?? null);
@@ -2687,6 +2962,7 @@ export function FileBrowser({
           {displayItems.map((item) => {
             const isPrinted = !item.isFolder && printedIds.has(item.id);
             const isPending = !item.isFolder && !printedIds.has(item.id);
+            const isPinned = pinnedIds.has(item.id) || Boolean(item.isPinned);
 
             return (
               <div
@@ -2748,6 +3024,18 @@ export function FileBrowser({
                     >
                       <Star className={cn("size-4", item.isFavorite && "fill-current")} />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void togglePin(item)}
+                      className={cn(
+                        "icon-btn size-8 cursor-pointer transition-colors",
+                        isPinned ? "text-amber-500 bg-amber-500/10" : "text-muted hover:text-foreground",
+                      )}
+                      title={isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}
+                      aria-label={isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}
+                    >
+                      <Pin className={cn("size-4", isPinned && "fill-current")} />
+                    </button>
                     {(() => {
                       const regCategory = getFolderRegisterCategory({
                         folder: item,
@@ -2759,6 +3047,9 @@ export function FileBrowser({
                         <ItemMenu
                           item={item}
                           isPrinted={isPrinted}
+                          isPinned={isPinned}
+                          onTogglePin={() => void togglePin(item)}
+                          onReorderItem={handleReorderItem}
                           onTogglePrint={() => void togglePrintStatus(item)}
                           onShowSticker={(folder) => handleShowSticker(null, folder)}
                           onPrintSticker={(folder) => handlePrintSticker(null, folder)}
@@ -2806,6 +3097,12 @@ export function FileBrowser({
                     {item.isShortcut && (
                       <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold text-accent bg-accent/10 border border-accent/20">
                         ↗ {locale === "ar" ? "اختصار" : "Shortcut"}
+                      </span>
+                    )}
+                    {isPinned && (
+                      <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                        <Pin className="size-2.5 fill-current" />
+                        {t("common.pinned")}
                       </span>
                     )}
                   </div>
@@ -3086,6 +3383,15 @@ export function FileBrowser({
                     onDragOverFolder={handleDragOverFolder}
                     onDragLeaveFolder={handleDragLeaveFolder}
                     onDropOnFolder={handleDropOnFolder}
+                    isPinned={pinnedIds.has(item.id) || Boolean(item.isPinned)}
+                    onTogglePin={togglePin}
+                    onReorderItem={handleReorderItem}
+                    onReorderDragStart={handleReorderDragStart}
+                    onReorderDragEnd={handleReorderDragEnd}
+                    onReorderDragOver={handleReorderDragOver}
+                    onReorderDrop={handleReorderDrop}
+                    reorderOverId={reorderOverId}
+                    reorderDraggedId={reorderDraggedId}
                   />
                 ))}
               </tbody>
@@ -3560,6 +3866,9 @@ function ItemMenu({
   registerCategory,
   breadcrumbs,
   demo,
+  isPinned,
+  onTogglePin,
+  onReorderItem,
 }: {
   item: DriveItem;
   open: boolean;
@@ -3583,6 +3892,9 @@ function ItemMenu({
   registerCategory?: RegisterCategory;
   breadcrumbs?: Breadcrumb[];
   demo: boolean;
+  isPinned?: boolean;
+  onTogglePin?: (item: DriveItem) => void;
+  onReorderItem?: (itemId: string, direction: "top" | "up" | "down" | "bottom") => void;
 }) {
   const { t, locale } = useI18n();
   const { activeProfile } = useActiveProfile();
@@ -3728,6 +4040,20 @@ function ItemMenu({
               <Eye className="size-4 text-accent" />
               <span>{item.isFolder ? t("common.open") : t("common.preview")}</span>
             </button>
+            {onTogglePin && (
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item cursor-pointer text-amber-600 dark:text-amber-400 font-semibold"
+                onClick={() => {
+                  onTogglePin(item);
+                  onClose();
+                }}
+              >
+                <Pin className={cn("size-4", isPinned && "fill-current")} />
+                <span>{isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}</span>
+              </button>
+            )}
             {item.isFolder && onShowSticker && (
               <button
                 type="button"
@@ -3899,6 +4225,62 @@ function ItemMenu({
               <Move className="size-4" />
               <span>{t("common.move")}</span>
             </button>
+            {onReorderItem && (
+              <>
+                <div className="my-1 border-t border-border/60" />
+                <div className="px-2 py-0.5 text-[10px] font-bold text-muted uppercase tracking-wider select-none">
+                  {locale === "ar" ? "ترتيب العنصر" : "Reorder"}
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-xs"
+                  onClick={() => {
+                    onReorderItem(item.id, "top");
+                    onClose();
+                  }}
+                >
+                  <ArrowUpToLine className="size-4 text-accent" />
+                  <span>{t("common.moveToTop")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-xs"
+                  onClick={() => {
+                    onReorderItem(item.id, "up");
+                    onClose();
+                  }}
+                >
+                  <ArrowUp className="size-4" />
+                  <span>{t("common.moveUp")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-xs"
+                  onClick={() => {
+                    onReorderItem(item.id, "down");
+                    onClose();
+                  }}
+                >
+                  <ArrowDown className="size-4" />
+                  <span>{t("common.moveDown")}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-xs"
+                  onClick={() => {
+                    onReorderItem(item.id, "bottom");
+                    onClose();
+                  }}
+                >
+                  <ArrowDownToLine className="size-4 text-muted" />
+                  <span>{t("common.moveToBottom")}</span>
+                </button>
+              </>
+            )}
             {!item.isFolder && onTogglePrint && (
               <button
                 type="button"
@@ -4028,6 +4410,15 @@ interface TreeRowProps {
   onDragOverFolder: (e: React.DragEvent, folder: DriveItem) => void;
   onDragLeaveFolder: (e: React.DragEvent, folder: DriveItem) => void;
   onDropOnFolder: (e: React.DragEvent, folder: DriveItem) => void;
+  isPinned?: boolean;
+  onTogglePin?: (item: DriveItem) => void;
+  onReorderItem?: (itemId: string, direction: "top" | "up" | "down" | "bottom") => void;
+  onReorderDragStart?: (e: React.DragEvent, item: DriveItem) => void;
+  onReorderDragEnd?: () => void;
+  onReorderDragOver?: (e: React.DragEvent, item: DriveItem) => void;
+  onReorderDrop?: (e: React.DragEvent, targetItem: DriveItem) => void;
+  reorderOverId?: string | null;
+  reorderDraggedId?: string | null;
 }
 
 function TreeRow({
@@ -4074,6 +4465,15 @@ function TreeRow({
   onDragOverFolder,
   onDragLeaveFolder,
   onDropOnFolder,
+  isPinned,
+  onTogglePin,
+  onReorderItem,
+  onReorderDragStart,
+  onReorderDragEnd,
+  onReorderDragOver,
+  onReorderDrop,
+  reorderOverId,
+  reorderDraggedId,
 }: TreeRowProps) {
   const { t, locale } = useI18n();
   const { activeProfile } = useActiveProfile();
@@ -4102,17 +4502,29 @@ function TreeRow({
         onDragStart={(e) => onDragStartItem(e, item)}
         onDragEnd={onDragEndItem}
         onDragOver={(e) => {
-          if (item.isFolder) onDragOverFolder(e, item);
+          if (reorderDraggedId) {
+            onReorderDragOver?.(e, item);
+          } else if (item.isFolder) {
+            onDragOverFolder(e, item);
+          }
         }}
         onDragLeave={(e) => {
-          if (item.isFolder) onDragLeaveFolder(e, item);
+          if (!reorderDraggedId && item.isFolder) {
+            onDragLeaveFolder(e, item);
+          }
         }}
         onDrop={(e) => {
-          if (item.isFolder) onDropOnFolder(e, item);
+          if (reorderDraggedId) {
+            onReorderDrop?.(e, item);
+          } else if (item.isFolder) {
+            onDropOnFolder(e, item);
+          }
         }}
         onClick={() => onOpenItem(item)}
         className={cn(
           "border-b border-border/60 last:border-0 hover:bg-surface-soft/60 transition-all cursor-pointer group select-none",
+          reorderOverId === item.id &&
+          "bg-accent/20 border-t-2 border-accent ring-1 ring-accent",
           dragOverFolderId === item.id &&
           "bg-accent/20 border-y-2 border-accent ring-2 ring-accent shadow-md scale-[1.005]",
           draggedItem?.id === item.id && "opacity-40 border-dashed",
@@ -4126,14 +4538,27 @@ function TreeRow({
           "bg-amber-500/[0.03] hover:bg-amber-500/[0.07] border-s-4 border-s-amber-500/80 dark:border-s-amber-400/90",
         )}
       >
-        <td className="w-10 px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
-          <CheckboxInput
-            checked={checkState.checked}
-            indeterminate={checkState.indeterminate}
-            onChange={(e) => onToggleSelect(item.id, e)}
-            className="size-4 rounded border-border accent-accent cursor-pointer"
-            ariaLabel={`Select ${item.name}`}
-          />
+        <td className="w-12 px-2 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-center gap-0.5">
+            <button
+              type="button"
+              draggable={!demoActive}
+              onDragStart={(e) => onReorderDragStart?.(e, item)}
+              onDragEnd={onReorderDragEnd}
+              className="cursor-grab active:cursor-grabbing text-muted/30 hover:text-foreground rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+              title={locale === "ar" ? "اسحب لإعادة الترتيب يدويًا" : "Drag to reorder manually"}
+              aria-label="Drag to reorder"
+            >
+              <GripVertical className="size-3.5" />
+            </button>
+            <CheckboxInput
+              checked={checkState.checked}
+              indeterminate={checkState.indeterminate}
+              onChange={(e) => onToggleSelect(item.id, e)}
+              className="size-4 rounded border-border accent-accent cursor-pointer"
+              ariaLabel={`Select ${item.name}`}
+            />
+          </div>
         </td>
         <td className="max-w-[340px] px-4 py-2.5">
           <div
@@ -4189,6 +4614,12 @@ function TreeRow({
                 {item.isShortcut && (
                   <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold text-accent bg-accent/10 border border-accent/20">
                     ↗ {locale === "ar" ? "اختصار" : "Shortcut"}
+                  </span>
+                )}
+                {isPinned && (
+                  <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30 shrink-0">
+                    <Pin className="size-2.5 fill-current" />
+                    {t("common.pinned")}
                   </span>
                 )}
                 {dragOverFolderId === item.id && (
@@ -4463,6 +4894,20 @@ function TreeRow({
             >
               <Star className={cn("size-3.5", item.isFavorite && "fill-current")} />
             </button>
+            <button
+              type="button"
+              onClick={() => onTogglePin?.(item)}
+              className={cn(
+                "icon-btn size-7 cursor-pointer transition-colors",
+                isPinned
+                  ? "text-amber-500 hover:text-amber-600 bg-amber-500/10"
+                  : "text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100",
+              )}
+              title={isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}
+              aria-label={isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}
+            >
+              <Pin className={cn("size-3.5", isPinned && "fill-current")} />
+            </button>
             {!item.isFolder && (
               <a
                 href={`/print/${item.id}`}
@@ -4497,6 +4942,9 @@ function TreeRow({
                 <ItemMenu
                   item={item}
                   isPrinted={isPrinted}
+                  isPinned={isPinned}
+                  onTogglePin={onTogglePin ? () => onTogglePin(item) : undefined}
+                  onReorderItem={onReorderItem}
                   onTogglePrint={() => onTogglePrintStatus(item)}
                   onShowSticker={(folder) => onShowSticker(null, folder)}
                   onPrintSticker={(folder) => onPrintSticker(null, folder)}
@@ -4596,6 +5044,8 @@ function TreeRow({
               onDragOverFolder={onDragOverFolder}
               onDragLeaveFolder={onDragLeaveFolder}
               onDropOnFolder={onDropOnFolder}
+              isPinned={child.isPinned}
+              onTogglePin={onTogglePin}
             />
           ))
         )

@@ -11,7 +11,7 @@ export const SETTINGS_DEFINITIONS = [
   {
     key: "general.defaultSort",
     category: "general",
-    schema: z.enum(["modified_desc", "modified_asc", "name_asc", "name_desc", "size_desc", "size_asc"]),
+    schema: z.enum(["custom", "modified_desc", "modified_asc", "name_asc", "name_desc", "size_desc", "size_asc"]),
     defaultValue: "modified_desc",
   },
   { key: "general.itemsPerPage", category: "general", schema: z.number().int().min(6).max(100), defaultValue: 24 },

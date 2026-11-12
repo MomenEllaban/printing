@@ -19,6 +19,7 @@ export interface DriveItem {
   parentId?: string | null;
   parentName?: string | null;
   isFavorite?: boolean;
+  isPinned?: boolean;
   isDemo?: boolean;
   isShortcut?: boolean;
   shortcutId?: string | null;
@@ -38,6 +39,8 @@ export interface DriveListResult {
   breadcrumbs: Breadcrumb[];
   demo?: boolean;
   notice?: string;
+  customOrder?: string[];
+  pinnedIds?: string[];
 }
 
 export interface DriveStats {

@@ -25,33 +25,82 @@ function parseCategory(value: string | null): FileCategory | null {
   return value && CATEGORIES.includes(value as FileCategory) ? (value as FileCategory) : null;
 }
 
-function sortItems(items: DriveItem[], sort: string, favoriteOrder?: string[]): DriveItem[] {
-  const foldersFirst = [...items].sort((left, right) => {
+function sortItems(
+  items: DriveItem[],
+  sort: string,
+  favoriteOrder?: string[],
+  pinnedIds?: string[],
+  customOrder?: string[],
+): DriveItem[] {
+  const pinnedSet = new Set(pinnedIds || []);
+
+  const mappedItems = items.map((item) => ({
+    ...item,
+    isPinned: Boolean(item.isPinned || pinnedSet.has(item.id)),
+  }));
+
+  const foldersFirst = [...mappedItems].sort((left, right) => {
     if (left.isFolder !== right.isFolder) return left.isFolder ? -1 : 1;
     return 0;
   });
+
   if (favoriteOrder) {
     const order = new Map(favoriteOrder.map((id, index) => [id, index]));
     return foldersFirst.sort((left, right) => (order.get(left.id) ?? 9999) - (order.get(right.id) ?? 9999));
   }
-  switch (sort) {
-    case "name_asc":
-      return foldersFirst.sort((left, right) => left.name.localeCompare(right.name, "ar"));
-    case "name_desc":
-      return foldersFirst.sort((left, right) => right.name.localeCompare(left.name, "ar"));
-    case "size_asc":
-      return foldersFirst.sort((left, right) => left.size - right.size);
-    case "size_desc":
-      return foldersFirst.sort((left, right) => right.size - left.size);
-    case "modified_asc":
-      return foldersFirst.sort(
-        (left, right) => new Date(left.modifiedTime ?? 0).getTime() - new Date(right.modifiedTime ?? 0).getTime(),
-      );
-    default:
-      return foldersFirst.sort(
-        (left, right) => new Date(right.modifiedTime ?? 0).getTime() - new Date(left.modifiedTime ?? 0).getTime(),
-      );
+
+  let sorted: DriveItem[];
+
+  if (sort === "custom" && customOrder && customOrder.length > 0) {
+    const orderMap = new Map(customOrder.map((id, index) => [id, index]));
+    sorted = foldersFirst.sort((left, right) => {
+      const idxA = orderMap.has(left.id) ? orderMap.get(left.id)! : 999999;
+      const idxB = orderMap.has(right.id) ? orderMap.get(right.id)! : 999999;
+      if (idxA !== idxB) return idxA - idxB;
+      if (left.isFolder !== right.isFolder) return left.isFolder ? -1 : 1;
+      return new Date(right.modifiedTime ?? 0).getTime() - new Date(left.modifiedTime ?? 0).getTime();
+    });
+  } else {
+    switch (sort) {
+      case "name_asc":
+        sorted = foldersFirst.sort((left, right) => left.name.localeCompare(right.name, "ar"));
+        break;
+      case "name_desc":
+        sorted = foldersFirst.sort((left, right) => right.name.localeCompare(left.name, "ar"));
+        break;
+      case "size_asc":
+        sorted = foldersFirst.sort((left, right) => left.size - right.size);
+        break;
+      case "size_desc":
+        sorted = foldersFirst.sort((left, right) => right.size - left.size);
+        break;
+      case "modified_asc":
+        sorted = foldersFirst.sort(
+          (left, right) => new Date(left.modifiedTime ?? 0).getTime() - new Date(right.modifiedTime ?? 0).getTime(),
+        );
+        break;
+      default:
+        sorted = foldersFirst.sort(
+          (left, right) => new Date(right.modifiedTime ?? 0).getTime() - new Date(left.modifiedTime ?? 0).getTime(),
+        );
+        break;
+    }
   }
+
+  if (pinnedSet.size > 0) {
+    const pinned: DriveItem[] = [];
+    const unpinned: DriveItem[] = [];
+    sorted.forEach((item) => {
+      if (pinnedSet.has(item.id)) {
+        pinned.push(item);
+      } else {
+        unpinned.push(item);
+      }
+    });
+    return [...pinned, ...unpinned];
+  }
+
+  return sorted;
 }
 
 export async function GET(request: Request) {
@@ -75,6 +124,29 @@ export async function GET(request: Request) {
     const connected = connection?.connectionStatus === "connected";
     const demo = isDemoEnabled() && !connected;
     const favoriteIds = await getFavoriteIds();
+
+    // Fetch custom order and pinned IDs for this folder
+    const folderKey = `folder_order:${folderParam || "root"}`;
+    const [orderSetting, globalPinnedSetting] = await Promise.all([
+      prisma.applicationSetting.findUnique({ where: { key: folderKey } }).catch(() => null),
+      prisma.applicationSetting.findUnique({ where: { key: "global_pinned_items" } }).catch(() => null),
+    ]);
+
+    let customOrder: string[] = [];
+    let pinnedIds: string[] = [];
+
+    if (orderSetting?.value && typeof orderSetting.value === "object") {
+      const val = orderSetting.value as { customOrder?: string[]; pinnedIds?: string[] };
+      if (Array.isArray(val.customOrder)) customOrder = val.customOrder;
+      if (Array.isArray(val.pinnedIds)) pinnedIds = val.pinnedIds;
+    }
+
+    if (globalPinnedSetting?.value && typeof globalPinnedSetting.value === "object") {
+      const val = globalPinnedSetting.value as { pinnedIds?: string[] };
+      if (Array.isArray(val.pinnedIds)) {
+        pinnedIds = Array.from(new Set([...pinnedIds, ...val.pinnedIds]));
+      }
+    }
 
     if (demo) {
       let items: DriveItem[];
@@ -111,12 +183,14 @@ export async function GET(request: Request) {
       const breadcrumbData = search || recent || favorites || isGlobalCategory ? { currentFolder: null, breadcrumbs: [] } : getDemoBreadcrumbs(folderParam || "demo-root");
 
       const result: DriveListResult = {
-        items: sortItems(items, sort),
+        items: sortItems(items, sort, undefined, pinnedIds, customOrder),
         nextPageToken,
         currentFolder: breadcrumbData.currentFolder,
         breadcrumbs: breadcrumbData.breadcrumbs,
         demo: true,
         notice: "demo",
+        customOrder,
+        pinnedIds,
       };
       return NextResponse.json(result);
     }
@@ -139,10 +213,12 @@ export async function GET(request: Request) {
         items = items.filter((item) => item.name.toLowerCase().includes(term));
       }
       return NextResponse.json({
-        items: sortItems(items, sort, ids),
+        items: sortItems(items, sort, ids, pinnedIds, customOrder),
         nextPageToken: null,
         currentFolder: null,
         breadcrumbs: [],
+        customOrder,
+        pinnedIds,
       } satisfies DriveListResult);
     }
 
@@ -151,10 +227,12 @@ export async function GET(request: Request) {
       const items = result.files.map((file) => toDriveItem(file, favoriteIds));
       await syncDriveItems(items);
       return NextResponse.json({
-        items,
+        items: sortItems(items, sort, undefined, pinnedIds, customOrder),
         nextPageToken: result.nextPageToken,
         currentFolder: null,
         breadcrumbs: [],
+        customOrder,
+        pinnedIds,
       } satisfies DriveListResult);
     }
 
@@ -166,10 +244,12 @@ export async function GET(request: Request) {
       }
       await syncDriveItems(items);
       return NextResponse.json({
-        items,
+        items: sortItems(items, sort, undefined, pinnedIds, customOrder),
         nextPageToken: result.nextPageToken,
         currentFolder: null,
         breadcrumbs: [],
+        customOrder,
+        pinnedIds,
       } satisfies DriveListResult);
     }
 
@@ -187,10 +267,12 @@ export async function GET(request: Request) {
       items = items.filter((item) => !item.isFolder && item.category === category);
       await syncDriveItems(items);
       return NextResponse.json({
-        items,
+        items: sortItems(items, sort, undefined, pinnedIds, customOrder),
         nextPageToken: result.nextPageToken,
         currentFolder: null,
         breadcrumbs: [],
+        customOrder,
+        pinnedIds,
       } satisfies DriveListResult);
     }
 
@@ -202,8 +284,9 @@ export async function GET(request: Request) {
       sort,
       foldersOnly,
     });
-    const items = result.files.map((file) => toDriveItem(file, favoriteIds));
-    await syncDriveItems(items);
+    const rawItems = result.files.map((file) => toDriveItem(file, favoriteIds));
+    await syncDriveItems(rawItems);
+    const sortedItems = sortItems(rawItems, sort, undefined, pinnedIds, customOrder);
     const breadcrumbs: { currentFolder: Breadcrumb | null; breadcrumbs: Breadcrumb[] } = await buildBreadcrumbs(
       drive,
       rootFolderId,
@@ -211,10 +294,12 @@ export async function GET(request: Request) {
     ).catch(() => ({ currentFolder: null, breadcrumbs: [] }));
 
     return NextResponse.json({
-      items,
+      items: sortedItems,
       nextPageToken: result.nextPageToken,
       currentFolder: breadcrumbs.currentFolder,
       breadcrumbs: breadcrumbs.breadcrumbs,
+      customOrder,
+      pinnedIds,
     } satisfies DriveListResult);
   } catch (error) {
     return jsonError(error);
