@@ -5,76 +5,55 @@ import {
   type CertificateStudentData,
 } from "../certificate-stickers-pdf";
 
-describe("Certificate Stickers PDF Generator", () => {
-  const sampleStudents: CertificateStudentData[] = [
+describe("Certificate & Score Report Stickers PDF Generator", () => {
+  const sampleBatch1: CertificateStudentData[] = [
     {
-      studentName: "Mohamed Ahmed Ali",
-      seatNumber: "10245",
-      nationalId: "30501011234567",
-      schoolName: "Al Ryada University",
-      governorate: "Menofia",
-      examName: "EST I",
-      sessionName: "December 2026",
-      certificateCode: "CERT-2026-0001",
-      subjects: "Literacy & Mathematics",
-      status: "Passed",
+      serialNumber: "128",
+      studentName: "يارا رمضان يوسف ابو الخير",
+      totalReports: 2,
+      reportsList: "يناير 2026 - EST I، ومارس 2026 - EST II",
+      certificateCode: "EST-REP-0128",
+      batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
     },
     {
-      studentName: "Sarah Mahmoud Hassan",
-      seatNumber: "10246",
-      nationalId: "30502021234568",
-      schoolName: "Cairo International School",
-      governorate: "Cairo",
-      examName: "EST I",
-      sessionName: "December 2026",
-      certificateCode: "CERT-2026-0002",
-      subjects: "Literacy & Mathematics",
-      status: "Passed",
+      serialNumber: "129",
+      studentName: "مريم أحمد محمد عبد الفتاح",
+      totalReports: 1,
+      reportsList: "أكتوبر 2026 - EST I",
+      certificateCode: "EST-REP-0129",
+      batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
     },
     {
-      studentName: "Youssef Ibrahim Taha",
-      seatNumber: "10247",
-      nationalId: "30503031234569",
-      schoolName: "STEM Alexandria",
-      governorate: "Alexandria",
-      examName: "EST II",
-      sessionName: "December 2026",
-      certificateCode: "CERT-2026-0003",
-      subjects: "Biology & Chemistry",
-      status: "Passed",
+      serialNumber: "130",
+      studentName: "أحمد خالد مصطفى الشناوي",
+      totalReports: 3,
+      reportsList: "مايو 2025 - EST I، يناير 2026 - EST II، مارس 2026 - EST II",
+      certificateCode: "EST-REP-0130",
+      batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
     },
     {
-      studentName: "Nouran Khaled Mostafa",
-      seatNumber: "10248",
-      nationalId: "30504041234570",
-      schoolName: "Giza Model School",
-      governorate: "Giza",
-      examName: "EST II",
-      sessionName: "December 2026",
-      certificateCode: "CERT-2026-0004",
-      subjects: "Math 1 & Physics",
-      status: "Passed",
+      serialNumber: "131",
+      studentName: "نور الدين إبراهيم حسن السعدني",
+      totalReports: 2,
+      reportsList: "أكتوبر 2025 - EST I، ديسمبر 2026 - EST I",
+      certificateCode: "EST-REP-0131",
+      batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
     },
     {
-      studentName: "Omar Abdelrahman Fathy",
-      seatNumber: "10249",
-      nationalId: "30505051234571",
-      schoolName: "Al Ryada University",
-      governorate: "Menofia",
-      examName: "EST I",
-      sessionName: "December 2026",
-      certificateCode: "CERT-2026-0005",
-      subjects: "Literacy & Mathematics",
-      status: "Passed",
+      serialNumber: "132",
+      studentName: "سلمى حازم محمود الديب",
+      totalReports: 1,
+      reportsList: "مارس 2026 - EST II",
+      certificateCode: "EST-REP-0132",
+      batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
     },
   ];
 
-  it("should generate a valid PDF with correct page count for 4 stickers per sheet (quarter A4)", async () => {
+  it("should generate a valid PDF with correct quarter-A4 page count (4 stickers per sheet)", async () => {
     // 5 students -> 2 pages (Page 1 has 4 stickers, Page 2 has 1 sticker)
     const pdfBytes = await generateCertificateStickersPdf({
-      students: sampleStudents,
-      sessionName: "December 2026",
-      examName: "EST",
+      students: sampleBatch1,
+      batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
     });
 
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
@@ -89,7 +68,7 @@ describe("Certificate Stickers PDF Generator", () => {
     expect(Math.round(page1.getHeight())).toBe(595);
   });
 
-  it("should handle empty or fallback students gracefully", async () => {
+  it("should handle empty fallback and render default Yara Ramadan sample sticker", async () => {
     const pdfBytes = await generateCertificateStickersPdf({
       students: [],
     });

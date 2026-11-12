@@ -18,11 +18,13 @@ export async function POST(request: Request) {
 
     const sessionName = typeof body.sessionName === "string" ? body.sessionName : undefined;
     const examName = typeof body.examName === "string" ? body.examName : undefined;
+    const batchName = typeof body.batchName === "string" ? body.batchName : undefined;
 
     const pdfBytes = await generateCertificateStickersPdf({
       students,
       sessionName,
       examName,
+      batchName,
     });
 
     const bodyBuffer = Buffer.from(pdfBytes);
@@ -40,3 +42,4 @@ export async function POST(request: Request) {
     return jsonError(error);
   }
 }
+
