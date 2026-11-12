@@ -6,12 +6,11 @@ import {
   Clock,
   UserCheck,
   Eye,
-  FileText,
-  Volume2,
-  Sparkles,
   ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { GUIDE_THEME } from "../shared/guide-theme";
 
 export function Scene14AssnRoomStickers() {
   const [selectedAccommodation, setSelectedAccommodation] = useState<string>("extra25");
@@ -63,25 +62,25 @@ export function Scene14AssnRoomStickers() {
   return (
     <div className="space-y-6">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-surface border border-border shadow-xs">
+      <div className={cn(GUIDE_THEME.card, "p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-purple-500/20")}>
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/25">
               Specialized Identification
             </span>
-            <span className="text-xs text-muted">ASSN Room Stickers</span>
+            <span className={GUIDE_THEME.muted}>ASSN Room Stickers</span>
           </div>
-          <h3 className="text-base font-bold text-foreground mt-1">
+          <h3 className="text-base font-bold text-white">
             Special Accommodation Room Stickers
           </h3>
-          <p className="text-xs text-muted mt-0.5">
+          <p className="text-xs text-slate-400 mt-0.5">
             Distinctive high-visibility labeling for special accommodation rooms, featuring time extensions (+25%, +50%) and reader indicators.
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs font-bold text-purple-500">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/25 text-xs font-mono font-bold text-purple-400 shrink-0">
           <Accessibility className="size-4" />
-          <span>Accommodated Testing Category</span>
+          <span>Accommodated Category</span>
         </div>
       </div>
 
@@ -95,22 +94,24 @@ export function Scene14AssnRoomStickers() {
               key={acc.id}
               type="button"
               onClick={() => setSelectedAccommodation(acc.id)}
-              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+              className={cn(
+                "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 transform-gpu will-change-transform",
                 isSelected
-                  ? "bg-slate-900 border-purple-500 text-white shadow-md ring-2 ring-purple-500/20"
-                  : "bg-surface border-border text-muted hover:text-foreground hover:border-purple-400/40"
-              }`}
+                  ? "bg-[#181126] border-purple-400 text-white shadow-md ring-1 ring-purple-400/40"
+                  : "bg-[#0B101B]/80 border-slate-800/80 text-slate-400 hover:text-white hover:border-purple-400/40 hover:bg-[#0F1626]",
+              )}
             >
               <div
-                className={`size-7 rounded-lg flex items-center justify-center shrink-0 ${
-                  isSelected ? "bg-purple-600 text-white" : "bg-surface-strong"
-                }`}
+                className={cn(
+                  "size-7 rounded-lg flex items-center justify-center shrink-0",
+                  isSelected ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400",
+                )}
               >
                 <AIcon className="size-4" />
               </div>
               <div className="min-w-0">
                 <div className="text-xs font-bold truncate">{acc.title}</div>
-                <div className="text-[10px] text-muted font-mono">{acc.code}</div>
+                <div className="text-[10px] text-slate-500 font-mono">{acc.code}</div>
               </div>
             </button>
           );
@@ -120,13 +121,13 @@ export function Scene14AssnRoomStickers() {
       {/* Main Interactive Stage */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left 7 Columns: Specialized Sticker Rendering */}
-        <div className="lg:col-span-7 flex flex-col items-center justify-center p-6 rounded-2xl bg-gradient-to-b from-surface via-surface-strong/30 to-surface border border-border min-h-[400px]">
+        <div className="lg:col-span-7 flex flex-col items-center justify-center p-6 rounded-2xl bg-[#090D16] border border-slate-800/80 min-h-[400px] shadow-2xl relative">
           {/* ASSN Sticker Card */}
-          <div className="w-full max-w-md rounded-2xl bg-white text-slate-900 shadow-2xl border-4 border-purple-400/80 p-5 space-y-3 relative overflow-hidden">
+          <div className="w-full max-w-md rounded-2xl bg-[#F8FAFC] text-slate-900 shadow-2xl border-4 border-purple-400/80 p-5 space-y-3 relative overflow-hidden">
             {/* Top Purple High-Visibility Bar */}
             <div className="-mx-5 -mt-5 p-3 px-5 bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Accessibility className="size-5 text-purple-300" />
+                <Accessibility className="size-5 text-purple-200" />
                 <span className="font-black text-sm tracking-wider uppercase">
                   EST 1 • SPECIAL ACCOMMODATION ROOM
                 </span>
@@ -150,26 +151,26 @@ export function Scene14AssnRoomStickers() {
             {/* Room Location & Tally Grid */}
             <div className="grid grid-cols-2 gap-3 text-xs pt-1">
               <div>
-                <span className="text-[10px] text-slate-500 block">Examination Center</span>
+                <span className="text-[10px] text-slate-500 block uppercase font-mono">Examination Center</span>
                 <span className="font-extrabold text-slate-900">Al Ryada University</span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 block">Building & Floor</span>
+                <span className="text-[10px] text-slate-500 block uppercase font-mono">Building &amp; Floor</span>
                 <span className="font-extrabold text-slate-900">Building A • Floor 01</span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 block">Assigned Classroom</span>
+                <span className="text-[10px] text-slate-500 block uppercase font-mono">Assigned Classroom</span>
                 <span className="font-extrabold text-purple-900 text-sm">Room 105 (ASSN Room)</span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 block">Accommodated Students</span>
-                <span className="font-black text-purple-700 text-sm">03 Candidates</span>
+                <span className="text-[10px] text-slate-500 block uppercase font-mono">Accommodated Students</span>
+                <span className="font-black text-purple-700 text-sm">Verified Manifest Roster</span>
               </div>
             </div>
 
             {/* Special Instructions Box */}
             <div className="p-2.5 rounded-lg bg-slate-100 border border-slate-200 space-y-1 text-[11px]">
-              <div className="text-slate-500 text-[10px] font-semibold">Special Operational Instructions:</div>
+              <div className="text-slate-500 text-[10px] font-semibold uppercase font-mono">Special Operational Instructions:</div>
               <div className="font-mono text-slate-800 text-[10px] leading-relaxed">
                 • Allocated Timing: {activeAcc.timing}
                 <br />
@@ -185,56 +186,56 @@ export function Scene14AssnRoomStickers() {
                 |||| ||||| |||||| ||||| ||| ||||
               </div>
               <span className="text-[10px] font-mono font-bold text-slate-800">
-                EST-ASSN-R105-003
+                EST-ASSN-R105-ALLOC
               </span>
             </div>
           </div>
         </div>
 
         {/* Right 5 Columns: Operational Comparison */}
-        <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
+        <div className={cn(GUIDE_THEME.card, "lg:col-span-5 p-6 flex flex-col justify-between space-y-4")}>
           <div className="space-y-3">
-            <h4 className="text-sm font-bold text-foreground uppercase tracking-wider text-muted">
+            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
               ASSN vs Standard Room Differences
             </h4>
 
             {/* Comparison Item 1 */}
-            <div className="p-3.5 rounded-xl bg-surface border border-border space-y-1">
-              <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <CheckCircle2 className="size-3.5 text-purple-500" />
+            <div className="p-3.5 rounded-xl bg-[#090D16]/60 border border-slate-800/80 space-y-1">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <CheckCircle2 className="size-3.5 text-purple-400" />
                 <span>High-Visibility Purple Header</span>
               </div>
-              <p className="text-[11px] text-muted leading-relaxed">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
                 While ordinary room stickers use standard blue headers, ASSN room stickers feature bright purple borders to ensure proctors immediately recognize accommodated testing conditions.
               </p>
             </div>
 
             {/* Comparison Item 2 */}
-            <div className="p-3.5 rounded-xl bg-surface border border-border space-y-1">
-              <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Clock className="size-3.5 text-purple-500" />
+            <div className="p-3.5 rounded-xl bg-[#090D16]/60 border border-slate-800/80 space-y-1">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Clock className="size-3.5 text-purple-400" />
                 <span>Explicit Extra Timing Manifest</span>
               </div>
-              <p className="text-[11px] text-muted leading-relaxed">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
                 The exact calculated test end time is printed on the sticker, preventing any timing disputes between proctors and candidates during the session.
               </p>
             </div>
 
             {/* Comparison Item 3 */}
-            <div className="p-3.5 rounded-xl bg-surface border border-border space-y-1">
-              <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <ShieldCheck className="size-3.5 text-purple-500" />
+            <div className="p-3.5 rounded-xl bg-[#090D16]/60 border border-slate-800/80 space-y-1">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <ShieldCheck className="size-3.5 text-purple-400" />
                 <span>Dedicated Envelope Security Seal</span>
               </div>
-              <p className="text-[11px] text-muted leading-relaxed">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
                 ASSN examination booklets are stored in designated tamper-evident envelopes inside the ASSN bag, never combined with ordinary room files.
               </p>
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-950 dark:text-purple-200">
-            <span className="font-bold block mb-1">Human Rights & Equal Access Policy:</span>
-            <p className="text-[11px] text-muted leading-relaxed">
+          <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200">
+            <span className="font-bold block mb-1 text-purple-300">Human Rights &amp; Equal Access Policy:</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
               Every accommodation is strictly audited and cross-checked against official medical documentation before sticker issuance.
             </p>
           </div>
@@ -243,4 +244,3 @@ export function Scene14AssnRoomStickers() {
     </div>
   );
 }
-

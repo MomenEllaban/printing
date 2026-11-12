@@ -13,7 +13,9 @@ import {
   Smartphone,
   Sparkles,
 } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { DocumentModal } from "../shared/document-modal";
+import { GUIDE_THEME } from "../shared/guide-theme";
 import { SENIOR_FOLDER_DOCS } from "../guide-data";
 import type { DocumentItem } from "../guide-types";
 
@@ -26,68 +28,68 @@ export function Scene07SeniorFolder() {
   return (
     <div className="space-y-6">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-surface border border-border shadow-xs">
+      <div className={cn(GUIDE_THEME.card, "p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-amber-500/20")}>
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-              Folder Deep Dive
+          <div className="flex items-center gap-2 mb-1">
+            <span className={cn("text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-md", GUIDE_THEME.workflow1.badge)}>
+              Floor Governance Dossier
             </span>
-            <span className="text-xs text-muted">Senior Proctor Materials</span>
+            <span className={GUIDE_THEME.muted}>Senior Proctor Portfolio</span>
           </div>
-          <h3 className="text-base font-bold text-foreground mt-1">
-            Inside the Senior Proctor Folder
+          <h3 className="text-base font-bold text-white">
+            Inside the Senior Proctor Folder: 5 Mandatory Operational Instruments
           </h3>
-          <p className="text-xs text-muted mt-0.5">
-            Detailed examination of the 5 mandatory administrative documents carried by the Senior Proctor for floor governance.
+          <p className="text-xs text-slate-400 mt-0.5">
+            Supervisory administrative package carried by the Senior Proctor for floor management, proctor muster, and incident oversight.
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-500">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-mono font-bold shrink-0">
           <Crown className="size-4" />
-          <span>Assigned Rooms: 04 (Floor 01)</span>
+          <span>Supervises Floor 01 Rooms</span>
         </div>
       </div>
 
       {/* Main Interactive Stage */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left 7 Columns: 3D Folder & Document Presentation */}
-        <div className="lg:col-span-7 flex flex-col justify-between p-6 rounded-2xl bg-gradient-to-b from-surface via-surface-strong/30 to-surface border border-border min-h-[420px]">
+        <div className="lg:col-span-7 flex flex-col justify-between p-6 rounded-2xl bg-[#090D16] border border-slate-800/80 min-h-[420px] shadow-2xl relative">
           {/* 3D Senior Folder Visual */}
-          <div className="relative p-6 rounded-2xl bg-slate-900 border-2 border-amber-400/60 shadow-2xl overflow-hidden">
+          <div className="relative p-6 rounded-2xl bg-[#0F1626] border-2 border-amber-400/50 shadow-2xl overflow-hidden">
             {/* Top Bar with Gold Crest */}
-            <div className="flex items-center justify-between pb-3 border-b border-amber-400/30">
+            <div className="flex items-center justify-between pb-3 border-b border-amber-400/20">
               <div className="flex items-center gap-2">
                 <Crown className="size-5 text-amber-400" />
                 <span className="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase">
                   EST SENIOR PROCTOR DOSSIER
                 </span>
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25">
                 DOC 0{activeDocIndex + 1} OF 05
               </span>
             </div>
 
             {/* Active Document Card Preview */}
-            <div className="my-5 p-5 rounded-xl bg-slate-950/80 border border-amber-400/40 relative group">
+            <div className="my-5 p-5 rounded-xl bg-[#090D16]/90 border border-amber-400/30 relative group">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400/80">
-                    Active Document In Hand
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400/90 font-bold">
+                    Active Inspected Document
                   </span>
                   <h4 className="text-base font-extrabold text-white">
                     {currentDoc.title}
                   </h4>
-                  <p className="text-xs text-slate-300 leading-relaxed max-w-md">
+                  <p className="text-xs text-slate-300 leading-relaxed max-w-md mt-1">
                     {currentDoc.description}
                   </p>
                 </div>
-                <div className="p-3 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-400/30">
-                  <FileText className="size-6" />
+                <div className="p-3 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-400/30 shrink-0">
+                  <FileText className="size-5" />
                 </div>
               </div>
 
               {/* Sample Document Snippet */}
-              <div className="mt-4 p-3 rounded-lg bg-slate-900/90 border border-border/40 font-mono text-[11px] text-slate-300 space-y-1">
+              <div className="mt-4 p-3 rounded-lg bg-[#0F1626]/80 border border-slate-800/80 font-mono text-[11px] text-slate-300 space-y-1.5">
                 <div className="text-amber-400 font-bold">Document Content Highlights:</div>
                 {currentDoc.fields.slice(0, 3).map((f) => (
                   <div key={f} className="flex items-center gap-2">
@@ -101,21 +103,21 @@ export function Scene07SeniorFolder() {
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-[11px] text-slate-400 flex items-center gap-1">
                   <Sparkles className="size-3 text-amber-400" />
-                  <span>Click to view official printable template</span>
+                  <span>Official printable template specification</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => setSelectedDoc(currentDoc)}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5 transform-gpu will-change-transform"
                 >
                   <Eye className="size-3.5" />
-                  <span>Inspect Document Full Size</span>
+                  <span>Inspect Full Document</span>
                 </button>
               </div>
             </div>
 
             {/* Folder Flap / Spine Detail */}
-            <div className="text-center text-[10px] text-amber-300/60 font-mono">
+            <div className="text-center text-[10px] text-amber-400/60 font-mono tracking-wider">
               ★ OFFICIAL EST EXAMINATION BOARD • CONFIDENTIAL OPERATIONAL PACKET ★
             </div>
           </div>
@@ -127,9 +129,10 @@ export function Scene07SeniorFolder() {
                 key={doc.id}
                 type="button"
                 onClick={() => setActiveDocIndex(idx)}
-                className={`h-2 rounded-full transition-all cursor-pointer ${
-                  activeDocIndex === idx ? "w-8 bg-amber-400" : "w-2 bg-border hover:bg-muted"
-                }`}
+                className={cn(
+                  "h-2 rounded-full transition-all cursor-pointer",
+                  activeDocIndex === idx ? "w-8 bg-amber-400" : "w-2 bg-slate-800 hover:bg-slate-700",
+                )}
                 title={doc.title}
               />
             ))}
@@ -137,9 +140,9 @@ export function Scene07SeniorFolder() {
         </div>
 
         {/* Right 5 Columns: Interactive List of the 5 Documents */}
-        <div className="lg:col-span-5 flex flex-col justify-between space-y-3">
-          <div className="space-y-2">
-            <h4 className="text-sm font-bold text-foreground uppercase tracking-wider text-muted">
+        <div className={cn(GUIDE_THEME.card, "lg:col-span-5 p-6 flex flex-col justify-between space-y-4")}>
+          <div className="space-y-2.5">
+            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
               Select Document to Inspect
             </h4>
 
@@ -149,27 +152,29 @@ export function Scene07SeniorFolder() {
                 <div
                   key={doc.id}
                   onClick={() => setActiveDocIndex(idx)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                  className={cn(
+                    "p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between transform-gpu will-change-transform",
                     isSelected
-                      ? "bg-amber-500/10 border-amber-500/50 shadow-xs ring-1 ring-amber-500/30"
-                      : "bg-surface border-border hover:border-amber-400/40"
-                  }`}
+                      ? "bg-amber-500/10 border-amber-500/50 shadow-sm ring-1 ring-amber-500/30"
+                      : "bg-[#090D16]/60 border-slate-800/80 hover:border-amber-400/40 hover:bg-[#0B101B]",
+                  )}
                 >
                   <div className="flex items-center gap-3">
                     <span
-                      className={`size-7 rounded-lg flex items-center justify-center font-bold font-mono text-xs ${
+                      className={cn(
+                        "size-7 rounded-lg flex items-center justify-center font-bold font-mono text-xs",
                         isSelected
                           ? "bg-amber-500 text-slate-950 font-black"
-                          : "bg-surface-strong text-muted"
-                      }`}
+                          : "bg-slate-800/80 text-slate-400",
+                      )}
                     >
                       0{idx + 1}
                     </span>
                     <div>
-                      <div className="text-xs font-bold text-foreground">
+                      <div className="text-xs font-bold text-white">
                         {doc.title}
                       </div>
-                      <div className="text-[10px] text-muted line-clamp-1">
+                      <div className="text-[10px] text-slate-400 line-clamp-1">
                         {doc.description}
                       </div>
                     </div>
@@ -182,7 +187,7 @@ export function Scene07SeniorFolder() {
                       setActiveDocIndex(idx);
                       setSelectedDoc(doc);
                     }}
-                    className="p-1.5 rounded-lg hover:bg-surface-strong text-muted hover:text-amber-500 transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
                     title="Inspect document modal"
                   >
                     <Eye className="size-4" />
@@ -193,13 +198,13 @@ export function Scene07SeniorFolder() {
           </div>
 
           {/* Operational Role of Senior Proctor */}
-          <div className="p-3 rounded-xl bg-surface border border-border text-xs text-muted space-y-1">
-            <div className="font-bold text-foreground flex items-center gap-1.5">
-              <Crown className="size-3.5 text-amber-500" />
+          <div className="p-3.5 rounded-xl bg-[#090D16]/80 border border-slate-800/80 text-xs text-slate-300 space-y-1">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <Crown className="size-3.5 text-amber-400" />
               <span>Floor Governance Authority</span>
             </div>
-            <p className="text-[11px] leading-relaxed">
-              The Senior Proctor uses this folder to administer proctor shifts, monitor quiet corridors, safely store all student smartphones in dedicated anti-static pouches, and report any irregularities directly to the Head of Center.
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              The Senior Proctor administers proctor shifts, monitors quiet corridors, safely stores student mobile devices in anti-static custody pouches, and reports any irregularities directly to the Head of Center.
             </p>
           </div>
         </div>

@@ -3,17 +3,17 @@
 import { useState } from "react";
 import {
   CheckCircle2,
-  ChevronRight,
   FileCheck2,
   MapPin,
   Package,
   Printer,
   ShieldCheck,
-  Sparkles,
   Tag,
   Truck,
   Building2,
 } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { GUIDE_THEME } from "../shared/guide-theme";
 
 export function Scene17FinalShipping() {
   const [activeStep, setActiveStep] = useState<number>(6); // Default to last step (Dispatch)
@@ -24,14 +24,14 @@ export function Scene17FinalShipping() {
       name: "Print Authorization",
       icon: FileCheck2,
       timing: "T-72 Hours",
-      detail: "Final student roster locked; high-speed digital printing initiated with optical barcode watermarks.",
+      detail: "Official student roster locked; high-speed digital printing initiated with optical barcode watermarks.",
     },
     {
       id: 2,
       name: "Booklet Collation",
       icon: Printer,
       timing: "T-48 Hours",
-      detail: "Test booklets and bubble answer sheets grouped strictly into 25-candidate room batches.",
+      detail: "Test booklets and bubble answer sheets grouped strictly according to individual room candidate manifests.",
     },
     {
       id: 3,
@@ -73,45 +73,45 @@ export function Scene17FinalShipping() {
   return (
     <div className="space-y-6">
       {/* Grand Dispatch Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 text-white shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-        {/* Background glow effects */}
-        <div className="absolute -right-10 -bottom-10 size-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950 via-[#0E1F29] to-[#0A1628] border border-emerald-500/30 text-white shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+        {/* Subtle Ambient glow */}
+        <div className="absolute -right-10 -bottom-10 size-48 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
 
         <div className="flex items-center gap-4 relative">
-          <div className="size-16 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center shrink-0 shadow-lg">
-            <Truck className="size-8 text-white animate-bounce" />
+          <div className="size-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-lg">
+            <Truck className="size-8 text-emerald-400" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-white/20 text-white border border-white/30">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 Final Logistics Milestone
               </span>
-              <span className="text-xs text-white/80">Workflow 02 Concluded</span>
+              <span className="text-xs text-slate-400 font-mono">Workflow 02 Concluded</span>
             </div>
-            <h3 className="text-xl sm:text-2xl font-black text-white mt-1">
-              Examination Materials Ready for Dispatch to Cairo 🚚
+            <h3 className="text-xl sm:text-2xl font-extrabold text-white">
+              Examination Materials Ready for Dispatch to Cairo
             </h3>
-            <p className="text-xs text-white/90 mt-1 max-w-xl leading-relaxed">
+            <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
               All packaging validations, two-copy sticker audits, and building carton seals have been verified. Fleet departure authorized.
             </p>
           </div>
         </div>
 
-        <div className="shrink-0 px-4 py-2.5 rounded-2xl bg-slate-950/80 border border-white/20 text-center font-mono space-y-0.5 shadow-xl">
+        <div className="shrink-0 px-4 py-2.5 rounded-xl bg-[#090D16]/90 border border-slate-800 text-center font-mono space-y-0.5 shadow-xl">
           <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
             FLEET STATUS
           </div>
-          <div className="text-sm font-black text-white">READY FOR TRANSIT</div>
+          <div className="text-sm font-extrabold text-white">READY FOR TRANSIT</div>
         </div>
       </div>
 
       {/* 7-Stage Assembly Line Horizontal Scrubber */}
-      <div className="p-5 rounded-2xl bg-surface border border-border shadow-xs space-y-4">
+      <div className={cn(GUIDE_THEME.card, "p-5 space-y-4")}>
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-bold text-foreground uppercase tracking-wider text-muted">
+          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
             The 7-Stage Examination Production Pipeline
           </h4>
-          <span className="text-xs text-muted">
+          <span className="text-xs text-slate-400 font-mono">
             Click any phase to review operational parameters
           </span>
         </div>
@@ -126,43 +126,47 @@ export function Scene17FinalShipping() {
                 key={st.id}
                 type="button"
                 onClick={() => setActiveStep(idx)}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
+                className={cn(
+                  "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2 transform-gpu will-change-transform",
                   isCurrent
-                    ? "bg-slate-900 border-emerald-500 text-white shadow-lg ring-2 ring-emerald-500/20 scale-102"
-                    : "bg-surface border-border hover:border-emerald-500/40 text-muted"
-                }`}
+                    ? "bg-[#0E1626] border-emerald-400 text-white shadow-lg ring-1 ring-emerald-400/40 scale-102"
+                    : "bg-[#090D16]/60 border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-white",
+                )}
               >
                 <div className="flex items-center justify-between">
                   <span
-                    className={`size-6 rounded-lg flex items-center justify-center text-xs font-mono font-bold ${
+                    className={cn(
+                      "size-6 rounded-lg flex items-center justify-center text-xs font-mono font-bold",
                       isCurrent
-                        ? "bg-emerald-500 text-slate-950"
-                        : "bg-surface-strong text-muted"
-                    }`}
+                        ? "bg-emerald-500 text-slate-950 font-black"
+                        : "bg-slate-800 text-slate-400",
+                    )}
                   >
                     0{st.id}
                   </span>
-                  <span className="text-[10px] font-mono text-muted">{st.timing}</span>
+                  <span className="text-[10px] font-mono text-slate-500">{st.timing}</span>
                 </div>
 
                 <div>
                   <div
-                    className={`text-xs font-bold leading-tight ${
-                      isCurrent ? "text-white" : "text-foreground"
-                    }`}
+                    className={cn(
+                      "text-xs font-bold leading-tight",
+                      isCurrent ? "text-white" : "text-slate-300",
+                    )}
                   >
                     {st.name}
                   </div>
                 </div>
 
-                <div className="pt-1.5 border-t border-border/30 flex items-center justify-between text-[10px]">
+                <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px]">
                   <StepIcon
-                    className={`size-3.5 ${
-                      isCurrent ? "text-emerald-400" : "text-muted"
-                    }`}
+                    className={cn(
+                      "size-3.5",
+                      isCurrent ? "text-emerald-400" : "text-slate-500",
+                    )}
                   />
                   {isCurrent && (
-                    <span className="text-emerald-400 font-bold">Active</span>
+                    <span className="text-emerald-400 font-mono font-bold">Active</span>
                   )}
                 </div>
               </button>
@@ -172,39 +176,39 @@ export function Scene17FinalShipping() {
       </div>
 
       {/* Selected Step Deep Dive Details */}
-      <div className="p-6 rounded-2xl bg-surface border border-border shadow-xs grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+      <div className={cn(GUIDE_THEME.card, "p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center")}>
         <div className="lg:col-span-8 space-y-3">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               Stage 0{pipelineSteps[activeStep].id} Breakdown
             </span>
-            <span className="text-xs text-muted">
+            <span className="text-xs text-slate-400 font-mono">
               Timeline: {pipelineSteps[activeStep].timing}
             </span>
           </div>
 
-          <h4 className="text-lg font-black text-foreground">
+          <h4 className="text-lg font-extrabold text-white">
             {pipelineSteps[activeStep].name}
           </h4>
 
-          <p className="text-xs text-muted leading-relaxed">
+          <p className="text-xs text-slate-300 leading-relaxed bg-[#090D16]/60 p-3.5 rounded-xl border border-slate-800/80">
             {pipelineSteps[activeStep].detail}
           </p>
 
-          <div className="pt-2 flex flex-wrap gap-4 text-xs text-foreground/80">
+          <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-300">
             <div className="flex items-center gap-1.5">
-              <CheckCircle2 className="size-4 text-emerald-500" />
+              <CheckCircle2 className="size-4 text-emerald-400" />
               <span>Full Audit Trail Stored in Database</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <CheckCircle2 className="size-4 text-emerald-500" />
-              <span>Supervisor Biometric Verification Required</span>
+              <CheckCircle2 className="size-4 text-emerald-400" />
+              <span>Supervisor Biometric Verification Recorded</span>
             </div>
           </div>
         </div>
 
-        <div className="lg:col-span-4 p-4 rounded-xl bg-slate-900 border border-border text-center space-y-2">
-          <div className="text-[10px] font-mono text-muted uppercase">
+        <div className="lg:col-span-4 p-4 rounded-xl bg-[#090D16] border border-slate-800 text-center space-y-2">
+          <div className="text-[10px] font-mono text-slate-500 uppercase">
             Dispatched From
           </div>
           <div className="text-xs font-bold text-white flex items-center justify-center gap-1.5">
@@ -212,11 +216,10 @@ export function Scene17FinalShipping() {
             <span>EST Central Secure Print Facility</span>
           </div>
           <div className="text-[10px] text-emerald-400 font-mono">
-            Destination: Cairo Central Operations Hub & 18 Exam Centers
+            Destination: Cairo Central Operations Hub &amp; 18 Exam Centers
           </div>
         </div>
       </div>
     </div>
   );
 }
-
