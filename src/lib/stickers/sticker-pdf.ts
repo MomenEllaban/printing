@@ -861,8 +861,8 @@ function renderHeroCard(params: {
   const hasSub = Boolean(subText || detailText);
   const subBarHeight = hasSub
     ? detailText && subText
-      ? Math.max(38, Math.min(48, height * 0.22))
-      : Math.max(26, Math.min(34, height * 0.16))
+      ? Math.max(46, Math.min(58, height * 0.26))
+      : Math.max(28, Math.min(36, height * 0.18))
     : 0;
 
   if (hasSub) {
@@ -874,16 +874,16 @@ function renderHeroCard(params: {
       height: subBarHeight,
       color: COLOR_LIGHT_BG,
       borderColor: COLOR_BORDER,
-      borderWidth: 1,
+      borderWidth: 0.8,
     });
 
     if (detailText && subText) {
-      // Line 1: Main count / label (e.g. "35 STUDENTS TOTAL")
-      const topSize = Math.max(8.5, Math.min(10.5, subBarHeight * 0.24));
+      // Line 1: Main count / label (e.g. "35 STUDENTS TOTAL") - Prominent and Large
+      const topSize = Math.max(12, Math.min(15, subBarHeight * 0.28));
       let topW = font.widthOfTextAtSize(subText, topSize);
       let finalTopSize = topSize;
-      if (topW > width - 20) {
-        finalTopSize = Math.max(7, ((width - 20) / topW) * topSize);
+      if (topW > width - 16) {
+        finalTopSize = Math.max(9, ((width - 16) / topW) * topSize);
         topW = font.widthOfTextAtSize(subText, finalTopSize);
       }
       page.drawText(subText, {
@@ -902,12 +902,12 @@ function renderHeroCard(params: {
         color: COLOR_BORDER,
       });
 
-      // Line 2: Detailed subject breakdown (e.g. "LIT: 35  |  MATH: 28  |  ESSAY: 12")
-      const dtlSize = Math.max(7.5, Math.min(9.5, subBarHeight * 0.22));
+      // Line 2: Detailed subject breakdown (e.g. "LIT: 35  |  MATH: 28  |  ESSAY: 12") - Prominent
+      const dtlSize = Math.max(9.5, Math.min(12, subBarHeight * 0.24));
       let dtlW = font.widthOfTextAtSize(detailText, dtlSize);
       let finalDtlSize = dtlSize;
-      if (dtlW > width - 20) {
-        finalDtlSize = Math.max(6.5, ((width - 20) / dtlW) * dtlSize);
+      if (dtlW > width - 16) {
+        finalDtlSize = Math.max(7.5, ((width - 16) / dtlW) * dtlSize);
         dtlW = font.widthOfTextAtSize(detailText, finalDtlSize);
       }
       page.drawText(detailText, {
@@ -919,11 +919,11 @@ function renderHeroCard(params: {
       });
     } else {
       const singleText = subText || detailText || "";
-      const subSize = Math.max(8.5, Math.min(11, subBarHeight * 0.38));
+      const subSize = Math.max(11, Math.min(14, subBarHeight * 0.42));
       let subW = font.widthOfTextAtSize(singleText, subSize);
       let finalSubSize = subSize;
-      if (subW > width - 20) {
-        finalSubSize = Math.max(7.5, ((width - 20) / subW) * subSize);
+      if (subW > width - 16) {
+        finalSubSize = Math.max(8.5, ((width - 16) / subW) * subSize);
         subW = font.widthOfTextAtSize(singleText, finalSubSize);
       }
       page.drawText(singleText, {
@@ -1261,7 +1261,9 @@ function drawA4FourUpPlacardPage(params: {
 }
 
 /**
- * Draws a single dossier placard inside one quadrant (approx 421 x 298 pt).
+ * Draws a single Quarter-A4 Room / Floor Placard (approx 421 x 298 pt).
+ * Clean, Simple, 100% Black & White with Large Typography.
+ * Reduced borders, zero heavy black blocks, with prominent student counts & breakdowns.
  */
 function drawQuarterPlacard(params: {
   page: any;
@@ -1282,7 +1284,7 @@ function drawQuarterPlacard(params: {
   const width = slotWidth - margin * 2;
   const height = slotHeight - margin * 2;
 
-  // Outer framing card
+  // Single outer border (clean 1.2pt cutting frame - no nested or double frames)
   page.drawRectangle({
     x,
     y,
@@ -1294,7 +1296,6 @@ function drawQuarterPlacard(params: {
   });
 
   // Header: Logo & Exam title
-  let headerBottom = y + height - 8;
   const logoH = 22;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
   const logoX = x + 10;
@@ -1319,7 +1320,7 @@ function drawQuarterPlacard(params: {
     color: COLOR_CHARCOAL,
   });
 
-  page.drawText("EGYPTIAN SCHOLASTIC TEST", {
+  page.drawText(isRoom ? "ROOM EXAMINATION DOSSIER & ATTENDANCE" : "FLOOR EXAMINATION DOSSIER (SENIOR)", {
     x: textStartX,
     y: logoY + 2,
     size: 6.5,
@@ -1327,29 +1328,17 @@ function drawQuarterPlacard(params: {
     color: COLOR_MUTED,
   });
 
-  headerBottom = logoY - 4;
+  const headerBottom = logoY - 4;
 
-  // Divider
+  // Divider 1
   page.drawLine({
-    start: { x: x + 6, y: headerBottom },
-    end: { x: x + width - 6, y: headerBottom },
+    start: { x: x + 8, y: headerBottom },
+    end: { x: x + width - 8, y: headerBottom },
     thickness: 1,
     color: COLOR_CHARCOAL,
   });
 
-  // Location ribbon
-  const ribbonH = 14;
-  const ribbonY = headerBottom - 3 - ribbonH;
-  page.drawRectangle({
-    x: x + 6,
-    y: ribbonY,
-    width: width - 12,
-    height: ribbonH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
-  });
-
+  // Location string (clean text, no heavy gray box)
   const locItems = [
     content.governorate,
     content.center,
@@ -1357,66 +1346,90 @@ function drawQuarterPlacard(params: {
     isRoom ? content.floor : undefined,
   ].filter(Boolean);
   const locText = locItems.join("  •  ");
-  let locSize = 7.2;
+  let locSize = 8;
   let locWidth = font.widthOfTextAtSize(locText, locSize);
   if (locWidth > width - 24) {
-    locSize = Math.max(6, ((width - 24) / locWidth) * locSize);
+    locSize = Math.max(6.5, ((width - 24) / locWidth) * locSize);
     locWidth = font.widthOfTextAtSize(locText, locSize);
   }
+  const locY = headerBottom - 14;
   page.drawText(locText, {
     x: x + (width - locWidth) / 2,
-    y: ribbonY + (ribbonH - locSize) / 2 + 1,
+    y: locY,
     size: locSize,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Body: Left Column (Hero) + Right Column (Checklist)
-  const bodyTop = ribbonY - 5;
-  const bodyBottom = y + 6;
-  const bodyH = bodyTop - bodyBottom;
-  const bodyW = width - 12;
-
-  const leftW = Math.round(bodyW * 0.38);
-  const gap = 6;
-  const rightW = bodyW - leftW - gap;
-  const leftX = x + 6;
-  const rightX = leftX + leftW + gap;
-
-  // 1. LEFT HERO CARD
-  page.drawRectangle({
-    x: leftX,
-    y: bodyBottom,
-    width: leftW,
-    height: bodyH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.2,
-  });
-
-  // Hero top banner
-  const bannerH = 19;
-  const bannerY = bodyBottom + bodyH - bannerH;
-  page.drawRectangle({
-    x: leftX + 1,
-    y: bannerY,
-    width: leftW - 2,
-    height: bannerH - 1,
+  // Divider 2
+  const divider2Y = locY - 6;
+  page.drawLine({
+    start: { x: x + 8, y: divider2Y },
+    end: { x: x + width - 8, y: divider2Y },
+    thickness: 1,
     color: COLOR_CHARCOAL,
   });
 
-  const badgeText = isRoom ? "ROOM" : "FLOOR";
-  const badgeSize = 8.5;
+  // Body Layout: Generous Left Column for Room & Large Counts, Right Column for Checklist
+  const bodyTop = divider2Y - 10;
+  const bodyBottom = y + 10;
+  const bodyH = bodyTop - bodyBottom;
+  const bodyW = width - 16;
+
+  const leftW = Math.round(bodyW * 0.44);
+  const leftX = x + 8;
+  const dividerX = leftX + leftW + 8;
+  const rightX = dividerX + 14;
+  const rightW = width - 10 - rightX;
+
+  // Single vertical divider between left and right (NO nested boxes)
+  page.drawLine({
+    start: { x: dividerX, y: bodyBottom + 6 },
+    end: { x: dividerX, y: bodyTop },
+    thickness: 1,
+    color: COLOR_BORDER,
+  });
+
+  // --- 1. LEFT COLUMN: ROOM & LARGE STUDENT NUMBERS ---
+  // Clean header label (NO solid black block)
+  const badgeText = isRoom ? "EXAM ROOM" : "FLOOR";
+  const badgeSize = 9;
   const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
   page.drawText(badgeText, {
     x: leftX + (leftW - badgeW) / 2,
-    y: bannerY + (bannerH - badgeSize) / 2,
+    y: bodyTop - 12,
     size: badgeSize,
     font,
-    color: COLOR_WHITE,
+    color: COLOR_MUTED,
   });
 
-  // Hero bottom sub-banner (displays total students & per-exam breakdown for rooms)
+  // Hero Room Number (Large & Bold, centered)
+  const heroValue = isRoom ? (content.room || "") : (content.floor || "");
+  let heroSize = isRoom ? 40 : 26;
+  let heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  if (heroW > leftW - 8) {
+    heroSize = Math.max(16, ((leftW - 8) / heroW) * heroSize);
+    heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  }
+  const heroY = bodyTop - 18 - heroSize;
+  page.drawText(heroValue, {
+    x: leftX + (leftW - heroW) / 2,
+    y: heroY,
+    size: heroSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Clean horizontal divider inside Left column
+  const leftDividerY = heroY - 10;
+  page.drawLine({
+    start: { x: leftX + 8, y: leftDividerY },
+    end: { x: leftX + leftW - 8, y: leftDividerY },
+    thickness: 0.8,
+    color: COLOR_BORDER,
+  });
+
+  // Calculate student count and breakdown text
   const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
   const examBreakdown =
     content.breakdownText ||
@@ -1426,155 +1439,69 @@ function drawQuarterPlacard(params: {
       ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
       : undefined);
 
-  const subH = isRoom && examBreakdown ? 30 : 17;
-  const subY = bodyBottom + 2;
-  page.drawRectangle({
-    x: leftX + 2,
-    y: subY,
-    width: leftW - 4,
-    height: subH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
+  const totalStudentsText =
+    typeof content.totalStudents === "number" && content.totalStudents > 0
+      ? `${content.totalStudents} STUDENTS TOTAL`
+      : isRoom
+      ? "ROOM DOSSIER"
+      : childRoomsCount > 0
+      ? `${childRoomsCount} ROOMS INCLUDED`
+      : "SENIOR DOSSIER";
+
+  // Large, Bold, Prominent Total Students Count (14.5pt bold)
+  let totalSize = 14.5;
+  let totalW = font.widthOfTextAtSize(totalStudentsText, totalSize);
+  if (totalW > leftW - 8) {
+    totalSize = Math.max(10, ((leftW - 8) / totalW) * totalSize);
+    totalW = font.widthOfTextAtSize(totalStudentsText, totalSize);
+  }
+  const totalY = leftDividerY - 20;
+  page.drawText(totalStudentsText, {
+    x: leftX + (leftW - totalW) / 2,
+    y: totalY,
+    size: totalSize,
+    font,
+    color: COLOR_CHARCOAL,
   });
 
-  if (isRoom && examBreakdown) {
-    const topText =
-      typeof content.totalStudents === "number" && content.totalStudents > 0
-        ? `${content.totalStudents} STUDENTS TOTAL`
-        : "ROOM DOSSIER";
-    let topSize = 6.8;
-    let topW = font.widthOfTextAtSize(topText, topSize);
-    if (topW > leftW - 8) {
-      topSize = Math.max(5.5, ((leftW - 8) / topW) * topSize);
-      topW = font.widthOfTextAtSize(topText, topSize);
-    }
-    page.drawText(topText, {
-      x: leftX + (leftW - topW) / 2,
-      y: subY + subH - topSize - 3.5,
-      size: topSize,
-      font,
-      color: COLOR_CHARCOAL,
-    });
-
-    // Subtle divider line inside sub-banner
-    page.drawLine({
-      start: { x: leftX + 8, y: subY + subH / 2 - 1 },
-      end: { x: leftX + leftW - 8, y: subY + subH / 2 - 1 },
-      thickness: 0.4,
-      color: COLOR_BORDER,
-    });
-
-    let btmSize = 5.8;
+  // Large, Bold Breakdown Text (10.5pt bold)
+  if (examBreakdown) {
+    let btmSize = 10.5;
     let btmW = font.widthOfTextAtSize(examBreakdown, btmSize);
     if (btmW > leftW - 6) {
-      btmSize = Math.max(4.8, ((leftW - 6) / btmW) * btmSize);
+      btmSize = Math.max(7.5, ((leftW - 6) / btmW) * btmSize);
       btmW = font.widthOfTextAtSize(examBreakdown, btmSize);
     }
+    const btmY = totalY - 22;
     page.drawText(examBreakdown, {
       x: leftX + (leftW - btmW) / 2,
-      y: subY + 3.5,
+      y: btmY,
       size: btmSize,
       font,
       color: COLOR_CHARCOAL,
     });
-  } else {
-    const subText = isRoom
-      ? typeof content.totalStudents === "number" && content.totalStudents > 0
-        ? `${content.totalStudents} STUDENTS`
-        : "ROOM DOSSIER"
-      : childRoomsCount > 0
-      ? `${childRoomsCount} ROOMS INCLUDED`
-      : "SENIOR DOSSIER";
-    let subSize = 6.5;
-    let subW = font.widthOfTextAtSize(subText, subSize);
-    if (subW > leftW - 8) {
-      subSize = Math.max(5.5, ((leftW - 8) / subW) * subSize);
-      subW = font.widthOfTextAtSize(subText, subSize);
-    }
-    page.drawText(subText, {
-      x: leftX + (leftW - subW) / 2,
-      y: subY + (subH - subSize) / 2 + 1,
-      size: subSize,
-      font,
-      color: COLOR_CHARCOAL,
-    });
   }
 
-  // Giant hero value in center
-  const heroAvailH = bannerY - (subY + subH);
-  const heroValue = isRoom ? (content.room || "") : (content.floor || "");
-  const maxHeroSize = isRoom ? 34 : 20;
-  let heroSize = maxHeroSize;
-  let heroW = font.widthOfTextAtSize(heroValue, heroSize);
-  if (heroW > leftW - 12) {
-    heroSize = Math.max(14, ((leftW - 12) / heroW) * heroSize);
-    heroW = font.widthOfTextAtSize(heroValue, heroSize);
-  }
-  page.drawText(heroValue, {
-    x: leftX + (leftW - heroW) / 2,
-    y: subY + subH + (heroAvailH - heroSize) / 2 + 2,
-    size: heroSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // 2. RIGHT CHECKLIST BOX
-  page.drawRectangle({
-    x: rightX,
-    y: bodyBottom,
-    width: rightW,
-    height: bodyH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.2,
-  });
-
-  // Checklist banner
-  page.drawRectangle({
-    x: rightX + 1,
-    y: bannerY,
-    width: rightW - 2,
-    height: bannerH - 1,
-    color: COLOR_CHARCOAL,
-  });
-
-  const chkTitle = isRoom ? "ROOM FILE CONTENTS CHECKLIST" : "FLOOR DOSSIER CHECKLIST (SENIOR)";
-  const chkTitleSize = 7.2;
-  const chkW = font.widthOfTextAtSize(chkTitle, chkTitleSize);
+  // --- 2. RIGHT COLUMN: CHECKLIST & SIGNATURE ---
+  // Checklist header (Clean text with underline, NO solid black block)
+  const chkTitle = isRoom ? "ROOM FILE CONTENTS CHECKLIST" : "FLOOR DOSSIER CHECKLIST";
+  const chkTitleSize = 8;
   page.drawText(chkTitle, {
-    x: rightX + (rightW - chkW) / 2,
-    y: bannerY + (bannerH - chkTitleSize) / 2,
+    x: rightX,
+    y: bodyTop - 12,
     size: chkTitleSize,
     font,
-    color: COLOR_WHITE,
-  });
-
-  // Checklist footer (signature)
-  const footerH = 17;
-  const footerY = bodyBottom + 2;
-  page.drawRectangle({
-    x: rightX + 2,
-    y: footerY,
-    width: rightW - 4,
-    height: footerH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
-  });
-
-  const sigText = isRoom ? "Signature: __________________   Date: ___/___" : "Senior Sig: __________________   Date: ___/___";
-  const sigSize = 6.2;
-  const sigW = font.widthOfTextAtSize(sigText, sigSize);
-  page.drawText(sigText, {
-    x: rightX + (rightW - sigW) / 2,
-    y: footerY + (footerH - sigSize) / 2 + 1,
-    size: sigSize,
-    font,
     color: COLOR_CHARCOAL,
   });
 
-  // 5 Checklist items
+  page.drawLine({
+    start: { x: rightX, y: bodyTop - 18 },
+    end: { x: rightX + rightW, y: bodyTop - 18 },
+    thickness: 0.8,
+    color: COLOR_BORDER,
+  });
+
+  // Checklist items
   const items = isRoom
     ? [
         "1. Student Register",
@@ -1591,13 +1518,15 @@ function drawQuarterPlacard(params: {
         "5. Draft papers, pens, and IDs",
       ];
 
-  const availItemsH = bannerY - (footerY + footerH) - 4;
+  const itemsStartY = bodyTop - 22;
+  const footerH = 16;
+  const availItemsH = itemsStartY - (bodyBottom + footerH + 8);
   const rowH = availItemsH / 5;
 
   for (let i = 0; i < items.length; i++) {
-    const itemY = bannerY - (i + 1) * rowH;
+    const itemY = itemsStartY - (i + 1) * rowH;
     const boxSize = 9;
-    const boxX = rightX + 8;
+    const boxX = rightX + 2;
     const boxY = itemY + (rowH - boxSize) / 2;
 
     page.drawRectangle({
@@ -1610,26 +1539,33 @@ function drawQuarterPlacard(params: {
       borderWidth: 1,
     });
 
-    const itemText = items[i];
-    const textSize = 7;
-    page.drawText(itemText, {
+    page.drawText(items[i], {
       x: boxX + boxSize + 6,
       y: boxY + 1.5,
-      size: textSize,
+      size: 7.5,
       font,
       color: COLOR_CHARCOAL,
     });
-
-    // Light row separator
-    if (i < 4) {
-      page.drawLine({
-        start: { x: rightX + 6, y: itemY },
-        end: { x: rightX + rightW - 6, y: itemY },
-        thickness: 0.4,
-        color: COLOR_BORDER,
-      });
-    }
   }
+
+  // Footer: Simple clean signature line (NO container box)
+  page.drawLine({
+    start: { x: rightX, y: bodyBottom + footerH + 4 },
+    end: { x: rightX + rightW, y: bodyBottom + footerH + 4 },
+    thickness: 0.5,
+    color: COLOR_BORDER,
+  });
+
+  const sigText = isRoom
+    ? "Signature: __________________   Date: ___/___"
+    : "Senior Sig: __________________   Date: ___/___";
+  page.drawText(sigText, {
+    x: rightX,
+    y: bodyBottom + 2,
+    size: 6.8,
+    font,
+    color: COLOR_CHARCOAL,
+  });
 }
 
 // ---------------------------------------------------------------------------
