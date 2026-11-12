@@ -239,13 +239,13 @@ function drawA4PlacardPage(params: {
     color: COLOR_CHARCOAL,
   });
 
-  // Gold Divider Line
+  // Divider Line
   const dividerY = headerBottomY - 24;
   page.drawLine({
     start: { x: margin + 30, y: dividerY },
     end: { x: pageWidth - margin - 30, y: dividerY },
     thickness: 1.5,
-    color: COLOR_GOLD,
+    color: COLOR_CHARCOAL,
   });
 
   // --- BODY SECTION ---
@@ -1014,7 +1014,7 @@ function renderChecklistBox(params: {
     y: bannerY + (bannerHeight - headerSize) / 2 - 1,
     size: headerSize,
     font,
-    color: COLOR_GOLD,
+    color: COLOR_WHITE,
   });
 
   const availContentHeight = bannerY - y;
@@ -1329,12 +1329,12 @@ function drawQuarterPlacard(params: {
 
   headerBottom = logoY - 4;
 
-  // Gold divider
+  // Divider
   page.drawLine({
     start: { x: x + 6, y: headerBottom },
     end: { x: x + width - 6, y: headerBottom },
     thickness: 1,
-    color: COLOR_GOLD,
+    color: COLOR_CHARCOAL,
   });
 
   // Location ribbon
@@ -1413,7 +1413,7 @@ function drawQuarterPlacard(params: {
     y: bannerY + (bannerH - badgeSize) / 2,
     size: badgeSize,
     font,
-    color: COLOR_GOLD,
+    color: COLOR_WHITE,
   });
 
   // Hero bottom sub-banner (displays total students & per-exam breakdown for rooms)
@@ -1547,7 +1547,7 @@ function drawQuarterPlacard(params: {
     y: bannerY + (bannerH - chkTitleSize) / 2,
     size: chkTitleSize,
     font,
-    color: COLOR_GOLD,
+    color: COLOR_WHITE,
   });
 
   // Checklist footer (signature)
@@ -1671,7 +1671,8 @@ export interface BatchExamStickersPdfOptions {
 
 /**
  * Draws a single EST I Exam Sticker inside one quadrant of an A4 page (approx 421 x 298 pt).
- * Exactly one-quarter of an A4 page, maintaining full visual harmony with the regular stickers.
+ * Clean, Simple, 100% Black & White with Large Typography.
+ * Free of nested boxes, excessive borders, or signature lines.
  */
 function drawQuarterExamSticker(params: {
   page: any;
@@ -1691,7 +1692,7 @@ function drawQuarterExamSticker(params: {
   const width = slotWidth - margin * 2;
   const height = slotHeight - margin * 2;
 
-  // Outer framing card
+  // Single outer border (clean, simple 1.2pt black cutting frame)
   page.drawRectangle({
     x,
     y,
@@ -1722,7 +1723,7 @@ function drawQuarterExamSticker(params: {
   page.drawText(examTitle, {
     x: textStartX,
     y: logoY + 11,
-    size: 8.5,
+    size: 9,
     font,
     color: COLOR_CHARCOAL,
   });
@@ -1735,12 +1736,12 @@ function drawQuarterExamSticker(params: {
     color: COLOR_MUTED,
   });
 
-  // Copy badge at top right
+  // Copy badge at top right (Solid Black Pill with Crisp White Text)
   const copyText = `COPY ${item.copyIndex} OF ${item.totalCopies}`;
-  const copySize = 6.8;
+  const copySize = 7.5;
   const copyW = font.widthOfTextAtSize(copyText, copySize);
-  const copyBadgeW = copyW + 10;
-  const copyBadgeH = 14;
+  const copyBadgeW = copyW + 14;
+  const copyBadgeH = 16;
   const copyBadgeX = x + width - copyBadgeW - 8;
   const copyBadgeY = logoY + (logoH - copyBadgeH) / 2;
 
@@ -1749,42 +1750,28 @@ function drawQuarterExamSticker(params: {
     y: copyBadgeY,
     width: copyBadgeW,
     height: copyBadgeH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
+    color: COLOR_CHARCOAL,
   });
 
   page.drawText(copyText, {
-    x: copyBadgeX + 5,
-    y: copyBadgeY + 3.5,
+    x: copyBadgeX + (copyBadgeW - copyW) / 2,
+    y: copyBadgeY + (copyBadgeH - copySize) / 2 + 1,
     size: copySize,
     font,
-    color: COLOR_CHARCOAL,
+    color: COLOR_WHITE,
   });
 
   const headerBottom = logoY - 4;
 
-  // Gold divider
+  // Single clean divider line under header
   page.drawLine({
-    start: { x: x + 6, y: headerBottom },
-    end: { x: x + width - 6, y: headerBottom },
+    start: { x: x + 8, y: headerBottom },
+    end: { x: x + width - 8, y: headerBottom },
     thickness: 1,
-    color: COLOR_GOLD,
+    color: COLOR_CHARCOAL,
   });
 
-  // Location ribbon
-  const ribbonH = 14;
-  const ribbonY = headerBottom - 3 - ribbonH;
-  page.drawRectangle({
-    x: x + 6,
-    y: ribbonY,
-    width: width - 12,
-    height: ribbonH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
-  });
-
+  // Location string (Governorate • Center • Building • Floor) - Clean text with NO heavy bounding box
   const locItems = [
     item.governorate,
     item.center,
@@ -1792,225 +1779,144 @@ function drawQuarterExamSticker(params: {
     item.floor,
   ].filter(Boolean);
   const locText = locItems.join("  •  ");
-  let locSize = 7.2;
+  let locSize = 8;
   let locWidth = font.widthOfTextAtSize(locText, locSize);
   if (locWidth > width - 24) {
-    locSize = Math.max(6, ((width - 24) / locWidth) * locSize);
+    locSize = Math.max(6.5, ((width - 24) / locWidth) * locSize);
     locWidth = font.widthOfTextAtSize(locText, locSize);
   }
+  const locY = headerBottom - 14;
   page.drawText(locText, {
     x: x + (width - locWidth) / 2,
-    y: ribbonY + (ribbonH - locSize) / 2 + 1,
+    y: locY,
     size: locSize,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Body layout
-  const bodyTop = ribbonY - 5;
-  const bodyBottom = y + 6;
+  // Clean horizontal divider line under location
+  const divider2Y = locY - 6;
+  page.drawLine({
+    start: { x: x + 8, y: divider2Y },
+    end: { x: x + width - 8, y: divider2Y },
+    thickness: 1,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Main Body Section (Simple, Spacious, High-Visibility Typography, Zero Nested Boxes)
+  const bodyTop = divider2Y - 10;
+  const bodyBottom = y + 10;
   const bodyH = bodyTop - bodyBottom;
-  const bodyW = width - 12;
+  const bodyW = width - 16;
 
-  const leftW = Math.round(bodyW * 0.36);
-  const gap = 6;
-  const rightW = bodyW - leftW - gap;
-  const leftX = x + 6;
-  const rightX = leftX + leftW + gap;
+  const leftW = Math.round(bodyW * 0.38);
+  const leftX = x + 8;
+  const dividerX = leftX + leftW + 8;
+  const rightX = dividerX + 14;
+  const rightW = width - 12 - rightX;
 
-  const bannerH = 19;
-  const bannerY = bodyBottom + bodyH - bannerH;
-
-  // 1. LEFT HERO: ROOM
-  page.drawRectangle({
-    x: leftX,
-    y: bodyBottom,
-    width: leftW,
-    height: bodyH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.2,
+  // Single clean vertical divider line between Room and Details
+  page.drawLine({
+    start: { x: dividerX, y: bodyBottom + 8 },
+    end: { x: dividerX, y: bodyTop },
+    thickness: 1,
+    color: COLOR_BORDER,
   });
 
-  // Hero Room Banner
-  page.drawRectangle({
-    x: leftX + 1,
-    y: bannerY,
-    width: leftW - 2,
-    height: bannerH - 1,
-    color: COLOR_CHARCOAL,
-  });
-
-  const badgeText = "ROOM";
-  const badgeSize = 8.5;
-  const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
-  page.drawText(badgeText, {
-    x: leftX + (leftW - badgeW) / 2,
-    y: bannerY + (bannerH - badgeSize) / 2,
-    size: badgeSize,
+  // 1. LEFT COLUMN: ROOM (Huge, Bold, Distinct)
+  const roomLabel = "EXAM ROOM";
+  const roomLabelSize = 9;
+  const roomLabelW = font.widthOfTextAtSize(roomLabel, roomLabelSize);
+  page.drawText(roomLabel, {
+    x: leftX + (leftW - roomLabelW) / 2,
+    y: bodyTop - 16,
+    size: roomLabelSize,
     font,
-    color: COLOR_GOLD,
+    color: COLOR_MUTED,
   });
 
-  // Bottom Sub-banner
-  const subH = 17;
-  const subY = bodyBottom + 2;
-  page.drawRectangle({
-    x: leftX + 2,
-    y: subY,
-    width: leftW - 4,
-    height: subH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
-  });
-
-  const subText = "EXAM PAPERS";
-  const subSize = 6.5;
-  const subW = font.widthOfTextAtSize(subText, subSize);
-  page.drawText(subText, {
-    x: leftX + (leftW - subW) / 2,
-    y: subY + (subH - subSize) / 2 + 1,
-    size: subSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Hero room number
-  const heroAvailH = bannerY - (subY + subH);
   const heroValue = item.room || "";
-  let heroSize = 34;
+  let heroSize = 46;
   let heroW = font.widthOfTextAtSize(heroValue, heroSize);
-  if (heroW > leftW - 12) {
-    heroSize = Math.max(14, ((leftW - 12) / heroW) * heroSize);
+  if (heroW > leftW - 8) {
+    heroSize = Math.max(16, ((leftW - 8) / heroW) * heroSize);
     heroW = font.widthOfTextAtSize(heroValue, heroSize);
   }
+  const heroY = bodyBottom + (bodyH - heroSize) / 2;
   page.drawText(heroValue, {
     x: leftX + (leftW - heroW) / 2,
-    y: subY + subH + (heroAvailH - heroSize) / 2 + 2,
+    y: heroY,
     size: heroSize,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // 2. RIGHT DETAILS: EXAM SUBJECT & STUDENTS COUNT
-  page.drawRectangle({
-    x: rightX,
-    y: bodyBottom,
-    width: rightW,
-    height: bodyH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.2,
-  });
-
-  // Right Top Banner
-  page.drawRectangle({
-    x: rightX + 1,
-    y: bannerY,
-    width: rightW - 2,
-    height: bannerH - 1,
-    color: COLOR_CHARCOAL,
-  });
-
-  const bannerTitle = "EXAM SUBJECT & CANDIDATES";
-  const bannerTitleSize = 7.5;
-  const bannerTitleW = font.widthOfTextAtSize(bannerTitle, bannerTitleSize);
-  page.drawText(bannerTitle, {
-    x: rightX + (rightW - bannerTitleW) / 2,
-    y: bannerY + (bannerH - bannerTitleSize) / 2,
-    size: bannerTitleSize,
+  const packetText = "ROOM PACKET";
+  const packetSize = 7.5;
+  const packetW = font.widthOfTextAtSize(packetText, packetSize);
+  page.drawText(packetText, {
+    x: leftX + (leftW - packetW) / 2,
+    y: bodyBottom + 10,
+    size: packetSize,
     font,
-    color: COLOR_GOLD,
+    color: COLOR_MUTED,
   });
 
-  // Subject Box
-  const subjectBoxH = 34;
-  const subjectBoxY = bannerY - subjectBoxH - 6;
-
-  page.drawRectangle({
-    x: rightX + 6,
-    y: subjectBoxY,
-    width: rightW - 12,
-    height: subjectBoxH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1,
+  // 2. RIGHT COLUMN: SUBJECT & CANDIDATES
+  // Subject section
+  const subjSectionY = bodyTop - 6;
+  page.drawText("EXAMINATION SUBJECT:", {
+    x: rightX,
+    y: subjSectionY - 10,
+    size: 8,
+    font,
+    color: COLOR_MUTED,
   });
 
   const subjText = item.subject.toUpperCase();
-  let subjSize = 13.5;
+  let subjSize = 25;
   let subjW = font.widthOfTextAtSize(subjText, subjSize);
-  if (subjW > rightW - 20) {
-    subjSize = Math.max(9.5, ((rightW - 20) / subjW) * subjSize);
+  if (subjW > rightW - 10) {
+    subjSize = Math.max(13, ((rightW - 10) / subjW) * subjSize);
     subjW = font.widthOfTextAtSize(subjText, subjSize);
   }
   page.drawText(subjText, {
-    x: rightX + 6 + (rightW - 12 - subjW) / 2,
-    y: subjectBoxY + (subjectBoxH - subjSize) / 2 + 2,
+    x: rightX,
+    y: subjSectionY - 38,
     size: subjSize,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Students Count Box
-  const countBoxH = 46;
-  const countBoxY = subjectBoxY - countBoxH - 6;
-
-  page.drawRectangle({
-    x: rightX + 6,
-    y: countBoxY,
-    width: rightW - 12,
-    height: countBoxH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_GOLD,
-    borderWidth: 1.2,
+  // Clean horizontal divider in right column
+  const midDividerY = subjSectionY - 56;
+  page.drawLine({
+    start: { x: rightX, y: midDividerY },
+    end: { x: rightX + rightW - 4, y: midDividerY },
+    thickness: 0.8,
+    color: COLOR_BORDER,
   });
 
-  const countLabel = "ASSIGNED CANDIDATES FOR THIS EXAM:";
-  const countLabelSize = 6.2;
-  page.drawText(countLabel, {
-    x: rightX + 12,
-    y: countBoxY + countBoxH - 12,
-    size: countLabelSize,
+  // Candidates Count section
+  page.drawText("ASSIGNED CANDIDATES FOR THIS EXAM:", {
+    x: rightX,
+    y: midDividerY - 16,
+    size: 8,
     font,
     color: COLOR_MUTED,
   });
 
-  const countValue = `${item.studentCount} STUDENTS`;
-  const countValSize = 17;
-  const countValW = font.widthOfTextAtSize(countValue, countValSize);
+  const countValue = `${item.studentCount} CANDIDATES`;
+  let countValSize = 24;
+  let countValW = font.widthOfTextAtSize(countValue, countValSize);
+  if (countValW > rightW - 10) {
+    countValSize = Math.max(13, ((rightW - 10) / countValW) * countValSize);
+    countValW = font.widthOfTextAtSize(countValue, countValSize);
+  }
   page.drawText(countValue, {
-    x: rightX + 6 + (rightW - 12 - countValW) / 2,
-    y: countBoxY + 8,
+    x: rightX,
+    y: midDividerY - 44,
     size: countValSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Bottom section: Verification & Sign-off
-  const verifyY = bodyBottom + 4;
-  const verifyH = countBoxY - verifyY - 3;
-
-  page.drawLine({
-    start: { x: rightX + 6, y: verifyY + verifyH },
-    end: { x: rightX + rightW - 6, y: verifyY + verifyH },
-    thickness: 0.5,
-    color: COLOR_BORDER,
-  });
-
-  page.drawText("Packet: [ ] Sealed    [ ] Count Verified", {
-    x: rightX + 8,
-    y: verifyY + 12,
-    size: 6.2,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("Proctor Signature: ____________________________", {
-    x: rightX + 8,
-    y: verifyY + 2,
-    size: 6.2,
     font,
     color: COLOR_CHARCOAL,
   });
