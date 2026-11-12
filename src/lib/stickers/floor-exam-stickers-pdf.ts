@@ -495,86 +495,11 @@ function drawFloorSubjectPlacardPage(params: {
     color: COLOR_GOLD,
   });
 
-  // Bottom verification footer area inside right column
-  const footerH = 46;
-  const footerY = bodyBottom + 1;
-  const footerW = rightW - 2;
-
-  page.drawRectangle({
-    x: rightX + 1,
-    y: footerY,
-    width: footerW,
-    height: footerH,
-    color: COLOR_LIGHT_BG,
-  });
-
-  page.drawLine({
-    start: { x: rightX + 1, y: footerY + footerH },
-    end: { x: rightX + rightW - 1, y: footerY + footerH },
-    thickness: 0.8,
-    color: COLOR_BORDER,
-  });
-
-  const footerColW = footerW / 3;
-
-  page.drawText("FLOOR SUPERVISOR SIGN-OFF:", {
-    x: rightX + 14,
-    y: footerY + 30,
-    size: 7,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("________________________", {
-    x: rightX + 14,
-    y: footerY + 16,
-    size: 9,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("CONTROL ROOM VERIFICATION:", {
-    x: rightX + footerColW + 10,
-    y: footerY + 30,
-    size: 7,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("________________________", {
-    x: rightX + footerColW + 10,
-    y: footerY + 16,
-    size: 9,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("PACKING DATE & TIME:", {
-    x: rightX + footerColW * 2 + 10,
-    y: footerY + 30,
-    size: 7,
-    font,
-    color: COLOR_MUTED,
-  });
-  page.drawText("____ / ____ / 2026   ___:___", {
-    x: rightX + footerColW * 2 + 10,
-    y: footerY + 16,
-    size: 8.5,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("NOTICE: ENSURE ALL ENCLOSED ROOM PACKETS ARE VERIFIED & SEALED BEFORE PLACING INSIDE BAG", {
-    x: rightX + 14,
-    y: footerY + 5,
-    size: 6.5,
-    font,
-    color: COLOR_MUTED,
-  });
-
-  // Rooms Grid Area
-  const gridTop = bodyBottom + bodyH - 24 - 10;
-  const gridBottom = footerY + footerH + 10;
+  // Rooms Grid Area (uses full height of right column now that footer is removed)
+  const gridTop = bodyBottom + bodyH - 24 - 12;
+  const gridBottom = bodyBottom + 12;
   const gridH = gridTop - gridBottom;
-  const gridW = rightW - 20;
+  const gridW = rightW - 24;
 
   const roomItems = subject.rooms || [];
   const numRooms = roomItems.length;
@@ -583,7 +508,7 @@ function drawFloorSubjectPlacardPage(params: {
     page.drawText("No room packets assigned for this subject on this floor.", {
       x: rightX + 24,
       y: gridTop - 40,
-      size: 11,
+      size: 13,
       font,
       color: COLOR_MUTED,
     });
@@ -592,20 +517,20 @@ function drawFloorSubjectPlacardPage(params: {
 
   // Dynamic grid column calculation:
   // <= 6 rooms: 2 columns
-  // <= 16 rooms: 3 columns
-  // > 16 rooms: 4 columns
+  // <= 18 rooms: 3 columns
+  // > 18 rooms: 4 columns
   const gridCols = numRooms <= 6 ? 2 : numRooms <= 18 ? 3 : 4;
   const gridRows = Math.ceil(numRooms / gridCols);
-  const gapX = 8;
-  const gapY = 8;
+  const gapX = 10;
+  const gapY = 10;
   const rCardW = (gridW - (gridCols - 1) * gapX) / gridCols;
-  const rCardH = Math.min(48, Math.max(30, (gridH - (gridRows - 1) * gapY) / gridRows));
+  const rCardH = Math.min(56, Math.max(38, (gridH - (gridRows - 1) * gapY) / gridRows));
 
   for (let ri = 0; ri < numRooms; ri++) {
     const rItem = roomItems[ri];
     const c = ri % gridCols;
     const r = Math.floor(ri / gridCols);
-    const rx = rightX + 10 + c * (rCardW + gapX);
+    const rx = rightX + 12 + c * (rCardW + gapX);
     const ry = gridTop - (r + 1) * rCardH - r * gapY;
 
     // Room card box
@@ -616,12 +541,12 @@ function drawFloorSubjectPlacardPage(params: {
       height: rCardH,
       color: COLOR_LIGHT_BG,
       borderColor: COLOR_BORDER,
-      borderWidth: 0.8,
+      borderWidth: 1,
     });
 
     // Checkbox square
-    const boxSize = 13;
-    const boxX = rx + 8;
+    const boxSize = Math.min(18, Math.max(15, Math.round(rCardH * 0.35)));
+    const boxX = rx + 10;
     const boxY = ry + (rCardH - boxSize) / 2;
 
     page.drawRectangle({
@@ -631,49 +556,76 @@ function drawFloorSubjectPlacardPage(params: {
       height: boxSize,
       color: COLOR_WHITE,
       borderColor: COLOR_CHARCOAL,
-      borderWidth: 1.2,
+      borderWidth: 1.5,
     });
 
-    // Room Name & Count text
-    const textX = boxX + boxSize + 8;
-    const textY = ry + (rCardH - 10) / 2 + 1;
+    // Room Name & Count text - larger and bolder!
+    const textX = boxX + boxSize + 10;
+    const maxTextW = rCardW - (textX - rx) - 10;
 
     const rName = rItem.roomName;
     const rCount = rItem.candidateCount;
-    const countText = `(${rCount} ${rCount === 1 ? "Candidate" : "Candidates"})`;
+    const countLong = `(${rCount} ${rCount === 1 ? "Candidate" : "Candidates"})`;
+    const countShort = `(${rCount})`;
 
-    const maxNameW = rCardW - (textX - rx) - 10;
-    const fullText = `${rName}   ${countText}`;
+    // Larger font sizes for Enclosed Rooms
+    const nameSize = rCardH >= 46 ? 14 : 12.5;
+    const countSize = rCardH >= 46 ? 11.5 : 10.5;
 
-    if (font.widthOfTextAtSize(fullText, 9.5) <= maxNameW) {
+    const longW =
+      font.widthOfTextAtSize(rName + "   ", nameSize) + font.widthOfTextAtSize(countLong, countSize);
+    const shortW =
+      font.widthOfTextAtSize(rName + "   ", nameSize) + font.widthOfTextAtSize(countShort, countSize);
+
+    if (longW <= maxTextW) {
+      // Single line with full "(X Candidates)"
+      const textY = ry + (rCardH - nameSize) / 2 + 1;
       page.drawText(rName, {
         x: textX,
         y: textY,
-        size: 9.5,
+        size: nameSize,
         font,
         color: COLOR_CHARCOAL,
       });
-      const nameW = font.widthOfTextAtSize(rName + "   ", 9.5);
-      page.drawText(countText, {
-        x: textX + nameW,
+      const nameSpacingW = font.widthOfTextAtSize(rName + "   ", nameSize);
+      page.drawText(countLong, {
+        x: textX + nameSpacingW,
+        y: textY + 0.5,
+        size: countSize,
+        font,
+        color: COLOR_MUTED,
+      });
+    } else if (shortW <= maxTextW) {
+      // Single line with short count e.g. "(25)"
+      const textY = ry + (rCardH - nameSize) / 2 + 1;
+      page.drawText(rName, {
+        x: textX,
         y: textY,
-        size: 8.5,
+        size: nameSize,
+        font,
+        color: COLOR_CHARCOAL,
+      });
+      const nameSpacingW = font.widthOfTextAtSize(rName + "   ", nameSize);
+      page.drawText(countShort, {
+        x: textX + nameSpacingW,
+        y: textY + 0.5,
+        size: countSize,
         font,
         color: COLOR_MUTED,
       });
     } else {
-      // Two lines if narrow
+      // Two lines if narrow: Room name on top, candidates on bottom
       page.drawText(rName, {
         x: textX,
-        y: ry + rCardH / 2 + 1,
-        size: 9,
+        y: ry + rCardH / 2 + 2,
+        size: nameSize,
         font,
         color: COLOR_CHARCOAL,
       });
-      page.drawText(countText, {
+      page.drawText(countLong, {
         x: textX,
-        y: ry + rCardH / 2 - 10,
-        size: 7.5,
+        y: ry + rCardH / 2 - countSize - 1,
+        size: countSize,
         font,
         color: COLOR_MUTED,
       });
