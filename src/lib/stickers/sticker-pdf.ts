@@ -27,12 +27,12 @@ const MM_TO_PT = 2.83464567;
 const DEFAULT_WIDTH_MM = 100;
 const DEFAULT_HEIGHT_MM = 50;
 
-// Color Palette
-const COLOR_CHARCOAL = rgb(0.12, 0.12, 0.12);
-const COLOR_MUTED = rgb(0.42, 0.42, 0.42);
-const COLOR_GOLD = rgb(0.85, 0.70, 0.08); // EST yellow/gold accent
-const COLOR_LIGHT_BG = rgb(0.97, 0.97, 0.97);
-const COLOR_BORDER = rgb(0.84, 0.84, 0.84);
+// 100% Black & White Color Palette
+const COLOR_CHARCOAL = rgb(0, 0, 0);
+const COLOR_MUTED = rgb(0.28, 0.28, 0.28);
+const COLOR_GOLD = rgb(0, 0, 0); // Converted gold/yellow to crisp solid black
+const COLOR_LIGHT_BG = rgb(1, 1, 1); // Clean white background
+const COLOR_BORDER = rgb(0.75, 0.75, 0.75); // Simple clean border
 const COLOR_WHITE = rgb(1, 1, 1);
 
 // Static decoded logo bytes in memory - zero filesystem dependency
@@ -206,18 +206,7 @@ function drawA4PlacardPage(params: {
     width: pageWidth - margin * 2,
     height: pageHeight - margin * 2,
     borderColor: COLOR_CHARCOAL,
-    borderWidth: 2.5,
-  });
-
-  // Inner gold accent line
-  const innerMargin = 28;
-  page.drawRectangle({
-    x: innerMargin,
-    y: innerMargin,
-    width: pageWidth - innerMargin * 2,
-    height: pageHeight - innerMargin * 2,
-    borderColor: COLOR_GOLD,
-    borderWidth: 1,
+    borderWidth: 1.8,
   });
 
   // --- HEADER SECTION ---
@@ -858,14 +847,14 @@ function renderHeroCard(params: {
 
   // Header text
   const badgeTitle = badgeText.toUpperCase();
-  const titleSize = Math.max(11, Math.min(15, bannerHeight * 0.48));
+  const titleSize = Math.max(12, Math.min(16, bannerHeight * 0.52));
   const titleWidth = font.widthOfTextAtSize(badgeTitle, titleSize);
   page.drawText(badgeTitle, {
     x: x + (width - titleWidth) / 2,
     y: bannerY + (bannerHeight - titleSize) / 2 - 2,
     size: titleSize,
     font,
-    color: accentColor,
+    color: COLOR_WHITE,
   });
 
   // Bottom Sub-Text banner (e.g. Included Floors, Rooms, or Candidate counts) if present
@@ -1301,17 +1290,7 @@ function drawQuarterPlacard(params: {
     height,
     color: COLOR_WHITE,
     borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.6,
-  });
-
-  // Inner gold border
-  page.drawRectangle({
-    x: x + 2.5,
-    y: y + 2.5,
-    width: width - 5,
-    height: height - 5,
-    borderColor: COLOR_GOLD,
-    borderWidth: 0.75,
+    borderWidth: 1.2,
   });
 
   // Header: Logo & Exam title
@@ -1720,17 +1699,7 @@ function drawQuarterExamSticker(params: {
     height,
     color: COLOR_WHITE,
     borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.6,
-  });
-
-  // Inner gold border
-  page.drawRectangle({
-    x: x + 2.5,
-    y: y + 2.5,
-    width: width - 5,
-    height: height - 5,
-    borderColor: COLOR_GOLD,
-    borderWidth: 0.75,
+    borderWidth: 1.2,
   });
 
   // Header: Logo & Exam title

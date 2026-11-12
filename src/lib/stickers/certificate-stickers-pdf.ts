@@ -33,7 +33,7 @@ export interface CertificateStickersOptions {
 
 // 100% Black & White Palette
 const COLOR_BLACK = rgb(0, 0, 0);
-const COLOR_DARK_GRAY = rgb(0.28, 0.28, 0.28);
+const COLOR_DARK_GRAY = rgb(0.25, 0.25, 0.25);
 const COLOR_LIGHT_GRAY = rgb(0.85, 0.85, 0.85);
 const COLOR_WHITE = rgb(1, 1, 1);
 
@@ -53,6 +53,35 @@ async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
   }
 
   return await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+}
+
+function isArabic(text: string): boolean {
+  return /[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFC]/.test(text);
+}
+
+function normalizeReportItem(item: string): string {
+  const map: Record<string, string> = {
+    "يناير": "January",
+    "فبراير": "February",
+    "مارس": "March",
+    "أبريل": "April",
+    "ابريل": "April",
+    "مايو": "May",
+    "يونيو": "June",
+    "يوليو": "July",
+    "أغسطس": "August",
+    "اغسطس": "August",
+    "سبتمبر": "September",
+    "أكتوبر": "October",
+    "اكتوبر": "October",
+    "نوفمبر": "November",
+    "ديسمبر": "December",
+  };
+  let res = item;
+  for (const [ar, en] of Object.entries(map)) {
+    res = res.replace(new RegExp(ar, "g"), en);
+  }
+  return res.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -75,7 +104,7 @@ export async function generateCertificateStickersPdf(
           serialNumber: "128",
           studentName: "يارا رمضان يوسف ابو الخير",
           totalReports: 2,
-          reportsList: "يناير 2026 - EST I، ومارس 2026 - EST II",
+          reportsList: "January 2026 - EST I; March 2026 - EST II",
           batchName: options.batchName || "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
           certificateCode: "EST-REP-0128",
         },
@@ -121,10 +150,6 @@ export async function generateCertificateStickersPdf(
   return await pdfDoc.save();
 }
 
-function isArabic(text: string): boolean {
-  return /[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFC]/.test(text);
-}
-
 function drawSimpleBwCertificateSticker(params: {
   page: any;
   font: any;
@@ -146,7 +171,7 @@ function drawSimpleBwCertificateSticker(params: {
   const batchName = (student.batchName || globalOptions.batchName || "Official Report Batch").trim();
   const certCode = student.certificateCode || (student.seatNumber ? `EST-${student.seatNumber}` : `EST-REP-${String(serial).padStart(4, "0")}`);
 
-  // 1. Single Outer Border (Clean 1pt Black Frame for precise cutting)
+  // 1. Single Outer Border (Clean 1pt Black Frame for precise cutting - no nested boxes)
   page.drawRectangle({
     x,
     y,
@@ -260,7 +285,7 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  // Divider Line 1
+  // Single Clean Divider Line 1
   page.drawLine({
     start: { x: x + 10, y: nameSectionY + 6 },
     end: { x: x + width - 10, y: nameSectionY + 6 },
@@ -272,7 +297,7 @@ function drawSimpleBwCertificateSticker(params: {
   const summaryY = nameSectionY - 36;
 
   // Total Reports
-  page.drawText("TOTAL REPORTS / إجمالي التقارير:", {
+  page.drawText("TOTAL REPORTS:", {
     x: x + 12,
     y: summaryY + 22,
     size: 8,
@@ -290,8 +315,7 @@ function drawSimpleBwCertificateSticker(params: {
   });
 
   // Tracking Code on Right
-  const trackLabel = "TRACKING / DISPATCH ID:";
-  page.drawText(trackLabel, {
+  page.drawText("TRACKING / DISPATCH ID:", {
     x: x + 200,
     y: summaryY + 22,
     size: 8,
@@ -307,7 +331,7 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  // Divider Line 2
+  // Single Clean Divider Line 2
   page.drawLine({
     start: { x: x + 10, y: summaryY - 4 },
     end: { x: x + width - 10, y: summaryY - 4 },
@@ -318,7 +342,7 @@ function drawSimpleBwCertificateSticker(params: {
   // 5. Reports List (Simple, Clear, Large Font)
   const listY = summaryY - 68;
 
-  page.drawText("REPORTS LIST / قائمة التقارير:", {
+  page.drawText("ENCLOSED SCORE REPORTS:", {
     x: x + 12,
     y: listY + 52,
     size: 8.5,
@@ -326,8 +350,12 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  // Format list items
-  const reportsParts = rawReportsList.split(/[;؛،,]/).map((p) => p.trim()).filter(Boolean);
+  // Normalize any Arabic month to standard English session name to prevent RTL bidi flip
+  const normalizedRaw = normalizeReportItem(rawReportsList);
+  const reportsParts = normalizedRaw
+    .split(/[;؛,]|\s+و\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   if (reportsParts.length > 1) {
     let curItemY = listY + 34;
@@ -336,17 +364,17 @@ function drawSimpleBwCertificateSticker(params: {
       page.drawText(itemText, {
         x: x + 14,
         y: curItemY,
-        size: 11.5,
+        size: 12,
         font,
         color: COLOR_BLACK,
       });
-      curItemY -= 16;
+      curItemY -= 17;
     }
   } else {
-    page.drawText(rawReportsList, {
+    page.drawText(normalizedRaw, {
       x: x + 14,
       y: listY + 28,
-      size: 13,
+      size: 13.5,
       font,
       color: COLOR_BLACK,
     });

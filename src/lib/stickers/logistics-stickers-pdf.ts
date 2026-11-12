@@ -40,15 +40,16 @@ export interface LogisticsStickerOptions {
   notes?: string;
 }
 
-// Color Palette matching EST official branding
-const COLOR_CHARCOAL = rgb(0.12, 0.12, 0.12);
-const COLOR_MUTED = rgb(0.42, 0.42, 0.42);
-const COLOR_GOLD = rgb(0.85, 0.70, 0.08); // EST yellow/gold accent
-const COLOR_LIGHT_BG = rgb(0.97, 0.97, 0.97);
-const COLOR_BORDER = rgb(0.82, 0.82, 0.82);
+// 100% Black & White Palette
+const COLOR_BLACK = rgb(0, 0, 0);
+const COLOR_CHARCOAL = rgb(0, 0, 0);
+const COLOR_MUTED = rgb(0.28, 0.28, 0.28);
+const COLOR_GOLD = rgb(0, 0, 0); // Solid black
+const COLOR_LIGHT_BG = rgb(1, 1, 1); // Clean white background
+const COLOR_BORDER = rgb(0.75, 0.75, 0.75); // Clean simple border
 const COLOR_WHITE = rgb(1, 1, 1);
-const COLOR_EMERGENCY_RED = rgb(0.78, 0.12, 0.12);
-const COLOR_EMERGENCY_LIGHT = rgb(0.99, 0.94, 0.94);
+const COLOR_EMERGENCY_RED = rgb(0, 0, 0);
+const COLOR_EMERGENCY_LIGHT = rgb(1, 1, 1);
 
 // Static decoded logo bytes in memory - zero filesystem dependency
 const LOGO_JPEG_BYTES: Uint8Array = new Uint8Array(Buffer.from(EST_LOGO_BASE64, "base64"));
@@ -362,17 +363,7 @@ export async function generateBuildingCartonStickerPdf(
     height: cardH,
     color: COLOR_WHITE,
     borderColor: COLOR_CHARCOAL,
-    borderWidth: 2.2,
-  });
-
-  // Inner Gold Accent border
-  page.drawRectangle({
-    x: cardX + 4,
-    y: cardY + 4,
-    width: cardW - 8,
-    height: cardH - 8,
-    borderColor: COLOR_GOLD,
-    borderWidth: 1.2,
+    borderWidth: 1.6,
   });
 
   // Header Bar
