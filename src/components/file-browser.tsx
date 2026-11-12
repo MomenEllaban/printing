@@ -59,6 +59,7 @@ import { BatchStickersDialog } from "./batch-stickers-dialog";
 import { StickerPreviewModal } from "./sticker-preview-modal";
 import { AddProctorDialog } from "./add-proctor-dialog";
 import { ExcelViewerModal } from "./excel-viewer-modal";
+import { BreadcrumbDropdownItem } from "./breadcrumb-dropdown";
 import { useI18n } from "./locale-provider";
 import { useActiveProfile } from "./profile-provider";
 import { cn } from "@/lib/cn";
@@ -2774,33 +2775,28 @@ export function FileBrowser({
 
       {showBreadcrumbs && (
         <nav className="flex flex-wrap items-center gap-1.5 text-sm text-muted" aria-label="Breadcrumb">
-          {breadcrumbs.map((crumb, index) => (
-            <span key={crumb.id} className="flex items-center gap-1.5">
-              {index > 0 && <span className="text-muted/50">/</span>}
-              <button
-                type="button"
-                onClick={() => navigateFolder(crumb.id)}
-                onDragOver={(e) => handleDragOverFolder(e, crumb)}
-                onDragLeave={(e) => handleDragLeaveFolder(e, crumb)}
-                onDrop={(e) => handleDropOnFolder(e, crumb)}
-                className={cn(
-                  "rounded-lg px-2 py-0.5 hover:bg-surface-strong hover:text-foreground cursor-pointer transition-all",
-                  currentFolder?.id === crumb.id && "font-semibold text-foreground",
-                  dragOverFolderId === crumb.id &&
-                  "bg-accent/20 ring-2 ring-accent text-accent font-bold scale-105 shadow-xs",
-                )}
-                title={
-                  draggedItem && currentFolder?.id !== crumb.id
-                    ? locale === "ar"
-                      ? `إفلات لنقل "${draggedItem.name}" إلى مجلد "${crumb.name}"`
-                      : `Drop to move "${draggedItem.name}" into "${crumb.name}"`
-                    : undefined
-                }
-              >
-                {crumb.name}
-              </button>
-            </span>
-          ))}
+          {breadcrumbs.map((crumb, index) => {
+            const parentCrumb = index > 0 ? breadcrumbs[index - 1] : null;
+            return (
+              <span key={crumb.id} className="flex items-center gap-1.5">
+                {index > 0 && <span className="text-muted/50 select-none">/</span>}
+                <BreadcrumbDropdownItem
+                  crumb={crumb}
+                  parentCrumb={parentCrumb}
+                  isCurrent={currentFolder?.id === crumb.id}
+                  isDragOver={dragOverFolderId === crumb.id}
+                  draggedItem={draggedItem}
+                  locale={locale as Locale}
+                  onNavigate={navigateFolder}
+                  onDragOver={handleDragOverFolder}
+                  onDragLeave={handleDragLeaveFolder}
+                  onDrop={handleDropOnFolder}
+                  folderChildren={folderChildren}
+                  fetchFolderChildren={fetchFolderChildren}
+                />
+              </span>
+            );
+          })}
         </nav>
       )}
 
