@@ -118,7 +118,13 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
     >();
 
     for (const f of rawFloors) {
-      const flKey = f.floor.trim().toLowerCase();
+      // Normalize floor key to prevent duplicate cards (e.g. "3rd Floor", "Floor 3", "3rd")
+      const flKey = f.floor
+        .trim()
+        .toLowerCase()
+        .replace(/^(the\s+|floor\s*)/i, "")
+        .replace(/\s*floor$/i, "")
+        .trim();
       let entry = floorMap.get(flKey);
       if (!entry) {
         entry = {
@@ -133,27 +139,24 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
         if (!rName) continue;
         const rKey = rName.toLowerCase();
         if (!entry.roomsMap.has(rKey)) {
+          // Strictly use real student count if present, otherwise 0 (NO fake 25 fallback)
           const sCount =
             typeof r === "object" && r !== null && typeof r.studentCount === "number" && r.studentCount > 0
               ? r.studentCount
-              : 25;
+              : 0;
           const sText = typeof r === "object" && r !== null ? r.subjectsText : undefined;
 
-          let est1C = typeof r === "object" && r !== null && typeof r.est1Count === "number" ? r.est1Count : undefined;
-          let est1S = typeof r === "object" && r !== null ? r.est1Subjects : undefined;
-          let est2C = typeof r === "object" && r !== null && typeof r.est2Count === "number" ? r.est2Count : undefined;
-          let est2S = typeof r === "object" && r !== null ? r.est2Subjects : undefined;
+          let est1C = typeof r === "object" && r !== null && typeof r.est1Count === "number" && r.est1Count > 0 ? r.est1Count : undefined;
+          let est1S = typeof r === "object" && r !== null && r.est1Subjects ? r.est1Subjects : undefined;
+          let est2C = typeof r === "object" && r !== null && typeof r.est2Count === "number" && r.est2Count > 0 ? r.est2Count : undefined;
+          let est2S = typeof r === "object" && r !== null && r.est2Subjects ? r.est2Subjects : undefined;
 
           if (isEst2Selected) {
-            if (est2C === undefined) est2C = sCount;
-            if (!est2S) est2S = sText || "Math 1, Math 2, Bio, Chem";
-            if (est1C === undefined) est1C = 25;
-            if (!est1S) est1S = "Literacy (25) • Math (25) • Essay: NO";
+            if (est2C === undefined && sCount > 0) est2C = sCount;
+            if (!est2S && sText) est2S = sText;
           } else {
-            if (est1C === undefined) est1C = sCount;
-            if (!est1S) est1S = sText || "Literacy (25) • Math (25) • Essay: NO";
-            if (est2C === undefined) est2C = 25;
-            if (!est2S) est2S = "Math 1, Math 2, Bio, Chem";
+            if (est1C === undefined && sCount > 0) est1C = sCount;
+            if (!est1S && sText) est1S = sText;
           }
 
           const isAssn = typeof r === "object" && r !== null ? Boolean(r.isAssn) : false;
@@ -176,9 +179,9 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
       const sortedRooms = Array.from(entry.roomsMap.values()).sort((a, b) =>
         a.room.localeCompare(b.room, undefined, { numeric: true }),
       );
-      const totalStudents = sortedRooms.reduce((sum, r) => sum + (r.studentCount || 25), 0);
-      const est1Students = sortedRooms.reduce((sum, r) => sum + (r.est1Count !== undefined ? r.est1Count : 25), 0);
-      const est2Students = sortedRooms.reduce((sum, r) => sum + (r.est2Count !== undefined ? r.est2Count : 25), 0);
+      const totalStudents = sortedRooms.reduce((sum, r) => sum + (r.studentCount || 0), 0);
+      const est1Students = sortedRooms.reduce((sum, r) => sum + (r.est1Count || 0), 0);
+      const est2Students = sortedRooms.reduce((sum, r) => sum + (r.est2Count || 0), 0);
       return {
         floor: entry.floor,
         rooms: sortedRooms,
@@ -201,7 +204,7 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
       });
       const sumStudents =
         f.totalStudents ??
-        normalizedRooms.reduce((sum, r) => sum + (r.studentCount || 25), 0);
+        normalizedRooms.reduce((sum, r) => sum + (r.studentCount || 0), 0);
       return {
         floor: f.floor,
         rooms: normalizedRooms,
@@ -230,15 +233,15 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
           floor: fl.floorName,
           rooms: fl.rooms.map((rm) => ({
             room: rm,
-            studentCount: 25,
-            est1Count: 25,
-            est1Subjects: "Literacy (25) • Math (25) • Essay: NO",
-            est2Count: 25,
-            est2Subjects: "Math 1, Math 2, Bio, Chem",
+            studentCount: 0,
+            est1Count: undefined,
+            est1Subjects: undefined,
+            est2Count: undefined,
+            est2Subjects: undefined,
           })),
-          totalStudents: fl.rooms.length * 25,
-          est1Students: fl.rooms.length * 25,
-          est2Students: fl.rooms.length * 25,
+          totalStudents: 0,
+          est1Students: 0,
+          est2Students: 0,
         })),
       );
     }
@@ -257,8 +260,8 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
         const fl = row.floor || "General Floor";
         const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
         if (row.room && !entry.rooms.some((rm) => rm.room.toLowerCase() === row.room.toLowerCase())) {
-          entry.rooms.push({ room: row.room, studentCount: row.studentsEst1 || 25 });
-          entry.totalStudents += (row.studentsEst1 || 25);
+          entry.rooms.push({ room: row.room, studentCount: row.studentsEst1 || 0 });
+          entry.totalStudents += (row.studentsEst1 || 0);
         }
         floorMap.set(fl, entry);
       }
@@ -273,7 +276,7 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
 
   // 4. If roomNames provided, infer floors
   if (options.roomNames && options.roomNames.length > 0) {
-    const floorMap = new Map<string, { rooms: { room: string }[]; totalStudents: number }>();
+    const floorMap = new Map<string, { rooms: { room: string; studentCount?: number }[]; totalStudents: number }>();
     for (const rName of options.roomNames) {
       const clean = rName.trim();
       let fl = "General Floor";
@@ -290,8 +293,7 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
       }
       const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
       if (!entry.rooms.some((rm) => rm.room.toLowerCase() === clean.toLowerCase())) {
-        entry.rooms.push({ room: clean });
-        entry.totalStudents += 25;
+        entry.rooms.push({ room: clean, studentCount: 0 });
       }
       floorMap.set(fl, entry);
     }
@@ -307,13 +309,13 @@ export function normalizeFloorsData(options: LogisticsStickerOptions): Normalize
   return [
     {
       floor: "2nd Floor",
-      rooms: [{ room: "201" }, { room: "202" }, { room: "203" }],
-      totalStudents: 75,
+      rooms: [{ room: "201", studentCount: 0 }, { room: "202", studentCount: 0 }, { room: "203", studentCount: 0 }],
+      totalStudents: 0,
     },
     {
       floor: "3rd Floor",
-      rooms: [{ room: "301" }, { room: "302" }, { room: "303" }],
-      totalStudents: 75,
+      rooms: [{ room: "301", studentCount: 0 }, { room: "302", studentCount: 0 }, { room: "303", studentCount: 0 }],
+      totalStudents: 0,
     },
   ];
 }
@@ -347,7 +349,10 @@ export async function generateBuildingCartonStickerPdf(
   const floors = normalizeFloorsData(options);
   const totalFloorsCount = floors.length;
   const totalRoomsCount = floors.reduce((sum, f) => sum + f.rooms.length, 0);
-  const totalStudentsCount = options.totalStudents || floors.reduce((sum, f) => sum + f.totalStudents, 0);
+  const totalStudentsCount =
+    typeof options.totalStudents === "number" && options.totalStudents > 0
+      ? options.totalStudents
+      : floors.reduce((sum, f) => sum + (f.totalStudents || 0), 0);
 
   // Outer framing card
   page.drawRectangle({
@@ -619,7 +624,7 @@ export async function generateBuildingCartonStickerPdf(
     font,
     color: COLOR_MUTED,
   });
-  page.drawText(`${totalStudentsCount} CANDIDATES`, {
+  page.drawText(totalStudentsCount > 0 ? `${totalStudentsCount} CANDIDATES` : "0 CANDIDATES", {
     x: leftX + 16,
     y: stat3Y + 20,
     size: 20,
@@ -721,8 +726,11 @@ export async function generateBuildingCartonStickerPdf(
       color: COLOR_CHARCOAL,
     });
 
-    // Floor Badge (right): "3 Rooms • 80 Candidates"
-    const badgeText = `${fl.rooms.length} Rooms  •  ${fl.totalStudents} Candidates`;
+    // Floor Badge (right): "3 Rooms • 80 Candidates" or "3 Rooms • Pending Upload"
+    const badgeText =
+      fl.totalStudents > 0
+        ? `${fl.rooms.length} Rooms  •  ${fl.totalStudents} Candidates`
+        : `${fl.rooms.length} Rooms  •  Pending Upload`;
     const badgeW = font.widthOfTextAtSize(badgeText, 7.5);
     page.drawText(badgeText, {
       x: fx + fCardW - badgeW - 8,
@@ -1279,11 +1287,11 @@ export async function drawMasterBuildingManifestPage(
   const allRooms = normalizedFloors.flatMap((f) => f.rooms);
   const totalRooms = allRooms.length;
   const totalEst1 = normalizedFloors.reduce(
-    (sum, f) => sum + (f.est1Students ?? f.rooms.reduce((s, r) => s + (r.est1Count !== undefined ? r.est1Count : 25), 0)),
+    (sum, f) => sum + (f.est1Students ?? f.rooms.reduce((s, r) => s + (r.est1Count || 0), 0)),
     0,
   );
   const totalEst2 = normalizedFloors.reduce(
-    (sum, f) => sum + (f.est2Students ?? f.rooms.reduce((s, r) => s + (r.est2Count !== undefined ? r.est2Count : 25), 0)),
+    (sum, f) => sum + (f.est2Students ?? f.rooms.reduce((s, r) => s + (r.est2Count || 0), 0)),
     0,
   );
   const grandTotal = totalEst1 + totalEst2;
@@ -1295,9 +1303,9 @@ export async function drawMasterBuildingManifestPage(
   const kpiItems = [
     { label: "TOTAL FLOORS", val: `${totalFloors} Floors` },
     { label: "ENCLOSED ROOMS", val: `${totalRooms} Rooms` },
-    { label: "EST I CANDIDATES", val: `${totalEst1} Candidates` },
-    { label: "EST II CANDIDATES", val: `${totalEst2} Candidates` },
-    { label: "TOTAL ALLOCATIONS", val: `${grandTotal} Sessions` },
+    { label: "EST I CANDIDATES", val: totalEst1 > 0 ? `${totalEst1} Candidates` : "0 (Pending)" },
+    { label: "EST II CANDIDATES", val: totalEst2 > 0 ? `${totalEst2} Candidates` : "0 (Pending)" },
+    { label: "TOTAL ALLOCATIONS", val: grandTotal > 0 ? `${grandTotal} Sessions` : "0 Sessions" },
   ];
 
   kpiItems.forEach((item, i) => {
@@ -1479,9 +1487,12 @@ export async function drawMasterBuildingManifestPage(
       borderWidth: 0.5,
     });
 
-    const floorEst1 = fl.est1Students ?? fl.rooms.reduce((s, r) => s + (r.est1Count !== undefined ? r.est1Count : 25), 0);
-    const floorEst2 = fl.est2Students ?? fl.rooms.reduce((s, r) => s + (r.est2Count !== undefined ? r.est2Count : 25), 0);
-    const floorText = `${fl.floor.toUpperCase()}  —  ${fl.rooms.length} ROOMS  ( ${floorEst1} EST I  •  ${floorEst2} EST II )`;
+    const floorEst1 = fl.est1Students ?? fl.rooms.reduce((s, r) => s + (r.est1Count || 0), 0);
+    const floorEst2 = fl.est2Students ?? fl.rooms.reduce((s, r) => s + (r.est2Count || 0), 0);
+    const floorText =
+      floorEst1 > 0 || floorEst2 > 0
+        ? `${fl.floor.toUpperCase()}  —  ${fl.rooms.length} ROOMS  ( ${floorEst1} EST I  •  ${floorEst2} EST II )`
+        : `${fl.floor.toUpperCase()}  —  ${fl.rooms.length} ROOMS  ( Pending File Upload )`;
 
     page.drawText(floorText, {
       x: tableX + 10,
@@ -1526,59 +1537,60 @@ export async function drawMasterBuildingManifestPage(
         color: COLOR_CHARCOAL,
       });
 
-      // 2. EST 1 Subjects
-      let e1Subj = rm.est1Subjects || "Literacy (25) • Math (25)";
+      // 2. EST 1 Subjects (Real parsed subjects only, or "—" if not uploaded yet)
+      let e1Subj = rm.est1Subjects || "—";
       if (e1Subj.length > 34) e1Subj = e1Subj.slice(0, 32) + "...";
       page.drawText(e1Subj, {
         x: cX_est1Subj + 6,
         y: currentY + (calculatedRowH - fontSize) / 2 + 1,
         size: fontSize,
         font,
-        color: COLOR_CHARCOAL,
+        color: rm.est1Subjects ? COLOR_CHARCOAL : COLOR_MUTED,
       });
 
-      // 3. EST 1 Count (Centered)
-      const e1Cnt = String(rm.est1Count !== undefined ? rm.est1Count : 25);
+      // 3. EST 1 Count (Centered - Real count or "—" if empty)
+      const e1Cnt = rm.est1Count !== undefined && rm.est1Count > 0 ? String(rm.est1Count) : "—";
       const e1W = font.widthOfTextAtSize(e1Cnt, fontSize + 0.5);
       page.drawText(e1Cnt, {
         x: cX_est1Cand + (colW_est1Cand - e1W) / 2,
         y: currentY + (calculatedRowH - fontSize) / 2 + 1,
         size: fontSize + 0.5,
         font,
-        color: COLOR_CHARCOAL,
+        color: rm.est1Count ? COLOR_CHARCOAL : COLOR_MUTED,
       });
 
-      // 4. EST 2 Subjects
-      let e2Subj = rm.est2Subjects || "Math 1, Math 2, Bio, Chem";
+      // 4. EST 2 Subjects (Real parsed subjects only, or "—" if not uploaded yet)
+      let e2Subj = rm.est2Subjects || "—";
       if (e2Subj.length > 34) e2Subj = e2Subj.slice(0, 32) + "...";
       page.drawText(e2Subj, {
         x: cX_est2Subj + 6,
         y: currentY + (calculatedRowH - fontSize) / 2 + 1,
         size: fontSize,
         font,
-        color: COLOR_CHARCOAL,
+        color: rm.est2Subjects ? COLOR_CHARCOAL : COLOR_MUTED,
       });
 
-      // 5. EST 2 Count (Centered)
-      const e2Cnt = String(rm.est2Count !== undefined ? rm.est2Count : 25);
+      // 5. EST 2 Count (Centered - Real count or "—" if empty)
+      const e2Cnt = rm.est2Count !== undefined && rm.est2Count > 0 ? String(rm.est2Count) : "—";
       const e2W = font.widthOfTextAtSize(e2Cnt, fontSize + 0.5);
       page.drawText(e2Cnt, {
         x: cX_est2Cand + (colW_est2Cand - e2W) / 2,
         y: currentY + (calculatedRowH - fontSize) / 2 + 1,
         size: fontSize + 0.5,
         font,
-        color: COLOR_CHARCOAL,
+        color: rm.est2Count ? COLOR_CHARCOAL : COLOR_MUTED,
       });
 
-      // 6. Total Count
-      const rTotal = String((rm.est1Count !== undefined ? rm.est1Count : 25) + (rm.est2Count !== undefined ? rm.est2Count : 25));
+      // 6. Total Count (Centered - Real combined allocations or "—" if 0)
+      const rSum = (rm.est1Count || 0) + (rm.est2Count || 0);
+      const rTotal = rSum > 0 ? String(rSum) : "—";
       const totW = font.widthOfTextAtSize(rTotal, fontSize + 0.5);
       page.drawText(rTotal, {
         x: cX_total + (colW_total - totW) / 2,
         y: currentY + (calculatedRowH - fontSize) / 2 + 1,
         size: fontSize + 0.5,
         font,
-        color: COLOR_GOLD,
+        color: rSum > 0 ? COLOR_GOLD : COLOR_MUTED,
       });
     }
   }

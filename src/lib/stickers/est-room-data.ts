@@ -30,7 +30,7 @@ export interface Est1RoomExamCounts {
   essayCount: number;
   essayStatus: "YES" | "NO";
   hasEssay: boolean;
-  source: "file" | "reference" | "default";
+  source: "file" | "reference" | "default" | "empty";
 }
 
 /**
@@ -438,46 +438,36 @@ export function getRoomExamCounts(params: {
     };
   }
 
-  // 3. Clean default fallback
+  // 3. Clean default fallback: when no files are uploaded to the room yet,
+  // return 0 students and empty subjects (NO hardcoded fake counts).
   if (isEst2Context) {
-    const subjects: RoomSubjectCount[] = [
-      { code: "MATH1", name: "Math 1", displayName: "EST II – Math 1", count: 25, copies: 2 },
-      { code: "MATH2", name: "Math 2", displayName: "EST II – Math 2", count: 25, copies: 2 },
-      { code: "BIO", name: "Biology", displayName: "EST II – Biology", count: 25, copies: 2 },
-      { code: "CHEM", name: "Chemistry", displayName: "EST II – Chemistry", count: 25, copies: 2 },
-      { code: "PHY", name: "Physics", displayName: "EST II – Physics", count: 25, copies: 2 },
-    ];
     return {
       room: params.room,
       examType: "EST 2",
-      totalStudents: 25,
-      subjects,
-      breakdownText: "MATH1: 25  |  MATH2: 25  |  BIO: 25  |  CHEM: 25  |  PHY: 25",
+      totalStudents: 0,
+      subjects: [],
+      breakdownText: "",
       litCount: 0,
       mathCount: 0,
       essayCount: 0,
       essayStatus: "NO",
       hasEssay: false,
-      source: "default",
+      source: "empty",
     };
   }
 
-  const defaultEst1Subjects: RoomSubjectCount[] = [
-    { code: "LIT", name: "Literacy", displayName: "EST I – Literacy", count: 25, copies: 2 },
-    { code: "MATH", name: "Math", displayName: "EST I – Math", count: 25, copies: 2 },
-  ];
   return {
     room: params.room,
     examType: "EST 1",
-    totalStudents: 25,
-    subjects: defaultEst1Subjects,
-    breakdownText: "LIT: 25  |  MATH: 25",
-    litCount: 25,
-    mathCount: 25,
+    totalStudents: 0,
+    subjects: [],
+    breakdownText: "",
+    litCount: 0,
+    mathCount: 0,
     essayCount: 0,
     essayStatus: "NO",
     hasEssay: false,
-    source: "default",
+    source: "empty",
   };
 }
 

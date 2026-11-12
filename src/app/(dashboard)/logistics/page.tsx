@@ -324,7 +324,7 @@ export default function LogisticsHubPage() {
                   const rKey = rName.toLowerCase();
                   if (!roomsMap.has(rKey)) {
                     const rFiles = allFiles.filter((file) => file.parentId === rf.id);
-                    let stdCount = 25;
+                    let stdCount: number | undefined = undefined;
                     let subjText: string | undefined;
 
                     for (const rfFile of rFiles) {
@@ -338,7 +338,7 @@ export default function LogisticsHubPage() {
 
                     roomsMap.set(rKey, {
                       room: rName,
-                      studentCount: stdCount,
+                      studentCount: stdCount || 0,
                       subjectsText: subjText,
                     });
                   }
@@ -354,7 +354,7 @@ export default function LogisticsHubPage() {
                   if (!roomsMap.has(rKey)) {
                     roomsMap.set(rKey, {
                       room: roomName,
-                      studentCount: parsed?.totalStudents || 25,
+                      studentCount: parsed?.totalStudents || 0,
                       subjectsText: parsed?.breakdownText,
                     });
                   }
@@ -374,7 +374,7 @@ export default function LogisticsHubPage() {
                 );
                 if (officialFloor) {
                   for (const rm of officialFloor.rooms) {
-                    roomsMap.set(rm.toLowerCase(), { room: rm, studentCount: 25 });
+                    roomsMap.set(rm.toLowerCase(), { room: rm, studentCount: 0 });
                   }
                 }
               }
@@ -386,7 +386,7 @@ export default function LogisticsHubPage() {
               return {
                 floor: fe.floorName,
                 rooms: sortedRooms,
-                totalStudents: sortedRooms.reduce((sum, r) => sum + r.studentCount, 0),
+                totalStudents: sortedRooms.reduce((sum, r) => sum + (r.studentCount || 0), 0),
               };
             });
 
@@ -406,8 +406,8 @@ export default function LogisticsHubPage() {
                 setLiveFloors(
                   official.floors.map((fl) => ({
                     floor: fl.floorName,
-                    rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 25 })),
-                    totalStudents: fl.rooms.length * 25,
+                    rooms: fl.rooms.map((rm) => ({ room: rm, studentCount: 0 })),
+                    totalStudents: 0,
                   })),
                 );
               } else {
@@ -751,8 +751,8 @@ export default function LogisticsHubPage() {
           center: activeCenterName,
           building: activeBuildingName,
           date: selectedSessionName,
-          totalRooms: String(totalRoomsCount || 12),
-          totalStudents: String(totalCandidatesCount || 300),
+          totalRooms: String(totalRoomsCount || 0),
+          totalStudents: String(totalCandidatesCount || 0),
           roomNames: JSON.stringify(allRoomNames),
           floors: JSON.stringify(liveFloors),
           boxNumber: String(boxNumber),
@@ -1153,17 +1153,25 @@ export default function LogisticsHubPage() {
                   <span>{totalRoomsCount} {isAr ? "قاعات / لجان" : "Rooms"}</span>
                 </span>
                 <span className="text-muted/60">•</span>
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                  {est1TotalCandidates || totalCandidatesCount} {isAr ? "طالب EST 1" : "EST I"}
-                </span>
-                <span className="text-muted/60">•</span>
-                <span className="font-bold text-purple-600 dark:text-purple-400">
-                  {est2TotalCandidates || totalCandidatesCount} {isAr ? "طالب EST 2" : "EST II"}
-                </span>
-                <span className="text-muted/60">•</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                  {(est1TotalCandidates || totalCandidatesCount) + (est2TotalCandidates || totalCandidatesCount)} {isAr ? "إجمالي الحصر" : "Grand Total"}
-                </span>
+                {est1TotalCandidates > 0 || est2TotalCandidates > 0 || totalCandidatesCount > 0 ? (
+                  <>
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                      {est1TotalCandidates || totalCandidatesCount} {isAr ? "طالب EST 1" : "EST I"}
+                    </span>
+                    <span className="text-muted/60">•</span>
+                    <span className="font-bold text-purple-600 dark:text-purple-400">
+                      {est2TotalCandidates || 0} {isAr ? "طالب EST 2" : "EST II"}
+                    </span>
+                    <span className="text-muted/60">•</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      {(est1TotalCandidates || totalCandidatesCount) + (est2TotalCandidates || 0)} {isAr ? "إجمالي الحصر" : "Grand Total"}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] font-semibold text-muted italic">
+                    {isAr ? "0 طالب مسجل (في انتظار رفع ملفات القاعات)" : "0 Candidates (Awaiting Room Files Upload)"}
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -1222,28 +1230,48 @@ export default function LogisticsHubPage() {
                   <div className="flex items-center justify-between font-bold text-foreground mb-1.5 border-b border-border/40 pb-1">
                     <span>🏢 {fl.floor}</span>
                     <span className="text-[10px] text-muted font-mono">
-                      {fl.rooms.length} {isAr ? "لجان" : "rooms"} ({fl.totalStudents} {isAr ? "طالب" : "cand."})
+                      {fl.rooms.length} {isAr ? "لجان" : "rooms"}
+                      {" • "}
+                      {fl.totalStudents > 0
+                        ? `${fl.totalStudents} ${isAr ? "طالب" : "cand."}`
+                        : isAr
+                        ? "في انتظار الرفع"
+                        : "Pending Upload"}
                     </span>
                   </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {fl.rooms.map((rm) => (
-                        <span
-                          key={rm.room}
-                          title={
-                            (rm.est1Subjects ? `EST I: ${rm.est1Subjects}\n` : "") +
-                            (rm.est2Subjects ? `EST II: ${rm.est2Subjects}` : "")
-                          }
-                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-soft border border-border text-[10.5px] font-mono text-foreground hover:border-indigo-500/50 transition-colors"
-                        >
-                          <span className="font-bold">{rm.room}</span>
-                          <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">
-                            E1:{rm.est1Count ?? rm.studentCount}
+                      {fl.rooms.map((rm) => {
+                        const hasE1 = rm.est1Count !== undefined && rm.est1Count > 0;
+                        const hasE2 = rm.est2Count !== undefined && rm.est2Count > 0;
+                        const hasStd = rm.studentCount !== undefined && rm.studentCount > 0;
+                        return (
+                          <span
+                            key={rm.room}
+                            title={
+                              (rm.est1Subjects ? `EST I: ${rm.est1Subjects}\n` : "") +
+                              (rm.est2Subjects ? `EST II: ${rm.est2Subjects}` : "")
+                            }
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-soft border border-border text-[10.5px] font-mono text-foreground hover:border-indigo-500/50 transition-colors"
+                          >
+                            <span className="font-bold">{rm.room}</span>
+                            {hasE1 && (
+                              <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">
+                                E1:{rm.est1Count}
+                              </span>
+                            )}
+                            {hasE2 && (
+                              <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300">
+                                E2:{rm.est2Count}
+                              </span>
+                            )}
+                            {!hasE1 && !hasE2 && hasStd && (
+                              <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                                {rm.studentCount}
+                              </span>
+                            )}
                           </span>
-                          <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300">
-                            E2:{rm.est2Count ?? 25}
-                          </span>
-                        </span>
-                      ))}
+                        );
+                      })}
                     </div>
                 </div>
               ))}

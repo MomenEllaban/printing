@@ -135,7 +135,7 @@ export async function GET(request: Request) {
                         break;
                       }
                     }
-                    counterpartMap.set(rKey, { studentCount: stdCount || 25, subjectsText: subjText || "" });
+                    counterpartMap.set(rKey, { studentCount: stdCount || 0, subjectsText: subjText || "" });
                   }
                 }
               }
@@ -196,10 +196,10 @@ export async function GET(request: Request) {
 
                     const cp = counterpartMap.get(rKey);
                     const isCurEst1 = !/EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(examName);
-                    let est1Count = isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                    let est1Subjects = isCurEst1 ? (subjText || "Literacy (25) • Math (25) • Essay: NO") : (cp?.subjectsText || "Literacy (25) • Math (25) • Essay: NO");
-                    let est2Count = !isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                    let est2Subjects = !isCurEst1 ? (subjText || "Math 1, Math 2, Bio, Chem") : (cp?.subjectsText || "Math 1, Math 2, Bio, Chem");
+                    let est1Count = isCurEst1 ? stdCount : cp?.studentCount;
+                    let est1Subjects = isCurEst1 ? subjText : cp?.subjectsText;
+                    let est2Count = !isCurEst1 ? stdCount : cp?.studentCount;
+                    let est2Subjects = !isCurEst1 ? subjText : cp?.subjectsText;
 
                     roomsMap.set(rKey, {
                       room: rf.name.trim(),
@@ -222,10 +222,10 @@ export async function GET(request: Request) {
                   if (!roomsMap.has(rKey)) {
                     const cp = counterpartMap.get(rKey);
                     const isCurEst1 = !/EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(examName);
-                    let est1Count = isCurEst1 ? (parsed?.totalStudents || 25) : (cp?.studentCount || 25);
-                    let est1Subjects = isCurEst1 ? (parsed?.breakdownText || "Literacy (25) • Math (25) • Essay: NO") : (cp?.subjectsText || "Literacy (25) • Math (25) • Essay: NO");
-                    let est2Count = !isCurEst1 ? (parsed?.totalStudents || 25) : (cp?.studentCount || 25);
-                    let est2Subjects = !isCurEst1 ? (parsed?.breakdownText || "Math 1, Math 2, Bio, Chem") : (cp?.subjectsText || "Math 1, Math 2, Bio, Chem");
+                    let est1Count = isCurEst1 ? parsed?.totalStudents : cp?.studentCount;
+                    let est1Subjects = isCurEst1 ? parsed?.breakdownText : cp?.subjectsText;
+                    let est2Count = !isCurEst1 ? parsed?.totalStudents : cp?.studentCount;
+                    let est2Subjects = !isCurEst1 ? parsed?.breakdownText : cp?.subjectsText;
 
                     roomsMap.set(rKey, {
                       room: roomName.trim(),
@@ -247,9 +247,9 @@ export async function GET(request: Request) {
               return {
                 floor: displayFloorName,
                 rooms: sortedRooms,
-                totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 25), 0),
-                est1Students: sortedRooms.reduce((s, r) => s + (r.est1Count || 25), 0),
-                est2Students: sortedRooms.reduce((s, r) => s + (r.est2Count || 25), 0),
+                totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 0), 0),
+                est1Students: sortedRooms.reduce((s, r) => s + (r.est1Count || 0), 0),
+                est2Students: sortedRooms.reduce((s, r) => s + (r.est2Count || 0), 0),
               };
             });
 
@@ -277,10 +277,10 @@ export async function GET(request: Request) {
                 const rKey = rf.name.trim().toLowerCase();
                 const cp = counterpartMap.get(rKey);
                 const isCurEst1 = !/EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(examName);
-                let est1Count = isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                let est1Subjects = isCurEst1 ? (subjText || "Literacy (25) • Math (25) • Essay: NO") : (cp?.subjectsText || "Literacy (25) • Math (25) • Essay: NO");
-                let est2Count = !isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                let est2Subjects = !isCurEst1 ? (subjText || "Math 1, Math 2, Bio, Chem") : (cp?.subjectsText || "Math 1, Math 2, Bio, Chem");
+                let est1Count = isCurEst1 ? stdCount : cp?.studentCount;
+                let est1Subjects = isCurEst1 ? subjText : cp?.subjectsText;
+                let est2Count = !isCurEst1 ? stdCount : cp?.studentCount;
+                let est2Subjects = !isCurEst1 ? subjText : cp?.subjectsText;
 
                 return {
                   room: rf.name,
@@ -296,9 +296,9 @@ export async function GET(request: Request) {
                 {
                   floor: "General Floor",
                   rooms: rms,
-                  totalStudents: rms.reduce((s, r) => s + (r.studentCount || 25), 0),
-                  est1Students: rms.reduce((s, r) => s + (r.est1Count || 25), 0),
-                  est2Students: rms.reduce((s, r) => s + (r.est2Count || 25), 0),
+                  totalStudents: rms.reduce((s, r) => s + (r.studentCount || 0), 0),
+                  est1Students: rms.reduce((s, r) => s + (r.est1Count || 0), 0),
+                  est2Students: rms.reduce((s, r) => s + (r.est2Count || 0), 0),
                 },
               ];
             }
@@ -380,7 +380,7 @@ export async function GET(request: Request) {
                   for (const rm of cpRoomsRes.data.files || []) {
                     const rKey = (rm.name || "").trim().toLowerCase();
                     if (!counterpartMap.has(rKey)) {
-                      let sCount = 25;
+                      let sCount = 0;
                       let sText = "";
                       try {
                         const fRes = await drive.files.list({
@@ -486,14 +486,14 @@ export async function GET(request: Request) {
                     } catch {}
                     const cp = counterpartMap.get(rKey);
                     const isCurEst1 = !/EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(examName);
-                    let est1Count = isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                    let est1Subjects = isCurEst1 ? (subjText || "Literacy (25) • Math (25) • Essay: NO") : (cp?.subjectsText || "Literacy (25) • Math (25) • Essay: NO");
-                    let est2Count = !isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                    let est2Subjects = !isCurEst1 ? (subjText || "Math 1, Math 2, Bio, Chem") : (cp?.subjectsText || "Math 1, Math 2, Bio, Chem");
+                    let est1Count = isCurEst1 ? stdCount : cp?.studentCount;
+                    let est1Subjects = isCurEst1 ? subjText : cp?.subjectsText;
+                    let est2Count = !isCurEst1 ? stdCount : cp?.studentCount;
+                    let est2Subjects = !isCurEst1 ? subjText : cp?.subjectsText;
 
                     roomsMap.set(rKey, {
                       room: rName,
-                      studentCount: stdCount || 25,
+                      studentCount: stdCount,
                       subjectsText: subjText,
                       est1Count,
                       est1Subjects,
@@ -520,14 +520,14 @@ export async function GET(request: Request) {
                     if (!roomsMap.has(rKey)) {
                       const cp = counterpartMap.get(rKey);
                       const isCurEst1 = !/EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(examName);
-                      let est1Count = isCurEst1 ? (parsed?.totalStudents || 25) : (cp?.studentCount || 25);
-                      let est1Subjects = isCurEst1 ? (parsed?.breakdownText || "Literacy (25) • Math (25) • Essay: NO") : (cp?.subjectsText || "Literacy (25) • Math (25) • Essay: NO");
-                      let est2Count = !isCurEst1 ? (parsed?.totalStudents || 25) : (cp?.studentCount || 25);
-                      let est2Subjects = !isCurEst1 ? (parsed?.breakdownText || "Math 1, Math 2, Bio, Chem") : (cp?.subjectsText || "Math 1, Math 2, Bio, Chem");
+                      let est1Count = isCurEst1 ? parsed?.totalStudents : cp?.studentCount;
+                      let est1Subjects = isCurEst1 ? parsed?.breakdownText : cp?.subjectsText;
+                      let est2Count = !isCurEst1 ? parsed?.totalStudents : cp?.studentCount;
+                      let est2Subjects = !isCurEst1 ? parsed?.breakdownText : cp?.subjectsText;
 
                       roomsMap.set(rKey, {
                         room: roomName,
-                        studentCount: parsed?.totalStudents || 25,
+                        studentCount: parsed?.totalStudents,
                         subjectsText: parsed?.breakdownText,
                         est1Count,
                         est1Subjects,
@@ -547,9 +547,9 @@ export async function GET(request: Request) {
                 floors.push({
                   floor: displayFloorName,
                   rooms: sortedRooms,
-                  totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 25), 0),
-                  est1Students: sortedRooms.reduce((s, r) => s + (r.est1Count || 25), 0),
-                  est2Students: sortedRooms.reduce((s, r) => s + (r.est2Count || 25), 0),
+                  totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 0), 0),
+                  est1Students: sortedRooms.reduce((s, r) => s + (r.est1Count || 0), 0),
+                  est2Students: sortedRooms.reduce((s, r) => s + (r.est2Count || 0), 0),
                 });
               }
             }
@@ -591,14 +591,14 @@ export async function GET(request: Request) {
                 } catch {}
                 const cp = counterpartMap.get(rKey);
                 const isCurEst1 = !/EST\s*[-_]?\s*2\b|EST\s*II\b/i.test(examName);
-                let est1Count = isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                let est1Subjects = isCurEst1 ? (subjText || "Literacy (25) • Math (25) • Essay: NO") : (cp?.subjectsText || "Literacy (25) • Math (25) • Essay: NO");
-                let est2Count = !isCurEst1 ? (stdCount || 25) : (cp?.studentCount || 25);
-                let est2Subjects = !isCurEst1 ? (subjText || "Math 1, Math 2, Bio, Chem") : (cp?.subjectsText || "Math 1, Math 2, Bio, Chem");
+                let est1Count = isCurEst1 ? stdCount : cp?.studentCount;
+                let est1Subjects = isCurEst1 ? subjText : cp?.subjectsText;
+                let est2Count = !isCurEst1 ? stdCount : cp?.studentCount;
+                let est2Subjects = !isCurEst1 ? subjText : cp?.subjectsText;
 
                 roomsMap.set(rKey, {
                   room: rName,
-                  studentCount: stdCount || 25,
+                  studentCount: stdCount,
                   subjectsText: subjText,
                   est1Count,
                   est1Subjects,
@@ -613,9 +613,9 @@ export async function GET(request: Request) {
             floors.push({
               floor: "General Floor",
               rooms: sortedRooms,
-              totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 25), 0),
-              est1Students: sortedRooms.reduce((s, r) => s + (r.est1Count || 25), 0),
-              est2Students: sortedRooms.reduce((s, r) => s + (r.est2Count || 25), 0),
+              totalStudents: sortedRooms.reduce((s, r) => s + (r.studentCount || 0), 0),
+              est1Students: sortedRooms.reduce((s, r) => s + (r.est1Count || 0), 0),
+              est2Students: sortedRooms.reduce((s, r) => s + (r.est2Count || 0), 0),
             });
           }
         } catch {}
@@ -637,15 +637,15 @@ export async function GET(request: Request) {
           floor: fl.floorName,
           rooms: fl.rooms.map((rm) => ({
             room: rm,
-            studentCount: 25,
-            est1Count: 25,
-            est1Subjects: "Literacy (25) • Math (25) • Essay: NO",
-            est2Count: 25,
-            est2Subjects: "Math 1, Math 2, Bio, Chem",
+            studentCount: 0,
+            est1Count: undefined,
+            est1Subjects: undefined,
+            est2Count: undefined,
+            est2Subjects: undefined,
           })),
-          totalStudents: fl.rooms.length * 25,
-          est1Students: fl.rooms.length * 25,
-          est2Students: fl.rooms.length * 25,
+          totalStudents: 0,
+          est1Students: 0,
+          est2Students: 0,
         }));
       }
     }
@@ -671,8 +671,8 @@ export async function GET(request: Request) {
           const fl = r.floor || "General Floor";
           const entry = floorMap.get(fl) || { rooms: [], totalStudents: 0 };
           if (r.room && !entry.rooms.some((rm) => rm.room.toLowerCase() === r.room.toLowerCase())) {
-            entry.rooms.push({ room: r.room, studentCount: r.studentsEst1 || 25 });
-            entry.totalStudents += r.studentsEst1 || 25;
+            entry.rooms.push({ room: r.room, studentCount: r.studentsEst1 || 0 });
+            entry.totalStudents += r.studentsEst1 || 0;
           }
           floorMap.set(fl, entry);
         }
@@ -703,8 +703,8 @@ export async function GET(request: Request) {
       totalStudents = floors.reduce((sum, f) => sum + (f.totalStudents || 0), 0);
       roomNames = floors.flatMap((f) => f.rooms.map((r) => (typeof r === "string" ? r : r.room)));
     } else {
-      totalRooms = totalRooms || (roomNames.length > 0 ? roomNames.length : 12);
-      totalStudents = totalStudents || (roomNames.length > 0 ? roomNames.length * 25 : 300);
+      totalRooms = totalRooms || (roomNames.length > 0 ? roomNames.length : 0);
+      totalStudents = totalStudents || 0;
     }
 
     const options: LogisticsStickerOptions = {

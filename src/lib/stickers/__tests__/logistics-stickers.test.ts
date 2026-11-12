@@ -71,7 +71,8 @@ describe("Logistics Stickers PDF Generator", () => {
       "AD8A",
       "AD9A",
     ]);
-    expect(normalized[0].totalStudents).toBe(175); // 7 * 25
+    // With no files uploaded yet, student counts must strictly be 0 (no fake 25s)
+    expect(normalized[0].totalStudents).toBe(0);
 
     // 4th floor must have exactly 8 rooms in natural ascending order
     expect(normalized[1].rooms).toHaveLength(8);
@@ -85,16 +86,16 @@ describe("Logistics Stickers PDF Generator", () => {
       "AD12A",
       "AD12B",
     ]);
-    expect(normalized[1].totalStudents).toBe(200); // 8 * 25
+    expect(normalized[1].totalStudents).toBe(0);
 
-    // Total rooms: 15, Total candidates: 375 (NOT 30 rooms or 750 candidates)
+    // Total rooms: 15, Total candidates: 0 pending upload (NOT fake 375 or 750)
     const totalRooms = normalized.reduce((sum, f) => sum + f.rooms.length, 0);
     const totalStudents = normalized.reduce((sum, f) => sum + f.totalStudents, 0);
     expect(totalRooms).toBe(15);
-    expect(totalStudents).toBe(375);
+    expect(totalStudents).toBe(0);
   });
 
-  it("canonical resolution for official school Tiba Modern from building name alone", () => {
+  it("canonical resolution for official school Tiba Modern from building name alone (0 candidates until files uploaded)", () => {
     const normalized = normalizeFloorsData({
       ...baseData,
       building: "Tiba Modern International Schools (Dakahlia)",
@@ -106,7 +107,8 @@ describe("Logistics Stickers PDF Generator", () => {
     expect(normalized[0].rooms).toHaveLength(7);
     expect(normalized[1].rooms).toHaveLength(8);
     expect(normalized.reduce((s, f) => s + f.rooms.length, 0)).toBe(15);
-    expect(normalized.reduce((s, f) => s + f.totalStudents, 0)).toBe(375);
+    // Zero candidates when folders are empty
+    expect(normalized.reduce((s, f) => s + f.totalStudents, 0)).toBe(0);
   });
 
   it("generates Building Carton Sticker PDF (A4 Landscape)", async () => {
