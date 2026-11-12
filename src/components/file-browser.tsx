@@ -1474,7 +1474,9 @@ export function FileBrowser({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: isCurrentlyPinned ? "unpin" : "pin",
+            itemId: item.id,
             fileId: item.id,
+            folderId: folderId || "root",
           }),
         });
       } catch {}
@@ -1527,6 +1529,7 @@ export function FileBrowser({
           body: JSON.stringify({
             action: "set_order",
             folderId: folderId || "root",
+            customOrder: newOrder,
             orderedIds: newOrder,
           }),
         });
@@ -1605,6 +1608,7 @@ export function FileBrowser({
           body: JSON.stringify({
             action: "set_order",
             folderId: folderId || "root",
+            customOrder: newOrder,
             orderedIds: newOrder,
           }),
         });
@@ -5097,7 +5101,7 @@ function TreeRow({
                 "icon-btn size-7 cursor-pointer transition-colors",
                 isPinned
                   ? "text-amber-500 hover:text-amber-600 bg-amber-500/10"
-                  : "text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100",
+                  : "text-muted/60 hover:text-amber-500 hover:bg-amber-500/10",
               )}
               title={isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}
               aria-label={isPinned ? t("common.unpinFromTop") : t("common.pinToTop")}

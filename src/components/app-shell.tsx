@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Award,
   Boxes,
   ChevronDown,
   Clock,
@@ -86,6 +87,15 @@ const primaryNav: NavItem[] = [
     color: "text-indigo-600 dark:text-indigo-400",
     bgColor: "bg-indigo-500/10 dark:bg-indigo-500/20",
     activeBg: "bg-indigo-600 text-white shadow-md shadow-indigo-500/25",
+  },
+  {
+    href: "/certificate-stickers",
+    labelKey: "nav.certificateStickers",
+    icon: Award,
+    exact: true,
+    color: "text-emerald-600 dark:text-emerald-400",
+    bgColor: "bg-emerald-500/10 dark:bg-emerald-500/20",
+    activeBg: "bg-emerald-600 text-white shadow-md shadow-emerald-500/25",
   },
 ];
 

@@ -46,9 +46,11 @@ export async function GET(request: Request) {
 const customOrderSchema = z.object({
   folderId: z.string().nullable().optional(),
   customOrder: z.array(z.string()).optional(),
+  orderedIds: z.array(z.string()).optional(),
   pinnedIds: z.array(z.string()).optional(),
   action: z.enum(["set_order", "pin", "unpin", "toggle_pin"]).optional(),
   itemId: z.string().optional(),
+  fileId: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -70,25 +72,27 @@ export async function POST(request: Request) {
       if (Array.isArray(val.pinnedIds)) currentPins = val.pinnedIds;
     }
 
-    if (body.customOrder) {
-      currentOrder = body.customOrder;
+    const orderToSave = body.customOrder || body.orderedIds;
+    if (orderToSave) {
+      currentOrder = orderToSave;
     }
 
     if (body.pinnedIds) {
       currentPins = body.pinnedIds;
     }
 
-    if (body.action === "pin" && body.itemId) {
-      if (!currentPins.includes(body.itemId)) {
-        currentPins = [body.itemId, ...currentPins];
+    const targetId = body.itemId || body.fileId;
+    if (body.action === "pin" && targetId) {
+      if (!currentPins.includes(targetId)) {
+        currentPins = [targetId, ...currentPins];
       }
-    } else if (body.action === "unpin" && body.itemId) {
-      currentPins = currentPins.filter((id) => id !== body.itemId);
-    } else if (body.action === "toggle_pin" && body.itemId) {
-      if (currentPins.includes(body.itemId)) {
-        currentPins = currentPins.filter((id) => id !== body.itemId);
+    } else if (body.action === "unpin" && targetId) {
+      currentPins = currentPins.filter((id) => id !== targetId);
+    } else if (body.action === "toggle_pin" && targetId) {
+      if (currentPins.includes(targetId)) {
+        currentPins = currentPins.filter((id) => id !== targetId);
       } else {
-        currentPins = [body.itemId, ...currentPins];
+        currentPins = [targetId, ...currentPins];
       }
     }
 
@@ -104,6 +108,26 @@ export async function POST(request: Request) {
         category: "drive_order",
       },
     });
+
+    if (targetId && (body.action === "pin" || body.action === "unpin" || body.action === "toggle_pin")) {
+      const globalKey = "global_pinned_items";
+      const globalSetting = await prisma.applicationSetting.findUnique({ where: { key: globalKey } });
+      let globalPins: string[] = [];
+      if (globalSetting?.value && typeof globalSetting.value === "object") {
+        const val = globalSetting.value as { pinnedIds?: string[] };
+        if (Array.isArray(val.pinnedIds)) globalPins = val.pinnedIds;
+      }
+      if (body.action === "pin" || (body.action === "toggle_pin" && currentPins.includes(targetId))) {
+        if (!globalPins.includes(targetId)) globalPins = [targetId, ...globalPins];
+      } else {
+        globalPins = globalPins.filter((id) => id !== targetId);
+      }
+      await prisma.applicationSetting.upsert({
+        where: { key: globalKey },
+        update: { value: { pinnedIds: globalPins }, category: "drive_order" },
+        create: { key: globalKey, value: { pinnedIds: globalPins }, category: "drive_order" },
+      });
+    }
 
     return NextResponse.json({
       success: true,
