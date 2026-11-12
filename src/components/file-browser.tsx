@@ -1078,13 +1078,22 @@ export function FileBrowser({
 
       setBusyExamStickerId(target.id);
       setExamStickerAction(action);
+      const isFloor = target.name ? isFloorFolderName(target.name) : false;
       const toastId = toast.loading(
         action === "show"
           ? (locale === "ar"
-            ? `جاري تجهيز معاينة استيكرات الامتحانات للقاعة "${target.name || "EST"}"...`
+            ? isFloor
+              ? `جاري تجهيز معاينة ملصقات كيسة امتحانات الدور "${target.name || "Floor"}" (A4)...`
+              : `جاري تجهيز معاينة استيكرات الامتحانات للقاعة "${target.name || "EST"}"...`
+            : isFloor
+            ? `Loading floor exam bag placards preview for "${target.name || "Floor"}" (A4)...`
             : `Loading exam stickers preview for "${target.name || "EST"}"...`)
           : (locale === "ar"
-            ? `جاري تجهيز استيكرات الامتحانات للقاعة "${target.name || "EST"}" للطباعة...`
+            ? isFloor
+              ? `جاري تجهيز ملصقات كيسة امتحانات الدور "${target.name || "Floor"}" للطباعة (A4)...`
+              : `جاري تجهيز استيكرات الامتحانات للقاعة "${target.name || "EST"}" للطباعة...`
+            : isFloor
+            ? `Preparing floor exam bag placards for "${target.name || "Floor"}" for printing (A4)...`
             : `Preparing exam stickers for "${target.name || "EST"}" for printing...`),
       );
 
@@ -1110,18 +1119,32 @@ export function FileBrowser({
           setPreviewStickerState({
             open: true,
             url: objectUrl,
-            title: `EST Exam Stickers - ${target.name || "Room"}`,
+            title: isFloor
+              ? `EST Floor Exam Bag Placards - ${target.name || "Floor"}`
+              : `EST Exam Stickers - ${target.name || "Room"}`,
             customTitle:
               locale === "ar"
-                ? `استيكرات الامتحانات — قاعة ${target.name || ""}`
+                ? isFloor
+                  ? `ملصقات كيسة امتحانات الدور للمادة — ${target.name || "الدور"}`
+                  : `استيكرات الامتحانات — قاعة ${target.name || ""}`
+                : isFloor
+                ? `Floor Subject Exam Bag Placards — ${target.name || "Floor"}`
                 : `EST Exam Stickers — Room ${target.name || ""}`,
             customDescription:
               locale === "ar"
-                ? "ملصقات أوراق الامتحان الرسمية (نسختان لكل مادة) — مقاس ربع صفحة A4."
+                ? isFloor
+                  ? "ملصقات كيسة امتحانات الدور لكل مادة (مقاس A4) تشمل تفاصيل الدور واسم المادة وبيان القاعات وأعداد الطلاب وقوائم التدقيق."
+                  : "ملصقات أوراق الامتحان الرسمية (نسختان لكل مادة) — مقاس ربع صفحة A4."
+                : isFloor
+                ? "Official A4 Floor Subject Exam Bag Placards with rooms directory and student count checklist."
                 : "Official exam paper dossiers (2 copies per subject) — Quarter A4.",
           });
           toast.success(
-            locale === "ar" ? "تم فتح معاينة استيكرات الامتحانات بنجاح" : "Exam stickers preview opened",
+            locale === "ar"
+              ? isFloor
+                ? "تم فتح معاينة ملصقات كيسة امتحانات الدور بنجاح"
+                : "تم فتح معاينة استيكرات الامتحانات بنجاح"
+              : "Exam stickers preview opened",
             { id: toastId },
           );
         } else {
@@ -1365,6 +1388,18 @@ export function FileBrowser({
     });
     return cat === "student" || isRoomFolderName(currentFolder.name);
   }, [currentFolder, breadcrumbs]);
+
+  const isCurrentFolderFloor = useMemo(() => {
+    if (!currentFolder) return false;
+    const cat = getFolderRegisterCategory({
+      folder: currentFolder,
+      breadcrumbs,
+      isCurrentFolder: true,
+    });
+    return cat === "proctor" || isFloorFolderName(currentFolder.name);
+  }, [currentFolder, breadcrumbs]);
+
+  const isCurrentFolderCanHaveExamStickers = isCurrentFolderRoom || isCurrentFolderFloor;
 
   const displayItems = useMemo(() => {
     let filtered = items;
@@ -2493,11 +2528,19 @@ export function FileBrowser({
               </button>
             </div>
           )}
-          {isCurrentFolderRoom && currentFolder && (
+          {isCurrentFolderCanHaveExamStickers && currentFolder && (
             <div className="inline-flex items-center rounded-xl border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-xs">
               <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 border-e border-amber-500/25 select-none">
                 <Files className="size-3.5 text-amber-600 dark:text-amber-400" />
-                <span className="hidden sm:inline">{locale === "ar" ? "استيكرات الامتحانات" : "Exam Stickers"}</span>
+                <span className="hidden sm:inline">
+                  {isCurrentFolderFloor
+                    ? locale === "ar"
+                      ? "استيكرات الدور"
+                      : "Floor Stickers"
+                    : locale === "ar"
+                    ? "استيكرات الامتحانات"
+                    : "Exam Stickers"}
+                </span>
               </span>
               <button
                 type="button"
@@ -2506,7 +2549,11 @@ export function FileBrowser({
                 className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all"
                 title={
                   locale === "ar"
-                    ? `معاينة استيكرات الامتحانات لقاعة "${currentFolder.name}" (عرض)`
+                    ? isCurrentFolderFloor
+                      ? `معاينة ملصقات كيسة امتحانات الدور "${currentFolder.name}" (مقاس A4)`
+                      : `معاينة استيكرات الامتحانات لقاعة "${currentFolder.name}" (عرض)`
+                    : isCurrentFolderFloor
+                    ? `Preview floor exam bag placards for "${currentFolder.name}" (A4)`
                     : `Preview exam stickers for "${currentFolder.name}" (Show)`
                 }
               >
@@ -2524,7 +2571,11 @@ export function FileBrowser({
                 className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all"
                 title={
                   locale === "ar"
-                    ? `طباعة استيكرات الامتحانات لقاعة "${currentFolder.name}" مباشرة (Print)`
+                    ? isCurrentFolderFloor
+                      ? `طباعة ملصقات كيسة امتحانات الدور "${currentFolder.name}" مباشرة (مقاس A4)`
+                      : `طباعة استيكرات الامتحانات لقاعة "${currentFolder.name}" مباشرة (Print)`
+                    : isCurrentFolderFloor
+                    ? `Print floor exam bag placards for "${currentFolder.name}" directly (A4)`
                     : `Print exam stickers for "${currentFolder.name}" directly`
                 }
               >
@@ -3770,8 +3821,8 @@ export function FileBrowser({
               </button>
             </div>
 
-            {/* Exam Stickers Action Button (shown whenever folders/rooms/floors/buildings are selected or in a room) */}
-            {(selectedFolderCount > 0 || (isCurrentFolderRoom && currentFolder)) && (
+            {/* Exam Stickers Action Button (shown whenever folders/rooms/floors/buildings are selected or in a room/floor) */}
+            {(selectedFolderCount > 0 || (isCurrentFolderCanHaveExamStickers && currentFolder)) && (
               <div className="inline-flex items-center rounded-xl border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-sm">
                 <button
                   type="button"
@@ -4205,7 +4256,9 @@ function ItemMenu({
                 breadcrumbs,
                 isCurrentFolder: false,
               });
-              if (regCat !== "student") return null;
+              const isRoom = regCat === "student" || isRoomFolderName(item.name);
+              const isFloor = regCat === "proctor" || isFloorFolderName(item.name);
+              if (!isRoom && !isFloor) return null;
               return (
                 <>
                   <button
@@ -4218,7 +4271,15 @@ function ItemMenu({
                     }}
                   >
                     <Files className="size-4" />
-                    <span>{locale === "ar" ? "معاينة استيكرات الامتحانات" : "Preview Exam Stickers"}</span>
+                    <span>
+                      {isFloor
+                        ? locale === "ar"
+                          ? "معاينة استيكرات كيسة امتحانات الدور (A4)"
+                          : "Preview Floor Exam Bag Placards (A4)"
+                        : locale === "ar"
+                        ? "معاينة استيكرات الامتحانات"
+                        : "Preview Exam Stickers"}
+                    </span>
                   </button>
                   {onPrintExamStickers && (
                     <button
@@ -4231,7 +4292,15 @@ function ItemMenu({
                       }}
                     >
                       <Printer className="size-4" />
-                      <span>{locale === "ar" ? "طباعة استيكرات الامتحانات" : "Print Exam Stickers"}</span>
+                      <span>
+                        {isFloor
+                          ? locale === "ar"
+                            ? "طباعة استيكرات كيسة امتحانات الدور (A4)"
+                            : "Print Floor Exam Bag Placards (A4)"
+                          : locale === "ar"
+                          ? "طباعة استيكرات الامتحانات"
+                          : "Print Exam Stickers"}
+                      </span>
                     </button>
                   )}
                 </>
@@ -4785,7 +4854,8 @@ function TreeRow({
                     depth,
                     isCurrentFolder: false,
                   });
-                  const isRoomFolder = regCategory === "student";
+                  const isRoomFolder = regCategory === "student" || isRoomFolderName(item.name);
+                  const isFloorFolder = regCategory === "proctor" || isFloorFolderName(item.name);
 
                   return (
                     <>
@@ -4847,13 +4917,19 @@ function TreeRow({
                         </button>
                       </div>
 
-                      {/* Button 2: Exam Stickers (EST 1 & EST 2) - 2 copies per subject */}
-                      {isRoomFolder && onShowExamStickers && onPrintExamStickers && (
+                      {/* Button 2: Exam Stickers (Room packets or Floor A4 Subject Bag Placards) */}
+                      {(isRoomFolder || isFloorFolder) && onShowExamStickers && onPrintExamStickers && (
                         <div className="inline-flex items-center rounded-lg border border-amber-500/40 bg-amber-500/10 p-0.5 shadow-2xs">
                           <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-amber-800 dark:text-amber-200 border-e border-amber-500/25 select-none">
                             <Files className="size-3 text-amber-600 dark:text-amber-400" />
                             <span className="hidden sm:inline">
-                              {locale === "ar" ? "استيكرات الامتحانات" : "Exam Stickers"}
+                              {isFloorFolder
+                                ? locale === "ar"
+                                  ? "استيكرات الدور"
+                                  : "Floor Stickers"
+                                : locale === "ar"
+                                ? "استيكرات الامتحانات"
+                                : "Exam Stickers"}
                             </span>
                           </span>
 
@@ -4864,7 +4940,11 @@ function TreeRow({
                             className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                             title={
                               locale === "ar"
-                                ? `معاينة استيكرات الامتحانات للقاعة "${item.name}" (عرض)`
+                                ? isFloorFolder
+                                  ? `معاينة ملصقات كيسة امتحانات الدور "${item.name}" (مقاس A4)`
+                                  : `معاينة استيكرات الامتحانات للقاعة "${item.name}" (عرض)`
+                                : isFloorFolder
+                                ? `Preview floor exam bag placards for "${item.name}" (A4)`
                                 : `Preview exam stickers for "${item.name}" (Show)`
                             }
                             aria-label="Preview Exam Stickers"
@@ -4883,7 +4963,11 @@ function TreeRow({
                             className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
                             title={
                               locale === "ar"
-                                ? `طباعة استيكرات الامتحانات للقاعة "${item.name}" مباشرة (Print)`
+                                ? isFloorFolder
+                                  ? `طباعة ملصقات كيسة امتحانات الدور "${item.name}" مباشرة (مقاس A4)`
+                                  : `طباعة استيكرات الامتحانات للقاعة "${item.name}" مباشرة (Print)`
+                                : isFloorFolder
+                                ? `Print floor exam bag placards for "${item.name}" directly (A4)`
                                 : `Print exam stickers for "${item.name}" directly`
                             }
                             aria-label="Print Exam Stickers"
