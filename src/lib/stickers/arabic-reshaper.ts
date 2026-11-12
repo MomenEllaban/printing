@@ -153,3 +153,4 @@ export function reshapeArabic(text: string | null | undefined): string {
 
   return text;
 }
+

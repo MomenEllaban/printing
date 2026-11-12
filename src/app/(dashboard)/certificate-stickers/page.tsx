@@ -744,83 +744,91 @@ export default function CertificateStickersPage() {
             </span>
           </div>
 
-          {/* Realistic Card Simulation */}
+          {/* Realistic Card Simulation - Clean Black & White */}
           {(() => {
             const sample = filteredStudents.find((s) => String(s.serialNumber) === "128") || filteredStudents[0];
             return (
-              <div className="mx-auto max-w-lg rounded-xl border-2 border-slate-900 bg-white p-4 shadow-md text-slate-900">
-                {/* Header: Dark Charcoal with Yellow Logo */}
-                <div className="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2.5 text-white">
-                  <div className="flex items-center gap-2.5">
-                    <span className="rounded bg-amber-400 px-2 py-0.5 text-xs font-black text-slate-950 tracking-wider">
+              <div className="mx-auto max-w-lg rounded-xl border border-black bg-white p-5 shadow-sm text-black">
+                {/* Header: Solid Black Bar */}
+                <div className="flex items-center justify-between rounded bg-black px-3 py-2 text-white">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-white px-2 py-0.5 text-xs font-black text-black tracking-wider">
                       EST
                     </span>
                     <div>
-                      <div className="text-[11px] font-bold text-amber-400 tracking-wide">
-                        SCORE REPORT & CERTIFICATE PLACARD
+                      <div className="text-[11px] font-bold text-white tracking-wide">
+                        OFFICIAL SCORE REPORT & CERTIFICATE
                       </div>
-                      <div className="text-[9px] text-slate-300 font-mono line-clamp-1">
+                      <div className="text-[9px] text-gray-300 font-mono line-clamp-1">
                         {sample.batchName || activeBatch?.name}
                       </div>
                     </div>
                   </div>
-                  <span className="rounded border border-amber-400/50 bg-slate-950 px-2 py-0.5 font-mono text-[10px] text-amber-400">
+                  <span className="font-mono text-xs font-bold text-white">
                     {sample.serialNumber} / {filteredStudents.length}
                   </span>
                 </div>
 
-                {/* Serial and Candidate Name Row */}
-                <div className="mt-3 flex items-stretch gap-2">
-                  <div className="flex flex-col items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-center text-amber-400 border border-amber-400/60 min-w-[70px]">
-                    <span className="text-[9px] uppercase font-bold text-slate-400">SERIAL</span>
-                    <span className="text-lg font-black tracking-tight">({sample.serialNumber})</span>
+                {/* Serial and Candidate Name Row (Simple, No Box Borders, Huge Font) */}
+                <div className="mt-4 flex items-baseline gap-4">
+                  <div className="font-mono text-3xl font-black text-black shrink-0">
+                    ({sample.serialNumber})
                   </div>
-
-                  <div className="flex-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                    <div className="text-[10px] font-bold text-slate-500 text-start">
-                      اسم الطالبة / الطالب (Candidate Name):
+                  <div className="flex-1 text-start">
+                    <div className="text-[10px] font-bold uppercase text-gray-500">
+                      اسم الطالب / الطالبة:
                     </div>
-                    <div className="mt-0.5 text-base font-black text-slate-900 text-start">
+                    <div className="text-2xl font-black text-black leading-tight">
                       {sample.studentName}
                     </div>
                   </div>
                 </div>
 
+                {/* Divider Line */}
+                <div className="my-3 border-t border-black" />
+
                 {/* Reports Summary Row */}
-                <div className="mt-2.5 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-2">
-                    <div className="text-[9.5px] font-bold text-amber-800">
-                      إجمالي التقارير (Total reports):
+                <div className="grid grid-cols-2 gap-4 text-start">
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase">
+                      إجمالي التقارير:
                     </div>
-                    <div className="mt-0.5 text-sm font-black text-slate-900">
+                    <div className="text-base font-black text-black">
                       {sample.totalReports} {Number(sample.totalReports) === 1 ? "Report" : "Reports"}
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                    <div className="text-[9.5px] font-bold text-slate-500">
-                      كود التتبع / الشهادة:
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase">
+                      كود التتبع / DISPATCH ID:
                     </div>
-                    <div className="mt-0.5 font-mono text-xs font-bold text-emerald-700">
+                    <div className="font-mono text-sm font-black text-black">
                       {sample.certificateCode}
                     </div>
                   </div>
                 </div>
 
+                {/* Divider Line */}
+                <div className="my-3 border-t border-gray-300" />
+
                 {/* Reports List */}
-                <div className="mt-2.5 rounded-lg border border-slate-900 bg-white overflow-hidden">
-                  <div className="bg-slate-900 px-3 py-1 text-[10px] font-bold text-amber-400">
-                    قائمة التقارير (Reports list):
+                <div className="text-start">
+                  <div className="text-[10px] font-bold uppercase text-gray-600 mb-1">
+                    قائمة التقارير:
                   </div>
-                  <div className="p-2.5 text-xs font-bold text-slate-800 leading-relaxed text-start">
-                    {sample.reportsList}
+                  <div className="text-sm font-bold text-black leading-relaxed">
+                    {(sample.reportsList || "Official EST Score Report").split(/[;؛،,]/).map((p, i) => (
+                      <div key={i} className="py-0.5">
+                        • {p.trim()}
+                      </div>
+                    ))}
                   </div>
                 </div>
 
                 {/* Footer Barcode */}
-                <div className="mt-2.5 flex items-center justify-between border-t border-slate-200 pt-2 text-[10px] text-slate-500 font-mono">
+                <div className="mt-4 flex items-center justify-between border-t border-gray-300 pt-2 text-[10px] text-gray-600 font-mono">
                   <span>||| | |||| || ||| |||| | |||</span>
-                  <span className="font-bold text-amber-600">EST OFFICIAL SEAL • SECURE DISPATCH</span>
+                  <span className="font-bold text-black">EST OFFICIAL DISPATCH SEAL</span>
                 </div>
               </div>
             );
