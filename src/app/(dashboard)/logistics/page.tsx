@@ -68,6 +68,8 @@ export default function LogisticsHubPage() {
   const searchParams = useSearchParams();
   const urlFolderId = searchParams.get("folderId") || undefined;
   const urlBuilding = searchParams.get("building") || undefined;
+  const urlCenter = searchParams.get("center") || undefined;
+  const urlGovernorate = searchParams.get("governorate") || undefined;
   const urlExam = searchParams.get("exam") || undefined;
   const urlCycle = searchParams.get("cycle") || undefined;
   const [urlHandled, setUrlHandled] = useState<boolean>(false);
@@ -177,13 +179,20 @@ export default function LogisticsHubPage() {
 
         if (list.length > 0) {
           setSessions(list);
-          setSelectedSessionId(list[0].id);
-          setSelectedSessionName(list[0].name);
+          const chosen = urlCycle
+            ? list.find(
+                (s) =>
+                  s.name.toLowerCase() === urlCycle.toLowerCase() ||
+                  s.name.toLowerCase().includes(urlCycle.toLowerCase()),
+              ) || list[0]
+            : list[0];
+          setSelectedSessionId(chosen.id);
+          setSelectedSessionName(chosen.name);
         } else {
-          const fallback = [{ id: "root", name: "December 2026" }];
+          const fallback = [{ id: "root", name: urlCycle || "December 2026" }];
           setSessions(fallback);
           setSelectedSessionId("root");
-          setSelectedSessionName("December 2026");
+          setSelectedSessionName(urlCycle || "December 2026");
         }
       }
     } catch (err) {
@@ -191,7 +200,7 @@ export default function LogisticsHubPage() {
     } finally {
       setLoadingSessions(false);
     }
-  }, []);
+  }, [urlCycle]);
 
   useEffect(() => {
     void loadSessions();
@@ -200,46 +209,55 @@ export default function LogisticsHubPage() {
   // ----------------------------------------------------
   // STEP 2: Load Exam Folders (EST 1, EST 2) inside selected session
   // ----------------------------------------------------
-  const loadExams = useCallback(async (sessionId: string) => {
-    if (!sessionId) return;
-    setLoadingExams(true);
-    try {
-      const url =
-        sessionId === "root"
-          ? "/api/drive/files?pageSize=100"
-          : `/api/drive/files?folder=${encodeURIComponent(sessionId)}&pageSize=100`;
-      const res = await fetch(url, { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.items)) {
-        const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
-        // Strictly match EST 1 or EST 2 folders, and exclude non-exam files/folders like schedules
-        const estFolders = folders
-          .filter((f) => {
-            const name = f.name.trim();
-            return /^EST\s*[-_]?\s*[12]\b/i.test(name) && !/schedule|proposed|note|guide/i.test(name);
-          })
-          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const loadExams = useCallback(
+    async (sessionId: string) => {
+      if (!sessionId) return;
+      setLoadingExams(true);
+      try {
+        const url =
+          sessionId === "root"
+            ? "/api/drive/files?pageSize=100"
+            : `/api/drive/files?folder=${encodeURIComponent(sessionId)}&pageSize=100`;
+        const res = await fetch(url, { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.items)) {
+          const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+          // Strictly match EST 1 or EST 2 folders, and exclude non-exam files/folders like schedules
+          const estFolders = folders
+            .filter((f) => {
+              const name = f.name.trim();
+              return /^EST\s*[-_]?\s*[12]\b/i.test(name) && !/schedule|proposed|note|guide/i.test(name);
+            })
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        const list: DriveFolderOption[] =
-          estFolders.length > 0
-            ? estFolders.map((f) => ({ id: f.id, name: f.name }))
-            : folders
-                .filter((f) => !/schedule|proposed|note|guide/i.test(f.name))
-                .map((f) => ({ id: f.id, name: f.name }));
+          const list: DriveFolderOption[] =
+            estFolders.length > 0
+              ? estFolders.map((f) => ({ id: f.id, name: f.name }))
+              : folders
+                  .filter((f) => !/schedule|proposed|note|guide/i.test(f.name))
+                  .map((f) => ({ id: f.id, name: f.name }));
 
-        setExams(list);
-        if (list.length > 0) {
-          const est1 = list.find((e) => /EST\s*[-_]?\s*1\b|EST\s*I\b/i.test(e.name)) || list[0];
-          setSelectedExamId(est1.id);
-          setSelectedExamName(est1.name);
+          setExams(list);
+          if (list.length > 0) {
+            const chosen = urlExam
+              ? list.find(
+                  (e) =>
+                    e.name.toLowerCase() === urlExam.toLowerCase() ||
+                    e.name.replace(/\s+/g, "").toLowerCase() === urlExam.replace(/\s+/g, "").toLowerCase(),
+                ) || list[0]
+              : list.find((e) => /EST\s*[-_]?\s*1\b|EST\s*I\b/i.test(e.name)) || list[0];
+            setSelectedExamId(chosen.id);
+            setSelectedExamName(chosen.name);
+          }
         }
+      } catch (err) {
+        console.error("[logistics] Failed to load exams:", err);
+      } finally {
+        setLoadingExams(false);
       }
-    } catch (err) {
-      console.error("[logistics] Failed to load exams:", err);
-    } finally {
-      setLoadingExams(false);
-    }
-  }, []);
+    },
+    [urlExam],
+  );
 
   useEffect(() => {
     if (selectedSessionId) {
@@ -431,43 +449,76 @@ export default function LogisticsHubPage() {
   // STEP 4B: Load Buildings inside selected Center
   // ----------------------------------------------------
   const loadBuildings = useCallback(
-    async (centerId: string, centerName: string, cityName: string) => {
+    async (centerId: string, centerName: string, cityName: string, targetBuildingName?: string) => {
       if (!centerId) return;
       setLoadingBuildings(true);
       try {
-        const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(centerId)}&pageSize=100`, {
-          cache: "no-store",
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && Array.isArray(data.items)) {
-          const subFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+        let bList: DriveFolderOption[] = [];
 
-          // If subfolders exist, they are buildings (e.g. Science And Technology, Pharmacy)
-          // If no subfolders, or only floor folders, center itself acts as the building
-          const hasFloorFolders = subFolders.some((f) => isFloorFolderName(f.name));
-          let bList: DriveFolderOption[] = [];
+        // 1. Direct query
+        try {
+          const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(centerId)}&pageSize=100`, {
+            cache: "no-store",
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && Array.isArray(data.items)) {
+            const subFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+            const hasFloorFolders = subFolders.some((f) => isFloorFolderName(f.name));
 
-          if (subFolders.length > 0 && !hasFloorFolders) {
-            bList = subFolders.map((f) => ({ id: f.id, name: f.name }));
+            if (subFolders.length > 0 && !hasFloorFolders) {
+              bList = subFolders.map((f) => ({ id: f.id, name: f.name }));
+            } else {
+              bList = [{ id: centerId, name: centerName }];
+            }
+          }
+        } catch (err) {
+          console.warn("[logistics] direct building query failed:", err);
+        }
+
+        // 2. Descendants fallback
+        if (bList.length === 0) {
+          try {
+            const dRes = await fetch(`/api/drive/folders/descendants?folderId=${encodeURIComponent(centerId)}`, {
+              cache: "no-store",
+            });
+            const dData = await dRes.json().catch(() => ({}));
+            if (dRes.ok && Array.isArray(dData.folders)) {
+              const direct = dData.folders.filter(
+                (f: DriveItem) => f.parentId === centerId && !isFloorFolderName(f.name),
+              );
+              if (direct.length > 0) {
+                bList = direct.map((f: DriveItem) => ({ id: f.id, name: f.name }));
+              }
+            }
+          } catch {}
+        }
+
+        if (bList.length === 0) {
+          if (targetBuildingName) {
+            bList = [{ id: urlFolderId || centerId, name: targetBuildingName }];
           } else {
             bList = [{ id: centerId, name: centerName }];
           }
+        }
 
-          setBuildings(bList);
-          if (bList.length > 0) {
-            const targetBuilding = urlFolderId
-              ? bList.find(
-                  (b) =>
-                    b.id === urlFolderId ||
-                    b.name.toLowerCase() === (urlBuilding || "").toLowerCase() ||
-                    (urlBuilding || "").toLowerCase().includes(b.name.toLowerCase()),
-                ) || bList[0]
-              : bList[0];
+        setBuildings(bList);
+        if (bList.length > 0) {
+          const searchName = targetBuildingName || urlBuilding;
+          const targetBuilding = searchName
+            ? bList.find(
+                (b) =>
+                  (urlFolderId && b.id === urlFolderId) ||
+                  b.name.toLowerCase() === searchName.toLowerCase() ||
+                  searchName.toLowerCase().includes(b.name.toLowerCase()) ||
+                  b.name.toLowerCase().includes(searchName.toLowerCase()),
+              ) || bList[0]
+            : urlFolderId
+            ? bList.find((b) => b.id === urlFolderId) || bList[0]
+            : bList[0];
 
-            setSelectedBuildingId(targetBuilding.id);
-            setSelectedBuildingName(targetBuilding.name);
-            void loadTargetHierarchy(targetBuilding.id, "building", cityName, targetBuilding.name);
-          }
+          setSelectedBuildingId(targetBuilding.id);
+          setSelectedBuildingName(targetBuilding.name);
+          void loadTargetHierarchy(targetBuilding.id, "building", cityName, targetBuilding.name);
         }
       } catch (err) {
         console.error("[logistics] Failed to load buildings:", err);
@@ -475,37 +526,82 @@ export default function LogisticsHubPage() {
         setLoadingBuildings(false);
       }
     },
-    [loadTargetHierarchy],
+    [loadTargetHierarchy, urlFolderId, urlBuilding],
   );
 
   // ----------------------------------------------------
   // STEP 4A: Load Centers inside selected City/Governorate
   // ----------------------------------------------------
   const loadCenters = useCallback(
-    async (cityFolderId: string, cityName: string) => {
+    async (
+      cityFolderId: string,
+      cityName: string,
+      targetCenterName?: string,
+      targetBuildingName?: string,
+    ) => {
       if (!cityFolderId) return;
       setLoadingCenters(true);
       try {
-        const res = await fetch(
-          `/api/drive/files?folder=${encodeURIComponent(cityFolderId)}&pageSize=100`,
-          { cache: "no-store" },
-        );
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && Array.isArray(data.items)) {
-          const centerFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
-          const cList: DriveFolderOption[] = centerFolders.map((f) => ({ id: f.id, name: f.name }));
-          setCenters(cList);
+        let centerFolders: DriveFolderOption[] = [];
 
-          if (cList.length > 0) {
-            setSelectedCenterId(cList[0].id);
-            setSelectedCenterName(cList[0].name);
-            void loadBuildings(cList[0].id, cList[0].name, cityName);
-          } else {
-            setBuildings([]);
-            setSelectedBuildingId("");
-            setSelectedBuildingName("");
-            setLiveFloors([]);
+        // 1. Direct query
+        try {
+          const res = await fetch(
+            `/api/drive/files?folder=${encodeURIComponent(cityFolderId)}&pageSize=100`,
+            { cache: "no-store" },
+          );
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && Array.isArray(data.items)) {
+            const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+            centerFolders = folders.map((f) => ({ id: f.id, name: f.name }));
           }
+        } catch (err) {
+          console.warn("[logistics] direct centers query failed:", err);
+        }
+
+        // 2. Descendants fallback
+        if (centerFolders.length === 0 && cityFolderId !== "schools") {
+          try {
+            const dRes = await fetch(
+              `/api/drive/folders/descendants?folderId=${encodeURIComponent(cityFolderId)}`,
+              { cache: "no-store" },
+            );
+            const dData = await dRes.json().catch(() => ({}));
+            if (dRes.ok && Array.isArray(dData.folders)) {
+              const directChildren = dData.folders.filter((f: DriveItem) => f.parentId === cityFolderId);
+              if (directChildren.length > 0) {
+                centerFolders = directChildren.map((f: DriveItem) => ({ id: f.id, name: f.name }));
+              }
+            }
+          } catch {}
+        }
+
+        // 3. Fallback to targetCenterName from URL / navigation
+        const desiredCenter = targetCenterName || urlCenter;
+        if (centerFolders.length === 0 && desiredCenter) {
+          centerFolders = [{ id: urlFolderId || `center-${desiredCenter}`, name: desiredCenter }];
+        }
+
+        setCenters(centerFolders);
+
+        if (centerFolders.length > 0) {
+          const centerToPick = desiredCenter
+            ? centerFolders.find(
+                (c) =>
+                  c.name.toLowerCase() === desiredCenter.toLowerCase() ||
+                  desiredCenter.toLowerCase().includes(c.name.toLowerCase()) ||
+                  c.name.toLowerCase().includes(desiredCenter.toLowerCase()),
+              ) || centerFolders[0]
+            : centerFolders[0];
+
+          setSelectedCenterId(centerToPick.id);
+          setSelectedCenterName(centerToPick.name);
+          void loadBuildings(centerToPick.id, centerToPick.name, cityName, targetBuildingName || urlBuilding);
+        } else {
+          setBuildings([]);
+          setSelectedBuildingId("");
+          setSelectedBuildingName("");
+          setLiveFloors([]);
         }
       } catch (err) {
         console.error("[logistics] Failed to load centers:", err);
@@ -513,7 +609,7 @@ export default function LogisticsHubPage() {
         setLoadingCenters(false);
       }
     },
-    [loadBuildings],
+    [loadBuildings, urlCenter, urlFolderId, urlBuilding],
   );
 
   // ----------------------------------------------------
@@ -584,7 +680,7 @@ export default function LogisticsHubPage() {
         setLoadingSchools(false);
       }
     },
-    [loadTargetHierarchy],
+    [loadTargetHierarchy, urlFolderId, urlBuilding],
   );
 
   // ----------------------------------------------------
@@ -595,73 +691,122 @@ export default function LogisticsHubPage() {
       if (!examId) return;
       setLoadingDestinations(true);
       try {
-        const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(examId)}&pageSize=100`, {
-          cache: "no-store",
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && Array.isArray(data.items)) {
-          const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
+        let folders: DriveItem[] = [];
 
-          const schoolsFolder = folders.find((f) => /^schools$/i.test(f.name.trim()));
-
-          // City folders under the exam (exclude Schools and auxiliary schedules)
-          const cityFolders = folders.filter(
-            (f) =>
-              !/^schools$/i.test(f.name.trim()) &&
-              !/schedule|جدول|backup/i.test(f.name.trim()),
-          );
-
-          const destList: DestinationOption[] = [];
-
-          // Option 1: Schools
-          destList.push({
-            id: schoolsFolder ? schoolsFolder.id : "schools",
-            name: isAr ? "🏫 المدارس (Schools)" : "🏫 Schools",
-            isSchools: true,
+        try {
+          const res = await fetch(`/api/drive/files?folder=${encodeURIComponent(examId)}&pageSize=100`, {
+            cache: "no-store",
           });
-
-          // Option 2..N: Cities / Governorates from Drive
-          for (const cf of cityFolders) {
-            destList.push({
-              id: cf.id,
-              name: `📍 ${cf.name}`,
-              isSchools: false,
-              cityName: cf.name,
-            });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && Array.isArray(data.items)) {
+            folders = data.items.filter((i: DriveItem) => i.isFolder);
           }
+        } catch (err) {
+          console.warn("[logistics] direct destinations query failed:", err);
+        }
 
-          setDestinations(destList);
+        if (folders.length === 0) {
+          try {
+            const dRes = await fetch(`/api/drive/folders/descendants?folderId=${encodeURIComponent(examId)}`, {
+              cache: "no-store",
+            });
+            const dData = await dRes.json().catch(() => ({}));
+            if (dRes.ok && Array.isArray(dData.folders)) {
+              folders = dData.folders.filter((f: DriveItem) => f.parentId === examId);
+            }
+          } catch {}
+        }
 
-          if (destList.length > 0) {
-            const parsedSchool = urlBuilding ? parseSchoolFolderName(urlBuilding) : null;
+        const schoolsFolder = folders.find((f) => /^schools|المدارس|مدارس$/i.test(f.name.trim()));
+
+        // City folders under the exam (exclude Schools and auxiliary schedules)
+        const cityFolders = folders.filter(
+          (f) =>
+            !/^schools|المدارس|مدارس$/i.test(f.name.trim()) &&
+            !/schedule|جدول|backup/i.test(f.name.trim()),
+        );
+
+        const destList: DestinationOption[] = [];
+
+        // Option 1: Schools
+        destList.push({
+          id: schoolsFolder ? schoolsFolder.id : "schools",
+          name: isAr ? "🏫 المدارس (Schools)" : "🏫 Schools",
+          isSchools: true,
+        });
+
+        // Option 2..N: Cities / Governorates from Drive
+        for (const cf of cityFolders) {
+          destList.push({
+            id: cf.id,
+            name: `📍 ${cf.name}`,
+            isSchools: false,
+            cityName: cf.name,
+          });
+        }
+
+        // If urlGovernorate was passed (e.g. "Menofia") but Drive didn't list it in cityFolders,
+        // add it so it can be selected and traversed!
+        if (
+          urlGovernorate &&
+          !/^schools|المدارس|مدارس$/i.test(urlGovernorate) &&
+          !destList.some((d) => d.cityName?.toLowerCase() === urlGovernorate.toLowerCase())
+        ) {
+          destList.push({
+            id: `gov-${urlGovernorate}`,
+            name: `📍 ${urlGovernorate}`,
+            isSchools: false,
+            cityName: urlGovernorate,
+          });
+        }
+
+        setDestinations(destList);
+
+        if (destList.length > 0) {
+          let selected = destList[0];
+
+          if (urlGovernorate) {
+            if (/^schools|المدارس|مدارس$/i.test(urlGovernorate)) {
+              selected = destList.find((d) => d.isSchools) || destList[0];
+            } else {
+              const matchedGov = destList.find(
+                (d) =>
+                  !d.isSchools &&
+                  d.cityName &&
+                  (d.cityName.toLowerCase() === urlGovernorate.toLowerCase() ||
+                    urlGovernorate.toLowerCase().includes(d.cityName.toLowerCase()) ||
+                    d.cityName.toLowerCase().includes(urlGovernorate.toLowerCase())),
+              );
+              if (matchedGov) selected = matchedGov;
+            }
+          } else if (urlBuilding) {
+            const parsedSchool = parseSchoolFolderName(urlBuilding);
             const isSchoolFromUrl = Boolean(
               parsedSchool?.isOfficialSchool ||
-              (urlBuilding && OFFICIAL_EST_SCHOOLS.some(
+              OFFICIAL_EST_SCHOOLS.some(
                 (s) =>
                   s.schoolName.toLowerCase() === urlBuilding.toLowerCase() ||
                   s.fullFolderName.toLowerCase() === urlBuilding.toLowerCase() ||
                   urlBuilding.toLowerCase().includes(s.schoolName.toLowerCase()),
-              )),
+              ),
             );
-
-            let selected = destList[0];
             if (isSchoolFromUrl) {
               selected = destList.find((d) => d.isSchools) || destList[0];
-            } else if (urlBuilding) {
+            } else {
               const matchedCity = destList.find(
                 (d) => !d.isSchools && d.cityName && urlBuilding.toLowerCase().includes(d.cityName.toLowerCase()),
               );
               if (matchedCity) selected = matchedCity;
             }
+          }
 
-            setSelectedDestId(selected.id);
-            setSelectedDest(selected);
+          setSelectedDestId(selected.id);
+          setSelectedDest(selected);
 
-            if (selected.isSchools) {
-              void loadSchools(selected.id);
-            } else if (selected.cityName) {
-              void loadCenters(selected.id, selected.cityName);
-            }
+          if (selected.isSchools) {
+            void loadSchools(selected.id);
+          } else if (selected.cityName) {
+            void loadCenters(selected.id, selected.cityName, urlCenter, urlBuilding);
           }
         }
       } catch (err) {
@@ -670,7 +815,7 @@ export default function LogisticsHubPage() {
         setLoadingDestinations(false);
       }
     },
-    [isAr, loadSchools, loadCenters],
+    [isAr, urlGovernorate, urlBuilding, urlCenter, loadSchools, loadCenters],
   );
 
   useEffect(() => {
@@ -987,6 +1132,13 @@ export default function LogisticsHubPage() {
                 if (found) {
                   setSelectedDestId(found.id);
                   setSelectedDest(found);
+                  setCenters([]);
+                  setSelectedCenterId("");
+                  setSelectedCenterName("");
+                  setBuildings([]);
+                  setSelectedBuildingId("");
+                  setSelectedBuildingName("");
+                  setLiveFloors([]);
                   if (found.isSchools) {
                     void loadSchools(found.id);
                   } else if (found.cityName) {
@@ -1057,9 +1209,12 @@ export default function LogisticsHubPage() {
                     if (found) {
                       setSelectedCenterId(found.id);
                       setSelectedCenterName(found.name);
-                      if (selectedDest?.cityName) {
-                        void loadBuildings(found.id, found.name, selectedDest.cityName);
-                      }
+                      setBuildings([]);
+                      setSelectedBuildingId("");
+                      setSelectedBuildingName("");
+                      setLiveFloors([]);
+                      const cityName = selectedDest?.cityName || activeGovernorateName;
+                      void loadBuildings(found.id, found.name, cityName);
                     }
                   }}
                   disabled={loadingCenters || centers.length === 0}
@@ -1095,10 +1250,12 @@ export default function LogisticsHubPage() {
                     if (found) {
                       setSelectedBuildingId(found.id);
                       setSelectedBuildingName(found.name);
+                      setLiveFloors([]);
+                      const cityName = selectedDest?.cityName || activeGovernorateName;
                       void loadTargetHierarchy(
                         found.id,
                         "building",
-                        selectedDest?.cityName,
+                        cityName,
                         found.name,
                       );
                     }
@@ -1136,7 +1293,7 @@ export default function LogisticsHubPage() {
               )}
             </span>
             <span className="text-muted/60">•</span>
-            {loadingFloors ? (
+            {isAnyLoading || loadingFloors ? (
               <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold">
                 <Loader2 className="size-3.5 animate-spin" />
                 <span>{isAr ? "جاري قراءة الأدوار والقاعات..." : "Reading floors & rooms..."}</span>
@@ -1198,20 +1355,20 @@ export default function LogisticsHubPage() {
         </div>
 
         {/* Live Floors and Rooms Chips Preview or Loading Skeleton */}
-        {loadingFloors ? (
+        {isAnyLoading || loadingFloors ? (
           <div className="pt-3 border-t border-border/40">
-            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 text-center">
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-6 text-center">
               <div className="flex flex-col items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400">
-                <Loader2 className="size-6 animate-spin" />
-                <span className="text-xs font-bold">
+                <Loader2 className="size-7 animate-spin" />
+                <span className="text-sm font-bold">
                   {isAr
-                    ? "جاري تجميع وتوحيد بيانات الأدوار والقاعات من الدرايف..."
-                    : "Fetching, deduplicating, and aggregating live floors and rooms from Google Drive..."}
+                    ? "جاري تحميل وتجميع بيانات المكان والأدوار والقاعات من الدرايف..."
+                    : "Loading, deduplicating, and calculating live hierarchy from Google Drive..."}
                 </span>
-                <span className="text-[11px] text-muted">
+                <span className="text-xs text-muted">
                   {isAr
-                    ? "يتم فرز القاعات تصاعدياً ومنع تكرار أي أدوار"
-                    : "Rooms are naturally sorted and duplicate floor folders merged automatically"}
+                    ? "يتم قراءة أعداد الطلاب من ملفات القاعات وفحص امتحانات EST 1 و EST 2 تلقائياً"
+                    : "Calculating live candidate counts from room registers across EST 1 and EST 2"}
                 </span>
               </div>
             </div>

@@ -78,6 +78,7 @@ import {
   findStudentFileInItems,
   findRegisterFileInItems,
   getFolderRegisterCategory,
+  extractLogisticsHierarchy,
   isRoomFolderName,
   isFloorFolderName,
   canProfileAddRegister,
@@ -2692,27 +2693,25 @@ export function FileBrowser({
             );
           })()}
           {currentFolder && (() => {
-            const regCategory = getFolderRegisterCategory({
-              folder: currentFolder,
+            const logisticsInfo = extractLogisticsHierarchy({
               breadcrumbs,
-              isCurrentFolder: true,
+              currentFolder,
             });
-            if (regCategory !== "building_excel") return null;
+            // Show button if we are inside a governorate, center, building, floor, or room
+            if (!logisticsInfo.governorate && !logisticsInfo.center && !logisticsInfo.building) {
+              return null;
+            }
 
-            const sessionCrumb = breadcrumbs.find((b) =>
-              /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
-                b.name.trim(),
-              ),
-            );
-            const examCrumb = breadcrumbs.find((b) =>
-              /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+))?$/i.test(b.name.trim()),
-            );
-            const q = new URLSearchParams({
-              building: currentFolder.name,
-              folderId: currentFolder.id,
-            });
-            if (sessionCrumb) q.set("cycle", sessionCrumb.name);
-            if (examCrumb) q.set("exam", examCrumb.name);
+            const q = new URLSearchParams();
+            if (logisticsInfo.cycle) q.set("cycle", logisticsInfo.cycle);
+            if (logisticsInfo.exam) q.set("exam", logisticsInfo.exam);
+            if (logisticsInfo.governorate) q.set("governorate", logisticsInfo.governorate);
+            if (logisticsInfo.center) q.set("center", logisticsInfo.center);
+            if (logisticsInfo.building) q.set("building", logisticsInfo.building);
+            if (logisticsInfo.buildingFolderId) q.set("folderId", logisticsInfo.buildingFolderId);
+
+            const targetLabel =
+              logisticsInfo.building || logisticsInfo.center || logisticsInfo.governorate || currentFolder.name;
 
             return (
               <Link
@@ -2720,8 +2719,8 @@ export function FileBrowser({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all shadow-xs"
                 title={
                   locale === "ar"
-                    ? `فتح مركز الاستيكرات واللوجستيات لكراتين وشنط "${currentFolder.name}"`
-                    : `Open Logistics Hub for "${currentFolder.name}"`
+                    ? `فتح مركز الاستيكرات واللوجستيات لـ "${targetLabel}" (ملء البيانات والحساب التلقائي)`
+                    : `Open Logistics Hub for "${targetLabel}" (Auto-populates hierarchy)`
                 }
               >
                 <Boxes className="size-3.5 text-amber-600 dark:text-amber-400" />

@@ -520,3 +520,101 @@ function resolveFolderLevelFromChain(
   return "custom";
 }
 
+export interface LogisticsBreadcrumbHierarchy {
+  cycle?: string;
+  exam?: string;
+  governorate?: string;
+  center?: string;
+  building?: string;
+  buildingFolderId?: string;
+}
+
+/**
+ * Extracts complete location hierarchy (Session, Exam, Governorate, Center, Building)
+ * from breadcrumbs and current folder.
+ * Works seamlessly across both:
+ * 1. Schools branch: Session -> Exam -> Schools -> School -> Floor -> Room
+ * 2. Cities branch: Session -> Exam -> Governorate -> Center -> Building -> Floor -> Room
+ */
+export function extractLogisticsHierarchy(params: {
+  breadcrumbs: Breadcrumb[];
+  currentFolder?: { id: string; name: string } | null;
+}): LogisticsBreadcrumbHierarchy {
+  const { breadcrumbs, currentFolder } = params;
+  const chain = [...breadcrumbs];
+  if (currentFolder && (!chain.length || chain[chain.length - 1].id !== currentFolder.id)) {
+    chain.push({ id: currentFolder.id, name: currentFolder.name });
+  }
+
+  // 1. Session / Cycle: e.g. "December 2026", "January 2027"
+  const sessionCrumb = chain.find((b) =>
+    /^(december|october|november|january|february|march|april|may|june|july|august|september|oct|nov|dec)\s*\d{4}/i.test(
+      b.name.trim(),
+    ),
+  );
+  const cycle = sessionCrumb?.name.trim();
+
+  // 2. Exam: e.g. "EST 1", "EST 2"
+  const examIdx = chain.findIndex((b) =>
+    /^EST(\s*[-_]?\s*([0-9]+|[IVXLCDM]+))?$/i.test(b.name.trim()),
+  );
+  const exam = examIdx >= 0 ? chain[examIdx].name.trim() : undefined;
+
+  let governorate: string | undefined;
+  let center: string | undefined;
+  let building: string | undefined;
+  let buildingFolderId: string | undefined;
+
+  if (examIdx >= 0 && examIdx + 1 < chain.length) {
+    const afterExam = chain.slice(examIdx + 1);
+    const firstFolder = afterExam[0];
+    const isSchools = /^(schools|المدارس|مدارس)$/i.test(firstFolder.name.trim());
+
+    if (isSchools) {
+      governorate = "Schools";
+      if (afterExam.length >= 2) {
+        const schoolItem = afterExam[1];
+        building = schoolItem.name.trim();
+        center = schoolItem.name.trim();
+        buildingFolderId = schoolItem.id;
+      }
+    } else {
+      // City/Governorate: e.g. "Menofia"
+      governorate = firstFolder.name.trim();
+
+      if (afterExam.length >= 2) {
+        // e.g. "Al Ryada University"
+        center = afterExam[1].name.trim();
+
+        if (afterExam.length >= 3) {
+          const item3 = afterExam[2];
+          // Check if item3 is a floor folder
+          if (!isFloorFolderName(item3.name) && !isRoomFolderName(item3.name)) {
+            // It's a building! e.g. "Science And Technology"
+            building = item3.name.trim();
+            buildingFolderId = item3.id;
+          } else {
+            // Center is also the building
+            building = center;
+            buildingFolderId = afterExam[1].id;
+          }
+        } else {
+          // Inside the center folder
+          building = center;
+          buildingFolderId = afterExam[1].id;
+        }
+      }
+    }
+  }
+
+  return {
+    cycle,
+    exam,
+    governorate,
+    center,
+    building,
+    buildingFolderId,
+  };
+}
+
+

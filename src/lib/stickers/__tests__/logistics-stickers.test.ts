@@ -206,3 +206,67 @@ describe("Logistics Stickers PDF Generator", () => {
   });
 });
 
+import { extractLogisticsHierarchy } from "../register-utils";
+
+describe("extractLogisticsHierarchy", () => {
+  it("resolves full location hierarchy when inside room 200 in Menofia / Al Ryada University", () => {
+    const breadcrumbs = [
+      { id: "root", name: "File Manager App" },
+      { id: "sess-1", name: "December 2026" },
+      { id: "exam-1", name: "EST 1" },
+      { id: "gov-1", name: "Menofia" },
+      { id: "cnt-1", name: "Al Ryada University" },
+      { id: "bld-1", name: "Science And Technology" },
+      { id: "fl-1", name: "floor1" },
+    ];
+    const currentFolder = { id: "rm-200", name: "room 200" };
+
+    const result = extractLogisticsHierarchy({ breadcrumbs, currentFolder });
+    expect(result.cycle).toBe("December 2026");
+    expect(result.exam).toBe("EST 1");
+    expect(result.governorate).toBe("Menofia");
+    expect(result.center).toBe("Al Ryada University");
+    expect(result.building).toBe("Science And Technology");
+    expect(result.buildingFolderId).toBe("bld-1");
+  });
+
+  it("resolves hierarchy when directly inside building folder", () => {
+    const breadcrumbs = [
+      { id: "root", name: "File Manager App" },
+      { id: "sess-1", name: "December 2026" },
+      { id: "exam-1", name: "EST 1" },
+      { id: "gov-1", name: "Menofia" },
+      { id: "cnt-1", name: "Al Ryada University" },
+    ];
+    const currentFolder = { id: "bld-1", name: "Science And Technology" };
+
+    const result = extractLogisticsHierarchy({ breadcrumbs, currentFolder });
+    expect(result.cycle).toBe("December 2026");
+    expect(result.exam).toBe("EST 1");
+    expect(result.governorate).toBe("Menofia");
+    expect(result.center).toBe("Al Ryada University");
+    expect(result.building).toBe("Science And Technology");
+    expect(result.buildingFolderId).toBe("bld-1");
+  });
+
+  it("resolves hierarchy when in Schools branch", () => {
+    const breadcrumbs = [
+      { id: "root", name: "File Manager App" },
+      { id: "sess-1", name: "December 2026" },
+      { id: "exam-1", name: "EST 1" },
+      { id: "sch-root", name: "Schools" },
+      { id: "sch-1", name: "Taymour English School (Alexandria)" },
+    ];
+    const currentFolder = { id: "fl-1", name: "1st Floor" };
+
+    const result = extractLogisticsHierarchy({ breadcrumbs, currentFolder });
+    expect(result.cycle).toBe("December 2026");
+    expect(result.exam).toBe("EST 1");
+    expect(result.governorate).toBe("Schools");
+    expect(result.center).toBe("Taymour English School (Alexandria)");
+    expect(result.building).toBe("Taymour English School (Alexandria)");
+    expect(result.buildingFolderId).toBe("sch-1");
+  });
+});
+
+

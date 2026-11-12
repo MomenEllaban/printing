@@ -88,3 +88,4 @@ describe("generateFloorExamStickersPdf", () => {
     expect(doc.getPageCount()).toBe(1);
   });
 });
+
