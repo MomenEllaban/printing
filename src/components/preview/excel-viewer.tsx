@@ -484,8 +484,6 @@ export function ExcelViewer({
 
   if (!registerMode) {
     return (
-  if (!registerMode) {
-    return (
       <div className="w-full space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl border border-border bg-surface/70 px-3 py-2.5">
           <div className="flex items-center gap-2 min-w-0">
