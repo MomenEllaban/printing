@@ -443,7 +443,7 @@ export function generateEstPrintHtml(
               width: 100% !important;
               max-width: 100% !important;
               box-sizing: border-box !important;
-              padding: 8mm 7mm 8mm 7mm !important;
+              padding: 6mm 7mm 8mm 7mm !important;
               margin: 0 !important;
               page-break-after: always !important;
               break-after: page !important;
@@ -479,7 +479,7 @@ export function generateEstPrintHtml(
           .sheet-page {
             width: 100%;
             box-sizing: border-box;
-            padding: 8mm 7mm 8mm 7mm;
+            padding: 6mm 7mm 8mm 7mm;
             page-break-after: always;
             break-after: page;
             page-break-inside: avoid;
@@ -499,12 +499,12 @@ export function generateEstPrintHtml(
             margin-bottom: 7px;
           }
           .header-logo {
-            width: 210px;
+            width: 250px;
             display: flex;
             align-items: center;
           }
           .est-logo-img {
-            height: 74px;
+            height: 92px;
             width: auto;
             object-fit: contain;
           }
@@ -665,12 +665,12 @@ export function generateEstPrintHtml(
             margin-top: 8px;
             padding-top: 6px;
             border-top: 2px solid #000;
-            font-size: 12pt;
+            font-size: 14pt;
             color: #000;
           }
           .footer-head {
             white-space: nowrap;
-            font-size: 12.5pt;
+            font-size: 14pt;
           }
           .footer-head strong {
             font-weight: 800;
@@ -682,6 +682,7 @@ export function generateEstPrintHtml(
             text-align: right;
             font-weight: 800;
             white-space: nowrap;
+            font-size: 12pt;
           }
         </style>
       </head>

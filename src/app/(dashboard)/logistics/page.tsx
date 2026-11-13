@@ -454,6 +454,7 @@ export default function LogisticsHubPage() {
       setLoadingBuildings(true);
       try {
         let bList: DriveFolderOption[] = [];
+        let directFolders: DriveItem[] = [];
 
         // 1. Direct query
         try {
@@ -462,37 +463,41 @@ export default function LogisticsHubPage() {
           });
           const data = await res.json().catch(() => ({}));
           if (res.ok && Array.isArray(data.items)) {
-            const subFolders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
-            const hasFloorFolders = subFolders.some((f) => isFloorFolderName(f.name));
-
-            if (subFolders.length > 0 && !hasFloorFolders) {
-              bList = subFolders.map((f) => ({ id: f.id, name: f.name }));
-            } else {
-              bList = [{ id: centerId, name: centerName }];
-            }
+            directFolders = data.items.filter((i: DriveItem) => i.isFolder);
           }
         } catch (err) {
           console.warn("[logistics] direct building query failed:", err);
         }
 
-        // 2. Descendants fallback
-        if (bList.length === 0) {
+        // 2. Descendants fallback for direct children
+        if (directFolders.length === 0) {
           try {
             const dRes = await fetch(`/api/drive/folders/descendants?folderId=${encodeURIComponent(centerId)}`, {
               cache: "no-store",
             });
             const dData = await dRes.json().catch(() => ({}));
             if (dRes.ok && Array.isArray(dData.folders)) {
-              const direct = dData.folders.filter(
-                (f: DriveItem) => f.parentId === centerId && !isFloorFolderName(f.name),
-              );
-              if (direct.length > 0) {
-                bList = direct.map((f: DriveItem) => ({ id: f.id, name: f.name }));
-              }
+              directFolders = dData.folders.filter((f: DriveItem) => f.parentId === centerId);
             }
           } catch {}
         }
 
+        const hasFloorFolders = directFolders.some((f) => isFloorFolderName(f.name));
+        const nonFloorFolders = directFolders.filter((f) => !isFloorFolderName(f.name));
+
+        if (directFolders.length > 0 && hasFloorFolders) {
+          // This level already contains floors -> treat selected center as the building
+          bList = [{ id: centerId, name: centerName }];
+        } else if (nonFloorFolders.length > 0) {
+          // Subfolders are likely buildings (or another level before floors)
+          bList = nonFloorFolders.map((f) => ({ id: f.id, name: f.name }));
+        } else if (directFolders.length > 0) {
+          bList = directFolders.map((f) => ({ id: f.id, name: f.name }));
+        } else {
+          bList = [{ id: centerId, name: centerName }];
+        }
+
+        // 3. Fallback to targetBuildingName from URL / navigation
         if (bList.length === 0) {
           if (targetBuildingName) {
             bList = [{ id: urlFolderId || centerId, name: targetBuildingName }];
@@ -502,6 +507,7 @@ export default function LogisticsHubPage() {
         }
 
         setBuildings(bList);
+
         if (bList.length > 0) {
           const searchName = targetBuildingName || urlBuilding;
           const targetBuilding = searchName
@@ -519,9 +525,17 @@ export default function LogisticsHubPage() {
           setSelectedBuildingId(targetBuilding.id);
           setSelectedBuildingName(targetBuilding.name);
           void loadTargetHierarchy(targetBuilding.id, "building", cityName, targetBuilding.name);
+        } else {
+          setSelectedBuildingId("");
+          setSelectedBuildingName("");
+          setLiveFloors([]);
         }
       } catch (err) {
         console.error("[logistics] Failed to load buildings:", err);
+        setBuildings([]);
+        setSelectedBuildingId("");
+        setSelectedBuildingName("");
+        setLiveFloors([]);
       } finally {
         setLoadingBuildings(false);
       }
@@ -541,8 +555,15 @@ export default function LogisticsHubPage() {
     ) => {
       if (!cityFolderId) return;
       setLoadingCenters(true);
+      setCenters([]);
+      setSelectedCenterId("");
+      setSelectedCenterName("");
+      setBuildings([]);
+      setSelectedBuildingId("");
+      setSelectedBuildingName("");
+      setLiveFloors([]);
       try {
-        let centerFolders: DriveFolderOption[] = [];
+        let directFolders: DriveItem[] = [];
 
         // 1. Direct query
         try {
@@ -552,15 +573,14 @@ export default function LogisticsHubPage() {
           );
           const data = await res.json().catch(() => ({}));
           if (res.ok && Array.isArray(data.items)) {
-            const folders: DriveItem[] = data.items.filter((i: DriveItem) => i.isFolder);
-            centerFolders = folders.map((f) => ({ id: f.id, name: f.name }));
+            directFolders = data.items.filter((i: DriveItem) => i.isFolder);
           }
         } catch (err) {
           console.warn("[logistics] direct centers query failed:", err);
         }
 
         // 2. Descendants fallback
-        if (centerFolders.length === 0 && cityFolderId !== "schools") {
+        if (directFolders.length === 0 && cityFolderId !== "schools") {
           try {
             const dRes = await fetch(
               `/api/drive/folders/descendants?folderId=${encodeURIComponent(cityFolderId)}`,
@@ -568,15 +588,29 @@ export default function LogisticsHubPage() {
             );
             const dData = await dRes.json().catch(() => ({}));
             if (dRes.ok && Array.isArray(dData.folders)) {
-              const directChildren = dData.folders.filter((f: DriveItem) => f.parentId === cityFolderId);
-              if (directChildren.length > 0) {
-                centerFolders = directChildren.map((f: DriveItem) => ({ id: f.id, name: f.name }));
-              }
+              directFolders = dData.folders.filter((f: DriveItem) => f.parentId === cityFolderId);
             }
           } catch {}
         }
 
-        // 3. Fallback to targetCenterName from URL / navigation
+        // 3. If city itself contains floor-like folders, treat city as the building (no separate center/building levels)
+        const hasFloorFolders = directFolders.some((f) => isFloorFolderName(f.name));
+        if (directFolders.length > 0 && hasFloorFolders) {
+          const selfName = targetBuildingName || cityName;
+          const selfOption = { id: cityFolderId, name: selfName };
+          setCenters([selfOption]);
+          setSelectedCenterId(selfOption.id);
+          setSelectedCenterName(selfOption.name);
+          setBuildings([selfOption]);
+          setSelectedBuildingId(selfOption.id);
+          setSelectedBuildingName(selfOption.name);
+          void loadTargetHierarchy(cityFolderId, "building", cityName, selfName);
+          return;
+        }
+
+        let centerFolders: DriveFolderOption[] = directFolders.map((f) => ({ id: f.id, name: f.name }));
+
+        // 4. Fallback to targetCenterName from URL / navigation
         const desiredCenter = targetCenterName || urlCenter;
         if (centerFolders.length === 0 && desiredCenter) {
           centerFolders = [{ id: urlFolderId || `center-${desiredCenter}`, name: desiredCenter }];
@@ -598,18 +632,38 @@ export default function LogisticsHubPage() {
           setSelectedCenterName(centerToPick.name);
           void loadBuildings(centerToPick.id, centerToPick.name, cityName, targetBuildingName || urlBuilding);
         } else {
-          setBuildings([]);
-          setSelectedBuildingId("");
-          setSelectedBuildingName("");
-          setLiveFloors([]);
+          // Last resort: treat city folder itself as the selectable target if it exists
+          const fallbackName = desiredCenter || targetBuildingName || cityName;
+          if (cityFolderId && fallbackName) {
+            const fallbackOption = { id: cityFolderId, name: fallbackName };
+            setCenters([fallbackOption]);
+            setSelectedCenterId(fallbackOption.id);
+            setSelectedCenterName(fallbackOption.name);
+            setBuildings([fallbackOption]);
+            setSelectedBuildingId(fallbackOption.id);
+            setSelectedBuildingName(fallbackOption.name);
+            void loadTargetHierarchy(cityFolderId, "building", cityName, fallbackName);
+          } else {
+            setBuildings([]);
+            setSelectedBuildingId("");
+            setSelectedBuildingName("");
+            setLiveFloors([]);
+          }
         }
       } catch (err) {
         console.error("[logistics] Failed to load centers:", err);
+        setCenters([]);
+        setBuildings([]);
+        setSelectedCenterId("");
+        setSelectedCenterName("");
+        setSelectedBuildingId("");
+        setSelectedBuildingName("");
+        setLiveFloors([]);
       } finally {
         setLoadingCenters(false);
       }
     },
-    [loadBuildings, urlCenter, urlFolderId, urlBuilding],
+    [loadBuildings, loadTargetHierarchy, urlCenter, urlFolderId, urlBuilding],
   );
 
   // ----------------------------------------------------
