@@ -395,7 +395,7 @@ export function generateEstPrintHtml(
           <!-- Official Footer with Building Head & Page Indicator -->
           <div class="official-footer">
             <div class="footer-head">
-              <strong>Head of Building:</strong> ${pageObj.headName}
+              <strong>Head of Building:</strong> <span class="footer-head-name">${pageObj.headName}</span>
             </div>
             <div class="footer-page">
               <strong>Page:</strong> ${pageObj.pageIndex + 1} of ${pageObj.totalPages}
@@ -499,12 +499,12 @@ export function generateEstPrintHtml(
             margin-bottom: 7px;
           }
           .header-logo {
-            width: 170px;
+            width: 210px;
             display: flex;
             align-items: center;
           }
           .est-logo-img {
-            height: 58px;
+            height: 74px;
             width: auto;
             object-fit: contain;
           }
@@ -665,14 +665,18 @@ export function generateEstPrintHtml(
             margin-top: 8px;
             padding-top: 6px;
             border-top: 2px solid #000;
-            font-size: 10pt;
+            font-size: 12pt;
             color: #000;
           }
           .footer-head {
             white-space: nowrap;
+            font-size: 12.5pt;
           }
           .footer-head strong {
             font-weight: 800;
+          }
+          .footer-head-name {
+            font-weight: 900;
           }
           .footer-page {
             text-align: right;

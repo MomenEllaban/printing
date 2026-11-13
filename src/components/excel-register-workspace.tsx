@@ -554,7 +554,7 @@ export function ExcelRegisterWorkspace({
                     <img
                       src={`data:image/jpeg;base64,${EST_LOGO_BASE64}`}
                       alt="EST Official Logo"
-                      className="h-[58px] w-auto object-contain rounded drop-shadow-xs"
+                      className="h-[74px] w-auto object-contain rounded drop-shadow-xs"
                     />
                     <div>
                       <h3 className="text-sm sm:text-base font-black tracking-wider text-slate-900 dark:text-white uppercase">
@@ -712,10 +712,10 @@ export function ExcelRegisterWorkspace({
               </div>
 
               {/* Official Building Head Footer Bar (Clean, without screen signatures) */}
-              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
+              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-sm text-slate-700 dark:text-slate-300">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-slate-500">{locale === "ar" ? "رئيس المبنى:" : "Head of Building:"} </span>
-                  <span className="font-extrabold text-slate-900 dark:text-white">{parsed.headName}</span>
+                  <span className="font-black text-slate-900 dark:text-white">{parsed.headName}</span>
                 </div>
               </div>
             </div>
