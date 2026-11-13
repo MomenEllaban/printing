@@ -54,7 +54,14 @@ type SavedCustomBatch = {
   savedAt: string;
 };
 
-const INITIAL_FALLBACK_STUDENTS: CertificateStudentData[] = [
+type StudentWithReceipt = CertificateStudentData & {
+  received?: boolean;
+  receivedAt?: string | null;
+};
+
+const RECEIPTS_STORAGE_PREFIX = "certificate_sticker_receipts_v1:";
+
+const INITIAL_FALLBACK_STUDENTS: StudentWithReceipt[] = [
   {
     serialNumber: "1",
     studentName: "Abdelaziz Sameh Mahmoud Aly Aboueyana",
@@ -109,7 +116,7 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/[\s_\-#:()]+/g, "");
 }
 
-function parseSmartSheet(rawRows: any[][], defaultBatchName: string): CertificateStudentData[] {
+function parseSmartSheet(rawRows: any[][], defaultBatchName: string): StudentWithReceipt[] {
   if (!Array.isArray(rawRows) || rawRows.length === 0) return [];
 
   let headerIdx = 0;
@@ -125,7 +132,7 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): Certificat
   const headers = (rawRows[headerIdx] || []).map((h) => String(h || "").trim());
   const normHeaders = headers.map((h) => normalizeHeader(h));
 
-  const results: CertificateStudentData[] = [];
+  const results: StudentWithReceipt[] = [];
 
   for (let r = headerIdx + 1; r < rawRows.length; r++) {
     const row = rawRows[r];
@@ -183,6 +190,8 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): Certificat
       reportsList: finalReportsList,
       certificateCode: reqId || (finalSerial ? `EST-REP-${String(finalSerial).padStart(4, "0")}` : `EST-REP-${r}`),
       batchName,
+      received: false,
+      receivedAt: null,
     });
   }
 
@@ -197,7 +206,7 @@ export default function CertificateStickersPage() {
   const [customBatchName, setCustomBatchName] = useState<string>(BATCH_PRESETS[0].name);
   const [savedCustomBatches, setSavedCustomBatches] = useState<SavedCustomBatch[]>([]);
 
-  const [students, setStudents] = useState<CertificateStudentData[]>(INITIAL_FALLBACK_STUDENTS);
+  const [students, setStudents] = useState<StudentWithReceipt[]>(INITIAL_FALLBACK_STUDENTS);
   const [loadingBatch, setLoadingBatch] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -242,6 +251,39 @@ export default function CertificateStickersPage() {
     return undefined;
   }, [activeBatchId, savedCustomBatches, locale]);
 
+  const getStudentReceiptKey = useCallback((s: StudentWithReceipt, idx: number) => {
+    return String(s.id || s.serialNumber || s.certificateCode || `${s.studentName}-${idx}`);
+  }, []);
+
+  const loadReceiptMap = useCallback((batchId: string): Record<string, { received: boolean; receivedAt?: string | null }> => {
+    try {
+      const raw = window.localStorage.getItem(`${RECEIPTS_STORAGE_PREFIX}${batchId}`);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const saveReceiptMap = useCallback((batchId: string, map: Record<string, { received: boolean; receivedAt?: string | null }>) => {
+    try {
+      window.localStorage.setItem(`${RECEIPTS_STORAGE_PREFIX}${batchId}`, JSON.stringify(map));
+    } catch {}
+  }, []);
+
+  const applyReceiptMap = useCallback(
+    (batchId: string, list: StudentWithReceipt[]) => {
+      const map = loadReceiptMap(batchId);
+      return list.map((s, idx) => {
+        const key = getStudentReceiptKey(s, idx);
+        const rec = map[key];
+        return rec ? { ...s, received: Boolean(rec.received), receivedAt: rec.receivedAt || null } : { ...s, received: Boolean(s.received), receivedAt: s.receivedAt || null };
+      });
+    },
+    [getStudentReceiptKey, loadReceiptMap],
+  );
+
   const fetchBatchData = useCallback(
     async (batchId: string) => {
       try {
@@ -250,7 +292,8 @@ export default function CertificateStickersPage() {
         if (!res.ok) throw new Error("Failed to load batch");
         const data = await res.json();
         if (Array.isArray(data.students) && data.students.length > 0) {
-          setStudents(data.students);
+          const withReceipts = applyReceiptMap(batchId, data.students as StudentWithReceipt[]);
+          setStudents(withReceipts);
           setCustomBatchName(data.batchName || BATCH_PRESETS.find((b) => b.id === batchId)?.name || "");
           setUploadedFileName(null);
           toast.success(
@@ -267,7 +310,7 @@ export default function CertificateStickersPage() {
         setLoadingBatch(false);
       }
     },
-    [locale],
+    [locale, applyReceiptMap],
   );
 
   useEffect(() => {
@@ -286,7 +329,8 @@ export default function CertificateStickersPage() {
 
       const custom = savedCustomBatches.find((b) => b.id === batchId);
       if (custom) {
-        setStudents(custom.students);
+        const withReceipts = custom.students.map((s) => ({ ...s, received: Boolean((s as StudentWithReceipt).received), receivedAt: (s as StudentWithReceipt).receivedAt || null }));
+        setStudents(withReceipts as StudentWithReceipt[]);
         setCustomBatchName(custom.name);
         setUploadedFileName(custom.fileName);
         toast.success(
@@ -311,6 +355,42 @@ export default function CertificateStickersPage() {
       }
     },
     [savedCustomBatches, persistCustomBatches, activeBatchId, fetchBatchData, locale],
+  );
+
+  const toggleStudentReceipt = useCallback(
+    (studentIndex: number) => {
+      setStudents((prev) => {
+        const next = prev.map((s, idx) => {
+          if (idx !== studentIndex) return s;
+          const nextReceived = !Boolean(s.received);
+          return {
+            ...s,
+            received: nextReceived,
+            receivedAt: nextReceived ? new Date().toISOString() : null,
+          };
+        });
+
+        const isPreset = BATCH_PRESETS.some((b) => b.id === activeBatchId);
+        if (isPreset) {
+          const map = loadReceiptMap(activeBatchId);
+          next.forEach((s, idx) => {
+            const key = getStudentReceiptKey(s, idx);
+            map[key] = { received: Boolean(s.received), receivedAt: s.receivedAt || null };
+          });
+          saveReceiptMap(activeBatchId, map);
+        } else {
+          const customIdx = savedCustomBatches.findIndex((b) => b.id === activeBatchId);
+          if (customIdx >= 0) {
+            const updatedBatches = [...savedCustomBatches];
+            updatedBatches[customIdx] = { ...updatedBatches[customIdx], students: next as CertificateStudentData[] };
+            persistCustomBatches(updatedBatches);
+          }
+        }
+
+        return next;
+      });
+    },
+    [activeBatchId, getStudentReceiptKey, loadReceiptMap, saveReceiptMap, savedCustomBatches, persistCustomBatches],
   );
 
   const handleFileUpload = useCallback(
@@ -923,29 +1003,50 @@ export default function CertificateStickersPage() {
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "إجمالي التقارير" : "Total Reports"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "قائمة التقارير" : "Reports List"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "كود التتبع" : "Tracking Code"}</th>
+                  <th className="px-4 py-3 text-start">{locale === "ar" ? "الاستلام" : "Received"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredStudents.map((s, idx) => (
-                  <tr key={s.id || idx} className="hover:bg-surface-soft/40 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-muted">{idx + 1}</td>
-                    <td className="px-4 py-2.5">
-                      <span className="rounded bg-slate-900 text-amber-400 px-2 py-0.5 font-mono font-bold text-xs">
-                        ({s.serialNumber || idx + 1})
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 font-bold text-foreground text-sm">{s.studentName}</td>
-                    <td className="px-4 py-2.5">
-                      <span className="rounded bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold px-2 py-0.5 text-xs">
-                        {s.totalReports || 1}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-foreground max-w-xs">{s.reportsList || "-"}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-emerald-600 dark:text-emerald-400">
-                      {s.certificateCode || "-"}
-                    </td>
-                  </tr>
-                ))}
+                {filteredStudents.map((s, idx) => {
+                  const key = getStudentReceiptKey(s as StudentWithReceipt, idx);
+                  const originalIndex = students.findIndex((st, stIdx) => getStudentReceiptKey(st as StudentWithReceipt, stIdx) === key);
+                  const received = Boolean((s as StudentWithReceipt).received);
+                  return (
+                    <tr key={s.id || idx} className={cn("hover:bg-surface-soft/40 transition-colors", received && "bg-emerald-500/5")}>
+                      <td className="px-4 py-2.5 font-mono text-muted">{idx + 1}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="rounded bg-slate-900 text-amber-400 px-2 py-0.5 font-mono font-bold text-xs">
+                          ({s.serialNumber || idx + 1})
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-bold text-foreground text-sm">{s.studentName}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="rounded bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold px-2 py-0.5 text-xs">
+                          {s.totalReports || 1}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-foreground max-w-xs">{s.reportsList || "-"}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-emerald-600 dark:text-emerald-400">
+                        {s.certificateCode || "-"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleStudentReceipt(originalIndex >= 0 ? originalIndex : idx)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border transition-colors cursor-pointer",
+                            received
+                              ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+                              : "bg-surface text-foreground border-border hover:border-emerald-500/50 hover:bg-emerald-500/10",
+                          )}
+                          title={received ? ((s as StudentWithReceipt).receivedAt || "") : ""}
+                        >
+                          <span>{locale === "ar" ? (received ? "تم الاستلام" : "استلام") : (received ? "Received" : "Receive")}</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
