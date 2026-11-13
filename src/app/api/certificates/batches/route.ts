@@ -77,6 +77,19 @@ export async function GET(request: Request) {
   }
 }
 
+function isDbLikeError(error: any): boolean {
+  const msg = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "");
+  return (
+    Boolean(error?.name?.startsWith?.("PrismaClient")) ||
+    /^P\d{4}$/.test(code) ||
+    msg.includes("database") ||
+    msg.includes("does not exist") ||
+    msg.includes("certificatestickerbatch") ||
+    msg.includes("prisma")
+  );
+}
+
 export async function POST(request: Request) {
   try {
     await requireSession(request, { mutating: true });
@@ -123,9 +136,13 @@ export async function POST(request: Request) {
       throw new AppError("Google Drive upload failed", { status: 502, code: "uploadInit" });
     }
 
-    const item = toDriveItem(response.data);
-    await syncDriveItems([item]);
-    invalidateCache("stats:");
+    try {
+      const item = toDriveItem(response.data);
+      await syncDriveItems([item]);
+      invalidateCache("stats:");
+    } catch (syncError) {
+      console.warn("[certificates:batches:create] metadata sync failed after Drive upload", syncError);
+    }
 
     let batch;
     try {
@@ -143,16 +160,9 @@ export async function POST(request: Request) {
         },
       });
     } catch (dbError: any) {
-      const msg = String(dbError?.message || "").toLowerCase();
-      const code = String(dbError?.code || "");
-      const dbUnavailable =
-        dbError?.name?.startsWith?.("PrismaClient") ||
-        /^P\d{4}$/.test(code) ||
-        msg.includes("does not exist") ||
-        msg.includes("certificatestickerbatch");
-      if (dbUnavailable) {
+      if (isDbLikeError(dbError)) {
         throw new AppError(
-          "Excel uploaded to Google Drive, but the certificate batches database table is unavailable. Apply the latest database migration, then upload again (or keep using the Drive file).",
+          "تم رفع ملف Excel إلى Google Drive، لكن تعذر حفظ الباتش في قاعدة البيانات (غالبًا المايجريشن غير مطبقة). طبّق آخر database migration ثم أعد المحاولة.",
           { status: 503, code: "databaseError", expose: true },
         );
       }
@@ -160,7 +170,16 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ batch }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof AppError) return jsonError(error);
+    if (isDbLikeError(error)) {
+      return jsonError(
+        new AppError(
+          "تعذر حفظ الباتش بسبب مشكلة في قاعدة البيانات (تحقق من الاتصال وتطبيق migrations).",
+          { status: 503, code: "databaseError", expose: true },
+        ),
+      );
+    }
     return jsonError(error);
   }
 }
