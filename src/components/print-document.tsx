@@ -260,10 +260,10 @@ export function PrintDocument({
           padding-top: 0;
           padding-bottom: 2px;
           margin-top: 0;
-          margin-bottom: 4px;
+          margin-bottom: 3px;
         }
-        .header-logo { width: 280px; display: flex; align-items: center; }
-        .est-logo-img { height: 112px; width: auto; object-fit: contain; display: block; }
+        .header-logo { width: 240px; display: flex; align-items: center; }
+        .est-logo-img { height: 96px; width: auto; object-fit: contain; display: block; }
         .header-center { flex: 1; text-align: center; padding: 0 10px; }
         .est-register-title {
           margin: 0 0 3px;
@@ -351,15 +351,15 @@ export function PrintDocument({
           display: flex;
           justify-content: space-between;
           align-items: flex-end;
-          margin-top: 4px;
-          padding-top: 3px;
+          margin-top: 3px;
+          padding-top: 2px;
           border-top: 2px solid #000;
           color: #000;
         }
-        .footer-head { white-space: nowrap; font-size: 26pt; line-height: 1.05; }
-        .footer-head strong { font-weight: 800; font-size: 26pt; }
-        .footer-head-name { font-weight: 900; font-size: 26pt; }
-        .footer-page { text-align: right; font-weight: 800; white-space: nowrap; font-size: 12pt; line-height: 1.1; }
+        .footer-head { white-space: nowrap; font-size: 18pt; line-height: 1.05; }
+        .footer-head strong { font-weight: 800; font-size: 18pt; }
+        .footer-head-name { font-weight: 900; font-size: 18pt; }
+        .footer-page { text-align: right; font-weight: 800; white-space: nowrap; font-size: 11pt; line-height: 1.1; }
       `}</style>
 
       {/* Interactive Toolbar for Screen view */}
