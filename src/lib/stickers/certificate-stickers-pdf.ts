@@ -162,16 +162,15 @@ function drawSimpleBwCertificateSticker(params: {
   stickerIndex: number;
   totalStickers: number;
 }) {
-  const { page, font, student, globalOptions, x, y, width, height, stickerIndex, totalStickers } = params;
+  const { page, font, student, globalOptions, x, y, width, height, stickerIndex } = params;
 
   const serial = student.serialNumber || stickerIndex;
   const studentName = (student.studentName || "Student Candidate").trim();
   const totalReports = student.totalReports || 1;
   const rawReportsList = (student.reportsList || "Official EST Score Report").trim();
   const batchName = (student.batchName || globalOptions.batchName || "Official Report Batch").trim();
-  const certCode = student.certificateCode || (student.seatNumber ? `EST-${student.seatNumber}` : `EST-REP-${String(serial).padStart(4, "0")}`);
 
-  // 1. Single Outer Border (Clean 1pt Black Frame for precise cutting - no nested boxes)
+  // 1. Single Outer Border (Clean 1.2pt Black Frame for precise cutting)
   page.drawRectangle({
     x,
     y,
@@ -182,170 +181,154 @@ function drawSimpleBwCertificateSticker(params: {
     borderWidth: 1.2,
   });
 
-  // 2. Top Header: Solid Black Bar with Crisp White Typography
+  // 2. Top Header: Clean, Light Header (No heavy solid black bar, no 79/306 count)
   const headerH = 38;
-  const headerY = y + height - headerH - 4;
+  const headerY = y + height - headerH - 6;
 
+  // Subtle clean light header background
   page.drawRectangle({
-    x: x + 4,
+    x: x + 2,
     y: headerY,
-    width: width - 8,
-    height: headerH,
-    color: COLOR_BLACK,
+    width: width - 4,
+    height: headerH + 4,
+    color: rgb(0.96, 0.96, 0.97),
   });
 
-  // Left: EST Emblem Box
+  // Left: EST Emblem Box (Crisp emblem badge)
   page.drawRectangle({
-    x: x + 8,
+    x: x + 10,
     y: headerY + 6,
-    width: 38,
+    width: 44,
     height: 26,
-    color: COLOR_WHITE,
+    color: COLOR_BLACK,
   });
 
   page.drawText("EST", {
-    x: x + 13,
+    x: x + 17,
     y: headerY + 12,
     size: 15,
     font,
-    color: COLOR_BLACK,
+    color: COLOR_WHITE,
   });
 
   // Header Title
   page.drawText("OFFICIAL SCORE REPORT & CERTIFICATE", {
-    x: x + 52,
+    x: x + 62,
     y: headerY + 21,
-    size: 9.5,
+    size: 10,
     font,
-    color: COLOR_WHITE,
+    color: COLOR_BLACK,
   });
 
   // Batch Name on Header
-  const displayBatch = batchName.length > 50 ? batchName.slice(0, 48) + "..." : batchName;
+  const displayBatch = batchName.length > 55 ? batchName.slice(0, 52) + "..." : batchName;
   page.drawText(displayBatch.toUpperCase(), {
-    x: x + 52,
+    x: x + 62,
     y: headerY + 8,
-    size: 7.5,
+    size: 8,
     font,
-    color: COLOR_WHITE,
+    color: COLOR_DARK_GRAY,
   });
 
-  // Right Index: (1 / 306)
-  const badgeText = `${stickerIndex} / ${totalStickers}`;
-  const badgeW = font.widthOfTextAtSize(badgeText, 8.5);
-  page.drawText(badgeText, {
-    x: x + width - badgeW - 14,
-    y: headerY + 14,
-    size: 8.5,
-    font,
-    color: COLOR_WHITE,
+  // Divider Line below Header
+  page.drawLine({
+    start: { x: x + 2, y: headerY },
+    end: { x: x + width - 2, y: headerY },
+    thickness: 1,
+    color: COLOR_BLACK,
   });
 
-  // 3. Serial Number & Student Name (Simple, Open, Large Font)
-  const nameSectionY = headerY - 58;
-
-  // Prominent Serial Number: e.g. "(128)" or "(1)"
+  // 3. Serial Number & Student Name (Adjusted placement, clear font, generous breathing room)
   const serialStr = String(serial).startsWith("(") ? String(serial) : `(${serial})`;
-  const serialFontSize = serialStr.length > 6 ? 20 : serialStr.length > 4 ? 24 : 28;
+  const serialFontSize = serialStr.length > 6 ? 22 : serialStr.length > 4 ? 26 : 30;
+  const serialW = font.widthOfTextAtSize(serialStr, serialFontSize);
 
+  const studentSectionBottomY = headerY - 76;
+  const nameBaselineY = studentSectionBottomY + 18;
+  const labelBaselineY = nameBaselineY + 30;
+
+  // Prominent Serial Number on Left
   page.drawText(serialStr, {
-    x: x + 12,
-    y: nameSectionY + 16,
+    x: x + 14,
+    y: nameBaselineY,
     size: serialFontSize,
     font,
     color: COLOR_BLACK,
   });
 
-  // Calculate X offset for Candidate Name after Serial Number
-  const serialW = font.widthOfTextAtSize(serialStr, serialFontSize);
-  const nameStartX = Math.max(x + 12 + serialW + 16, x + 85);
+  // Calculate start position for candidate name
+  const nameStartX = Math.max(x + 14 + serialW + 16, x + 95);
 
-  // Label above Candidate Name
+  // Label above Candidate Name: "اسم الطالب / الطالبة:"
   const nameIsAr = isArabic(studentName);
-  page.drawText(nameIsAr ? "اسم الطالب / الطالبة:" : "CANDIDATE NAME:", {
+  const labelText = nameIsAr ? "اسم الطالب / الطالبة:" : "CANDIDATE NAME:";
+  page.drawText(labelText, {
     x: nameStartX,
-    y: nameSectionY + 44,
-    size: 8.5,
+    y: labelBaselineY,
+    size: 10,
     font,
     color: COLOR_DARK_GRAY,
   });
 
-  // Candidate Name in HUGE FONT (20pt - 24pt bold)
+  // Candidate Name in HUGE FONT (22pt - 26pt bold)
   const maxNameWidth = width - (nameStartX - x) - 14;
-  let nameSize = 22;
-  while (nameSize > 12 && font.widthOfTextAtSize(studentName, nameSize) > maxNameWidth) {
+  let nameSize = 24;
+  while (nameSize > 13 && font.widthOfTextAtSize(studentName, nameSize) > maxNameWidth) {
     nameSize -= 1;
   }
 
   page.drawText(studentName, {
     x: nameStartX,
-    y: nameSectionY + 16,
+    y: nameBaselineY,
     size: nameSize,
     font,
     color: COLOR_BLACK,
   });
 
-  // Single Clean Divider Line 1
+  // Divider Line below Student Section
   page.drawLine({
-    start: { x: x + 10, y: nameSectionY + 6 },
-    end: { x: x + width - 10, y: nameSectionY + 6 },
+    start: { x: x + 10, y: studentSectionBottomY },
+    end: { x: x + width - 10, y: studentSectionBottomY },
     thickness: 1,
     color: COLOR_BLACK,
   });
 
-  // 4. Reports Summary Row: Total Reports & Tracking Code
-  const summaryY = nameSectionY - 36;
+  // 4. Reports Summary Row: Total Reports only (TRACKING / DISPATCH ID removed)
+  const summaryY = studentSectionBottomY - 44;
 
-  // Total Reports
-  page.drawText("TOTAL REPORTS:", {
-    x: x + 12,
-    y: summaryY + 22,
-    size: 8,
+  // Total Reports Label
+  page.drawText("TOTAL REPORTS / إجمالي التقارير:", {
+    x: x + 14,
+    y: summaryY + 24,
+    size: 9,
     font,
     color: COLOR_DARK_GRAY,
   });
 
   const totalReportsStr = `${totalReports} ${Number(totalReports) === 1 ? "Report" : "Reports"}`;
   page.drawText(totalReportsStr, {
-    x: x + 12,
+    x: x + 14,
     y: summaryY + 4,
-    size: 15,
+    size: 16,
     font,
     color: COLOR_BLACK,
   });
 
-  // Tracking Code on Right
-  page.drawText("TRACKING / DISPATCH ID:", {
-    x: x + 200,
-    y: summaryY + 22,
-    size: 8,
-    font,
-    color: COLOR_DARK_GRAY,
-  });
-
-  page.drawText(certCode, {
-    x: x + 200,
-    y: summaryY + 4,
-    size: 14,
-    font,
-    color: COLOR_BLACK,
-  });
-
-  // Single Clean Divider Line 2
+  // Clean Divider Line
   page.drawLine({
-    start: { x: x + 10, y: summaryY - 4 },
-    end: { x: x + width - 10, y: summaryY - 4 },
+    start: { x: x + 10, y: summaryY - 8 },
+    end: { x: x + width - 10, y: summaryY - 8 },
     thickness: 0.8,
     color: COLOR_LIGHT_GRAY,
   });
 
-  // 5. Reports List (Simple, Clear, Large Font)
-  const listY = summaryY - 68;
+  // 5. Enclosed Score Reports List (Simple, Clear, Large Font)
+  const listY = summaryY - 32;
 
   page.drawText("ENCLOSED SCORE REPORTS:", {
-    x: x + 12,
-    y: listY + 52,
-    size: 8.5,
+    x: x + 14,
+    y: listY,
+    size: 9.5,
     font,
     color: COLOR_BLACK,
   });
@@ -358,64 +341,27 @@ function drawSimpleBwCertificateSticker(params: {
     .filter(Boolean);
 
   if (reportsParts.length > 1) {
-    let curItemY = listY + 34;
-    for (let r = 0; r < Math.min(3, reportsParts.length); r++) {
+    let curItemY = listY - 22;
+    for (let r = 0; r < Math.min(4, reportsParts.length); r++) {
       const itemText = `• ${reportsParts[r]}`;
       page.drawText(itemText, {
-        x: x + 14,
+        x: x + 16,
         y: curItemY,
-        size: 12,
+        size: 13,
         font,
         color: COLOR_BLACK,
       });
-      curItemY -= 17;
+      curItemY -= 20;
     }
   } else {
     page.drawText(normalizedRaw, {
-      x: x + 14,
-      y: listY + 28,
-      size: 13.5,
+      x: x + 16,
+      y: listY - 22,
+      size: 14,
       font,
       color: COLOR_BLACK,
     });
   }
 
-  // 6. Clean Footer: Crisp Barcode & Verification Tag
-  const footerY = y + 8;
-
-  // Barcode
-  const barcodeX = x + 12;
-  const barcodeBars = [2, 1, 3, 1, 2, 4, 1, 2, 3, 1, 2, 1, 4, 2, 1, 3, 2, 1, 2, 3, 1, 4, 2, 1, 2, 3, 1, 2, 4, 1, 2, 3, 1, 2];
-  let curBX = barcodeX;
-  for (let b = 0; b < barcodeBars.length; b++) {
-    const bw = barcodeBars[b] * 0.9;
-    if (b % 2 === 0) {
-      page.drawRectangle({
-        x: curBX,
-        y: footerY,
-        width: bw,
-        height: 12,
-        color: COLOR_BLACK,
-      });
-    }
-    curBX += bw + 0.8;
-  }
-
-  page.drawText(`VERIFIED SECURE DISPATCH • ${certCode}`, {
-    x: curBX + 10,
-    y: footerY + 3,
-    size: 7,
-    font,
-    color: COLOR_DARK_GRAY,
-  });
-
-  const sealText = "EST OFFICIAL DISPATCH SEAL";
-  const sealW = font.widthOfTextAtSize(sealText, 7);
-  page.drawText(sealText, {
-    x: x + width - sealW - 14,
-    y: footerY + 3,
-    size: 7,
-    font,
-    color: COLOR_BLACK,
-  });
+  // 6. Clean bottom: Footer removed completely (No barcode, no dispatch id, no official dispatch seal)
 }

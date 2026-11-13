@@ -477,8 +477,8 @@ export default function CertificateStickersPage() {
               </div>
               <p className="text-xs text-muted">
                 {locale === "ar"
-                  ? "توليد وطباعة استيكرات تقارير شهادات EST لباتشات الشحن (Aramex Online و MoE Delivery) بمقاس ربع A4 مع اللوجو الأصفر والاسم بالعربي."
-                  : "Generate & print official EST student report stickers (Quarter A4) for Aramex Online & MoE Delivery batches."}
+                  ? "توليد وطباعة استيكرات تقارير شهادات EST لباتشات الشحن (Aramex Online و MoE Delivery) بمقاس ربع A4 بتصميم مبسط وواضح بالبيانات الأساسية."
+                  : "Generate & print official EST student report stickers (Quarter A4) for Aramex Online & MoE Delivery batches in a clean, clear format."}
               </p>
             </div>
           </div>
@@ -670,11 +670,11 @@ export default function CertificateStickersPage() {
               <span className="text-xs font-medium">{locale === "ar" ? "شكل الاستيكر" : "Sticker Format"}</span>
               <Award className="size-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <div className="mt-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-              {locale === "ar" ? "لوجو أصفر + رمادي داكن" : "Yellow Logo on Charcoal"}
+            <div className="mt-1 text-xs font-bold text-foreground">
+              {locale === "ar" ? "تصميم مبسط وأنيق" : "Clean Simple Layout"}
             </div>
             <div className="text-[10px] text-muted">
-              {locale === "ar" ? "اسم عربي + رقم (128)" : "Arabic Name + Serial (128)"}
+              {locale === "ar" ? "بيانات أساسية + خط واضح" : "Essential Data + Clear Font"}
             </div>
           </div>
         </div>
@@ -744,38 +744,35 @@ export default function CertificateStickersPage() {
             </span>
           </div>
 
-          {/* Realistic Card Simulation - Clean Black & White */}
+          {/* Realistic Card Simulation - Clean Light Header & Simple Layout */}
           {(() => {
             const sample = filteredStudents.find((s) => String(s.serialNumber) === "128") || filteredStudents[0];
             return (
-              <div className="mx-auto max-w-lg rounded-xl border border-black bg-white p-5 shadow-sm text-black">
-                {/* Header: Solid Black Bar */}
-                <div className="flex items-center justify-between rounded bg-black px-3 py-2 text-white">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded bg-white px-2 py-0.5 text-xs font-black text-black tracking-wider">
+              <div className="mx-auto max-w-lg rounded-xl border-2 border-black bg-white p-5 shadow-sm text-black">
+                {/* Header: Clean Light Background with Crisp Badge (No Heavy Black Bar, No 79/306) */}
+                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-slate-50 px-3 py-2 text-black">
+                  <div className="flex items-center gap-2.5">
+                    <span className="rounded bg-black px-2 py-0.5 text-xs font-black text-white tracking-wider">
                       EST
                     </span>
                     <div>
-                      <div className="text-[11px] font-bold text-white tracking-wide">
+                      <div className="text-[11px] font-bold text-black tracking-wide">
                         OFFICIAL SCORE REPORT & CERTIFICATE
                       </div>
-                      <div className="text-[9px] text-gray-300 font-mono line-clamp-1">
+                      <div className="text-[9px] text-gray-500 font-mono line-clamp-1 uppercase">
                         {sample.batchName || activeBatch?.name}
                       </div>
                     </div>
                   </div>
-                  <span className="font-mono text-xs font-bold text-white">
-                    {sample.serialNumber} / {filteredStudents.length}
-                  </span>
                 </div>
 
-                {/* Serial and Candidate Name Row (Simple, No Box Borders, Huge Font) */}
-                <div className="mt-4 flex items-baseline gap-4">
+                {/* Serial and Candidate Name Row (Properly aligned, generous spacing, clear font) */}
+                <div className="mt-5 flex items-center gap-4">
                   <div className="font-mono text-3xl font-black text-black shrink-0">
                     ({sample.serialNumber})
                   </div>
                   <div className="flex-1 text-start">
-                    <div className="text-[10px] font-bold uppercase text-gray-500">
+                    <div className="text-xs font-bold text-gray-500 mb-0.5">
                       اسم الطالب / الطالبة:
                     </div>
                     <div className="text-2xl font-black text-black leading-tight">
@@ -785,50 +782,33 @@ export default function CertificateStickersPage() {
                 </div>
 
                 {/* Divider Line */}
-                <div className="my-3 border-t border-black" />
+                <div className="my-4 border-t border-black" />
 
-                {/* Reports Summary Row */}
-                <div className="grid grid-cols-2 gap-4 text-start">
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase">
-                      إجمالي التقارير:
-                    </div>
-                    <div className="text-base font-black text-black">
-                      {sample.totalReports} {Number(sample.totalReports) === 1 ? "Report" : "Reports"}
-                    </div>
+                {/* Reports Summary Row: Only Total Reports (Tracking ID removed) */}
+                <div className="text-start">
+                  <div className="text-xs font-bold text-gray-500 uppercase">
+                    إجمالي التقارير / TOTAL REPORTS:
                   </div>
-
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase">
-                      كود التتبع / DISPATCH ID:
-                    </div>
-                    <div className="font-mono text-sm font-black text-black">
-                      {sample.certificateCode}
-                    </div>
+                  <div className="text-lg font-black text-black mt-0.5">
+                    {sample.totalReports} {Number(sample.totalReports) === 1 ? "Report" : "Reports"}
                   </div>
                 </div>
 
                 {/* Divider Line */}
-                <div className="my-3 border-t border-gray-300" />
+                <div className="my-3 border-t border-gray-200" />
 
                 {/* Reports List */}
-                <div className="text-start">
-                  <div className="text-[10px] font-bold uppercase text-gray-600 mb-1">
-                    قائمة التقارير:
+                <div className="text-start pb-2">
+                  <div className="text-xs font-bold uppercase text-black mb-1.5">
+                    قائمة التقارير / ENCLOSED SCORE REPORTS:
                   </div>
-                  <div className="text-sm font-bold text-black leading-relaxed">
+                  <div className="text-sm font-bold text-black leading-relaxed space-y-1">
                     {(sample.reportsList || "Official EST Score Report").split(/[;؛،,]/).map((p, i) => (
                       <div key={i} className="py-0.5">
                         • {p.trim()}
                       </div>
                     ))}
                   </div>
-                </div>
-
-                {/* Footer Barcode */}
-                <div className="mt-4 flex items-center justify-between border-t border-gray-300 pt-2 text-[10px] text-gray-600 font-mono">
-                  <span>||| | |||| || ||| |||| | |||</span>
-                  <span className="font-bold text-black">EST OFFICIAL DISPATCH SEAL</span>
                 </div>
               </div>
             );
@@ -895,8 +875,8 @@ export default function CertificateStickersPage() {
           customTitle={previewTitle}
           customDescription={
             locale === "ar"
-              ? `استيكرات شهادات وتقارير طلاب EST رسمية مقاس ربع A4 (4 استيكرات في كل ورقة A4) مع لوجو أصفر وخلفية رمادية داكنة.`
-              : `Official EST Student Report Placards (Quarter A4, 4 per sheet) with yellow EST logo on dark charcoal background.`
+              ? `استيكرات شهادات وتقارير طلاب EST رسمية مقاس ربع A4 (4 استيكرات في كل ورقة A4) بتصميم مبسط وخط واضح بالبيانات الأساسية.`
+              : `Official EST Student Report Placards (Quarter A4, 4 per sheet) with clean simple typography and essential data only.`
           }
         />
       )}
