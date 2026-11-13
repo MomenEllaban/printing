@@ -21,7 +21,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
     if (!batch) throw new AppError("Batch not found", { status: 404, code: "invalidRequest" });
 
     return NextResponse.json({ batch });
-  } catch (error) {
+  } catch (error: any) {
+    const msg = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "");
+    const dbUnavailable =
+      error?.name?.startsWith?.("PrismaClient") ||
+      /^P\d{4}$/.test(code) ||
+      msg.includes("does not exist") ||
+      msg.includes("certificatestickerbatch");
+    if (dbUnavailable) {
+      return jsonError(new AppError("Certificate batches database is unavailable. Apply the latest database migration.", { status: 503, code: "databaseError", expose: true }));
+    }
     return jsonError(error);
   }
 }
@@ -42,7 +52,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ba
     });
 
     return NextResponse.json({ batch });
-  } catch (error) {
+  } catch (error: any) {
+    const msg = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "");
+    const dbUnavailable =
+      error?.name?.startsWith?.("PrismaClient") ||
+      /^P\d{4}$/.test(code) ||
+      msg.includes("does not exist") ||
+      msg.includes("certificatestickerbatch");
+    if (dbUnavailable) {
+      return jsonError(new AppError("Certificate batches database is unavailable. Apply the latest database migration.", { status: 503, code: "databaseError", expose: true }));
+    }
     return jsonError(error);
   }
 }
@@ -55,7 +75,17 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ b
 
     await prisma.certificateStickerBatch.delete({ where: { id: batchId } });
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
+    const msg = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "");
+    const dbUnavailable =
+      error?.name?.startsWith?.("PrismaClient") ||
+      /^P\d{4}$/.test(code) ||
+      msg.includes("does not exist") ||
+      msg.includes("certificatestickerbatch");
+    if (dbUnavailable) {
+      return jsonError(new AppError("Certificate batches database is unavailable. Apply the latest database migration.", { status: 503, code: "databaseError", expose: true }));
+    }
     return jsonError(error);
   }
 }

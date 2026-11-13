@@ -37,7 +37,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ba
     });
 
     return NextResponse.json({ success: true, batch: updated });
-  } catch (error) {
+  } catch (error: any) {
+    const msg = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "");
+    const dbUnavailable =
+      error?.name?.startsWith?.("PrismaClient") ||
+      /^P\d{4}$/.test(code) ||
+      msg.includes("does not exist") ||
+      msg.includes("certificatestickerbatch");
+    if (dbUnavailable) {
+      return jsonError(new AppError("Certificate batches database is unavailable. Apply the latest database migration.", { status: 503, code: "databaseError", expose: true }));
+    }
     return jsonError(error);
   }
 }

@@ -221,9 +221,15 @@ export default function CertificateStickersPage() {
     try {
       setLoadingServerBatches(true);
       const res = await fetch("/api/certificates/batches", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load certificate batches");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn("[certificates] failed to load server batches", data);
+        return;
+      }
       setServerBatches(Array.isArray(data.batches) ? data.batches : []);
+      if (data.dbUnavailable) {
+        console.warn("[certificates] db unavailable for batches", data.dbError);
+      }
     } catch (err) {
       console.warn("[certificates] failed to load server batches", err);
     } finally {

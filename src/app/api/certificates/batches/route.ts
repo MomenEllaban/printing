@@ -27,23 +27,38 @@ export async function GET(request: Request) {
     await requireSession(request);
     enforceRateLimit(request, "certificates:batches:list", 120, 60_000);
 
-    const batches = await prisma.certificateStickerBatch.findMany({
-      orderBy: { updatedAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        shortName: true,
-        fileName: true,
-        driveFileId: true,
-        driveFolderId: true,
-        batchType: true,
-        sourceKey: true,
-        createdAt: true,
-        updatedAt: true,
-        studentsData: true,
-        receiptsData: true,
-      },
-    });
+    let batches: any[] = [];
+    try {
+      batches = await prisma.certificateStickerBatch.findMany({
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          fileName: true,
+          driveFileId: true,
+          driveFolderId: true,
+          batchType: true,
+          sourceKey: true,
+          createdAt: true,
+          updatedAt: true,
+          studentsData: true,
+          receiptsData: true,
+        },
+      });
+    } catch (dbError: any) {
+      const msg = String(dbError?.message || "").toLowerCase();
+      const code = String(dbError?.code || "");
+      const dbUnavailable =
+        dbError?.name?.startsWith?.("PrismaClient") ||
+        /^P\d{4}$/.test(code) ||
+        msg.includes("does not exist") ||
+        msg.includes("certificateStickerBatch");
+      if (dbUnavailable) {
+        return NextResponse.json({ batches: [], dbUnavailable: true, dbError: "Certificate batches table is unavailable. Run database migrations." });
+      }
+      throw dbError;
+    }
 
     const items = batches.map((b) => {
       const students = Array.isArray(b.studentsData) ? b.studentsData : [];
@@ -112,19 +127,37 @@ export async function POST(request: Request) {
     await syncDriveItems([item]);
     invalidateCache("stats:");
 
-    const batch = await prisma.certificateStickerBatch.create({
-      data: {
-        userId: OWNER_ID,
-        name: batchName,
-        shortName,
-        fileName: finalName,
-        driveFileId: response.data.id,
-        driveFolderId: certificatesFolderId,
-        batchType: "uploaded",
-        studentsData: students as any,
-        receiptsData: {},
-      },
-    });
+    let batch;
+    try {
+      batch = await prisma.certificateStickerBatch.create({
+        data: {
+          userId: OWNER_ID,
+          name: batchName,
+          shortName,
+          fileName: finalName,
+          driveFileId: response.data.id,
+          driveFolderId: certificatesFolderId,
+          batchType: "uploaded",
+          studentsData: students as any,
+          receiptsData: {},
+        },
+      });
+    } catch (dbError: any) {
+      const msg = String(dbError?.message || "").toLowerCase();
+      const code = String(dbError?.code || "");
+      const dbUnavailable =
+        dbError?.name?.startsWith?.("PrismaClient") ||
+        /^P\d{4}$/.test(code) ||
+        msg.includes("does not exist") ||
+        msg.includes("certificatestickerbatch");
+      if (dbUnavailable) {
+        throw new AppError(
+          "Excel uploaded to Google Drive, but the certificate batches database table is unavailable. Apply the latest database migration, then upload again (or keep using the Drive file).",
+          { status: 503, code: "databaseError", expose: true },
+        );
+      }
+      throw dbError;
+    }
 
     return NextResponse.json({ batch }, { status: 201 });
   } catch (error) {
