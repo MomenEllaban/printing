@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
@@ -42,18 +42,31 @@ function isRegisterSheet(sheet: SheetData): boolean {
   return hasDeparture && hasArrival && hasProctorType && hasName;
 }
 
+function colLabel(index: number): string {
+  let n = index + 1;
+  let s = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
 function GenericExcelView({
   sheets,
   activeTabIdx,
   setActiveTabIdx,
   isEditing,
   onCellChange,
+  locale,
 }: {
   sheets: SheetData[];
   activeTabIdx: number;
   setActiveTabIdx: (idx: number) => void;
   isEditing: boolean;
   onCellChange: (sheetIdx: number, rowIdx: number, colIdx: number, value: string) => void;
+  locale: string;
 }) {
   const active = sheets[activeTabIdx];
   const colCount = useMemo(() => {
@@ -64,55 +77,89 @@ function GenericExcelView({
   return (
     <div className="w-full space-y-3">
       {sheets.length > 1 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface/70 p-2">
+          <span className="px-1 text-[11px] font-bold uppercase tracking-wider text-muted">
+            {locale === "ar" ? "Ø§Ù„Ø´ÙŠØªØ§Øª" : "Sheets"}
+          </span>
           {sheets.map((s, idx) => (
             <button
               key={`${s.name}-${idx}`}
               type="button"
               onClick={() => setActiveTabIdx(idx)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
                 idx === activeTabIdx
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border bg-surface text-foreground hover:bg-surface-soft"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 shadow-sm dark:text-emerald-300"
+                  : "border-border bg-surface text-foreground hover:bg-surface-soft hover:border-emerald-500/30"
               }`}
             >
-              {s.name || `Sheet ${idx + 1}`}
+              {s.name || `${locale === "ar" ? "Ø´ÙŠØª" : "Sheet"} ${idx + 1}`}
             </button>
           ))}
         </div>
       )}
 
-      <div className="overflow-auto rounded-xl border border-border bg-surface">
-        <table className="min-w-full border-collapse text-xs">
-          <tbody>
-            {(active?.rows || []).map((row, rIdx) => (
-              <tr key={rIdx} className="border-b border-border/50 last:border-b-0">
-                {Array.from({ length: colCount }).map((_, cIdx) => {
-                  const value = row?.[cIdx] ?? "";
-                  const text = value === null || value === undefined ? "" : String(value);
-                  return (
-                    <td key={cIdx} className="border-e border-border/40 p-0 align-top min-w-[120px] max-w-[420px] last:border-e-0">
-                      {isEditing ? (
-                        <input
-                          value={text}
-                          onChange={(e) => onCellChange(activeTabIdx, rIdx, cIdx, e.target.value)}
-                          className="w-full min-w-[120px] bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-accent/5"
-                        />
-                      ) : (
-                        <div className="whitespace-pre-wrap break-words px-2 py-1.5">{text || "\u00A0"}</div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {(!active || active.rows.length === 0) && (
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.03]">
+        <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-emerald-500/10 via-surface to-sky-500/10 px-4 py-2.5">
+          <div className="text-xs font-bold text-foreground">
+            {active?.name || (locale === "ar" ? "Ø´ÙŠØª" : "Sheet")}
+          </div>
+          <div className="text-[11px] text-muted">
+            {(active?.rows?.length || 0).toLocaleString()} {locale === "ar" ? "ØµÙ" : "rows"} Ã— {colCount.toLocaleString()} {locale === "ar" ? "Ø¹Ù…ÙˆØ¯" : "cols"}
+          </div>
+        </div>
+
+        <div className="overflow-auto max-h-[70vh]">
+          <table className="min-w-full border-separate border-spacing-0 text-[13px]">
+            <thead className="sticky top-0 z-10">
               <tr>
-                <td className="px-3 py-6 text-center text-muted">Empty sheet</td>
+                <th className="sticky start-0 z-20 border-b border-e border-border bg-surface-soft/95 backdrop-blur px-2 py-2 text-center text-[11px] font-bold text-muted w-12 min-w-12">#</th>
+                {Array.from({ length: colCount }).map((_, cIdx) => (
+                  <th key={cIdx} className="border-b border-e border-border bg-surface-soft/95 backdrop-blur px-3 py-2 text-center text-[11px] font-bold text-muted min-w-[140px] last:border-e-0">
+                    {colLabel(cIdx)}
+                  </th>
+                ))}
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(active?.rows || []).map((row, rIdx) => (
+                <tr key={rIdx} className="group">
+                  <td className="sticky start-0 z-[5] border-b border-e border-border bg-surface-soft/80 px-2 py-2 text-center text-[11px] font-semibold text-muted">
+                    {rIdx + 1}
+                  </td>
+                  {Array.from({ length: colCount }).map((_, cIdx) => {
+                    const value = row?.[cIdx] ?? "";
+                    const text = value === null || value === undefined ? "" : String(value);
+                    return (
+                      <td
+                        key={cIdx}
+                        className={`border-b border-e border-border/70 p-0 align-top min-w-[140px] max-w-[460px] last:border-e-0 ${rIdx % 2 === 0 ? "bg-surface" : "bg-surface-soft/20"} group-hover:bg-emerald-500/[0.03]`}
+                      >
+                        {isEditing ? (
+                          <input
+                            value={text}
+                            onChange={(e) => onCellChange(activeTabIdx, rIdx, cIdx, e.target.value)}
+                            className="h-full w-full min-w-[140px] bg-transparent px-3 py-2 text-[13px] text-foreground outline-none transition-colors focus:bg-white dark:focus:bg-slate-950 focus:ring-2 focus:ring-inset focus:ring-emerald-500/40"
+                          />
+                        ) : (
+                          <div className="whitespace-pre-wrap break-words px-3 py-2 leading-relaxed text-foreground">
+                            {text || <span className="text-muted/40"> </span>}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {(!active || active.rows.length === 0) && (
+                <tr>
+                  <td colSpan={colCount + 1} className="px-4 py-10 text-center text-sm text-muted">
+                    {locale === "ar" ? "Ø§Ù„Ø´ÙŠØª ÙØ§Ø±Øº" : "Empty sheet"}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -332,7 +379,7 @@ export function ExcelViewer({
   const handleAddTab = () => {
     if (!registerMode) return;
     const floorNum = sheets.length;
-    const newTabName = `${locale === "ar" ? "الدور" : "Floor"} ${floorNum}`;
+    const newTabName = `${locale === "ar" ? "Ø§Ù„Ø¯ÙˆØ±" : "Floor"} ${floorNum}`;
     const newRows: (string | number | null)[][] = [
       ["Center :", `AAST Sheraton Management ${newTabName}`, null, null, null, "Date: 09 - 10 - 2026", null, "EST Type : 1", null, null],
       [],
@@ -398,10 +445,10 @@ export function ExcelViewer({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || (locale === "ar" ? "فشل حفظ الملف" : "Failed to save file"));
+        throw new Error(errData.message || (locale === "ar" ? "ÙØ´Ù„ Ø­ÙØ¸ Ø§Ù„Ù…Ù„Ù" : "Failed to save file"));
       }
 
-      toast.success(locale === "ar" ? "تم حفظ الملف بنجاح" : "File saved successfully");
+      toast.success(locale === "ar" ? "ØªÙ… Ø­ÙØ¸ Ø§Ù„Ù…Ù„Ù Ø¨Ù†Ø¬Ø§Ø­" : "File saved successfully");
       setIsEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
@@ -426,7 +473,7 @@ export function ExcelViewer({
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
         <Spinner className="size-8 text-emerald-600" />
-        <p className="text-sm font-medium">{locale === "ar" ? "جارٍ تحميل الملف..." : "Loading spreadsheet..."}</p>
+        <p className="text-sm font-medium">{locale === "ar" ? "Ø¬Ø§Ø±Ù ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ù…Ù„Ù..." : "Loading spreadsheet..."}</p>
       </div>
     );
   }
@@ -437,20 +484,29 @@ export function ExcelViewer({
 
   if (!registerMode) {
     return (
+  if (!registerMode) {
+    return (
       <div className="w-full space-y-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="text-xs text-muted">
-            {locale === "ar" ? "عرض/تعديل عام لملف Excel (نفس الشيت الأصلي بدون أعمدة إضافية)" : "Generic Excel view/edit (original sheets preserved, no extra columns)"}
+        <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl border border-border bg-surface/70 px-3 py-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="inline-flex h-7 items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+              {locale === "ar" ? "نفس الشيت الأصلي" : "Original Sheet"}
+            </span>
+            <div className="text-xs text-muted truncate">
+              {locale === "ar"
+                ? "عرض/تعديل ملف Excel كما تم رفعه بدون أي أعمدة إضافية"
+                : "View/edit the Excel file exactly as uploaded, with no extra columns"}
+            </div>
           </div>
           {isEditing && (
             <button
               type="button"
               onClick={() => void handleSaveChanges()}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
             >
               {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              {locale === "ar" ? "حفظ" : "Save"}
+              {locale === "ar" ? "حفظ التعديلات" : "Save Changes"}
             </button>
           )}
         </div>
@@ -460,6 +516,7 @@ export function ExcelViewer({
           setActiveTabIdx={setActiveTabIdx}
           isEditing={isEditing}
           onCellChange={handleCellChange}
+          locale={locale}
         />
       </div>
     );
