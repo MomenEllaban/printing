@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession, enforceRateLimit, jsonError, parseJson } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
+import { ensureCertificateBatchTable } from "@/lib/certificates-drive";
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
 
@@ -15,6 +16,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ba
   try {
     await requireSession(request, { mutating: true });
     enforceRateLimit(request, "certificates:batches:receipts", 240, 60_000);
+    try { await ensureCertificateBatchTable(); } catch {}
     const { batchId } = await params;
     const body = await parseJson<z.infer<typeof schema>>(request, schema);
 

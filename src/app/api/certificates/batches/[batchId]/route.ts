@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession, enforceRateLimit, jsonError, parseJson } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
+import { ensureCertificateBatchTable } from "@/lib/certificates-drive";
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
 
@@ -15,6 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
   try {
     await requireSession(request);
     enforceRateLimit(request, "certificates:batches:get", 120, 60_000);
+    try { await ensureCertificateBatchTable(); } catch {}
     const { batchId } = await params;
 
     const batch = await prisma.certificateStickerBatch.findUnique({ where: { id: batchId } });
@@ -40,6 +42,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ba
   try {
     await requireSession(request, { mutating: true });
     enforceRateLimit(request, "certificates:batches:update", 60, 60_000);
+    try { await ensureCertificateBatchTable(); } catch {}
     const { batchId } = await params;
     const body = await parseJson<z.infer<typeof patchSchema>>(request, patchSchema);
 
@@ -71,6 +74,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ b
   try {
     await requireSession(request, { mutating: true });
     enforceRateLimit(request, "certificates:batches:delete", 60, 60_000);
+    try { await ensureCertificateBatchTable(); } catch {}
     const { batchId } = await params;
 
     await prisma.certificateStickerBatch.delete({ where: { id: batchId } });

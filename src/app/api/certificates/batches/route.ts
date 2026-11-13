@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 import { requireSession, enforceRateLimit, jsonError } from "@/lib/api-utils";
 import { getDriveContextWithRoot } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateCertificatesFolder } from "@/lib/certificates-drive";
+import { getOrCreateCertificatesFolder, ensureCertificateBatchTable } from "@/lib/certificates-drive";
 import { resolveAvailableName } from "@/lib/upload";
 import { toDriveItem } from "@/lib/drive";
 import { syncDriveItems } from "@/lib/metadata";
@@ -26,6 +26,7 @@ export async function GET(request: Request) {
   try {
     await requireSession(request);
     enforceRateLimit(request, "certificates:batches:list", 120, 60_000);
+    try { await ensureCertificateBatchTable(); } catch {}
 
     let batches: any[] = [];
     try {
@@ -145,6 +146,7 @@ export async function POST(request: Request) {
     }
 
     let batch;
+    await ensureCertificateBatchTable();
     try {
       batch = await prisma.certificateStickerBatch.create({
         data: {
