@@ -350,16 +350,16 @@ export function PrintDocument({
         .official-footer {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          margin-top: 8px;
-          padding-top: 6px;
+          align-items: flex-end;
+          margin-top: 4px;
+          padding-top: 3px;
           border-top: 2px solid #000;
-          font-size: 10pt;
           color: #000;
         }
-        .footer-head { white-space: nowrap; }
-        .footer-head strong { font-weight: 800; }
-        .footer-page { text-align: right; font-weight: 800; white-space: nowrap; }
+        .footer-head { white-space: nowrap; font-size: 26pt; line-height: 1.05; }
+        .footer-head strong { font-weight: 800; font-size: 26pt; }
+        .footer-head-name { font-weight: 900; font-size: 26pt; }
+        .footer-page { text-align: right; font-weight: 800; white-space: nowrap; font-size: 12pt; line-height: 1.1; }
       `}</style>
 
       {/* Interactive Toolbar for Screen view */}
