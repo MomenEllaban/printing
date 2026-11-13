@@ -499,12 +499,12 @@ export function generateEstPrintHtml(
             margin-bottom: 7px;
           }
           .header-logo {
-            width: 130px;
+            width: 170px;
             display: flex;
             align-items: center;
           }
           .est-logo-img {
-            height: 46px;
+            height: 58px;
             width: auto;
             object-fit: contain;
           }

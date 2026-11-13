@@ -554,7 +554,7 @@ export function ExcelRegisterWorkspace({
                     <img
                       src={`data:image/jpeg;base64,${EST_LOGO_BASE64}`}
                       alt="EST Official Logo"
-                      className="h-14 w-auto object-contain rounded drop-shadow-xs"
+                      className="h-[58px] w-auto object-contain rounded drop-shadow-xs"
                     />
                     <div>
                       <h3 className="text-sm sm:text-base font-black tracking-wider text-slate-900 dark:text-white uppercase">
