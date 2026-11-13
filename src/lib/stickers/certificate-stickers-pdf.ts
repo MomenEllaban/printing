@@ -2,11 +2,12 @@ import fs from "fs";
 import path from "path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { EST_LOGO_BASE64 } from "./est-logo-base64";
 
 export interface CertificateStudentData {
   id?: string;
   serialNumber?: string | number; // e.g. "128"
-  studentName: string; // e.g. "يارا رمضان يوسف ابو الخير" or "Abanoub Emad Adly Abdou"
+  studentName: string; // e.g. "Abdelaziz Sameh Mahmoud Aly Aboueyana"
   seatNumber?: string;
   nationalId?: string;
   schoolName?: string;
@@ -14,8 +15,8 @@ export interface CertificateStudentData {
   examName?: string;
   sessionName?: string;
   certificateCode?: string;
-  totalReports?: number | string; // e.g. 2
-  reportsList?: string; // e.g. "يناير 2026 - EST I، ومارس 2026 - EST II"
+  totalReports?: number | string; // e.g. 2 or 4
+  reportsList?: string; // e.g. "October 2025 - EST I; July 2026 - EST I; January 2026 - EST II; July 2026 - EST II"
   subjects?: string;
   score?: string;
   status?: string;
@@ -33,9 +34,26 @@ export interface CertificateStickersOptions {
 
 // 100% Black & White Palette
 const COLOR_BLACK = rgb(0, 0, 0);
-const COLOR_DARK_GRAY = rgb(0.25, 0.25, 0.25);
+const COLOR_DARK_GRAY = rgb(0.28, 0.28, 0.28);
 const COLOR_LIGHT_GRAY = rgb(0.85, 0.85, 0.85);
 const COLOR_WHITE = rgb(1, 1, 1);
+
+// Static decoded logo bytes in memory - zero filesystem dependency
+const LOGO_JPEG_BYTES: Uint8Array = new Uint8Array(Buffer.from(EST_LOGO_BASE64, "base64"));
+
+async function loadLogoImage(pdfDoc: PDFDocument): Promise<any> {
+  try {
+    return await pdfDoc.embedJpg(LOGO_JPEG_BYTES);
+  } catch (err) {
+    try {
+      const publicPath = path.join(process.cwd(), "public", "est-logo.jpg");
+      if (fs.existsSync(publicPath)) {
+        return await pdfDoc.embedJpg(fs.readFileSync(publicPath));
+      }
+    } catch {}
+    return null;
+  }
+}
 
 async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
   const fontPaths = [
@@ -53,10 +71,6 @@ async function loadStickerFont(pdfDoc: PDFDocument): Promise<any> {
   }
 
   return await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-}
-
-function isArabic(text: string): boolean {
-  return /[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFC]/.test(text);
 }
 
 function normalizeReportItem(item: string): string {
@@ -77,16 +91,26 @@ function normalizeReportItem(item: string): string {
     "نوفمبر": "November",
     "ديسمبر": "December",
   };
-  let res = item;
+  let res = item || "";
   for (const [ar, en] of Object.entries(map)) {
     res = res.replace(new RegExp(ar, "g"), en);
   }
   return res.replace(/\s+/g, " ").trim();
 }
 
+export function parseReportsList(raw: string): string[] {
+  if (!raw) return [];
+  const normalized = normalizeReportItem(raw);
+  const parts = normalized
+    .split(/[;؛،,\n\r•]|\s+و\s+/)
+    .map((p) => p.replace(/^[-•*]\s*/, "").trim())
+    .filter((p) => p.length > 0);
+  return parts;
+}
+
 /**
  * Generates Quarter-A4 Student Certificate / Score Report Stickers PDF.
- * Simple, Clean, High-Contrast Black & White with Large Typography.
+ * Simple, Clean, High-Contrast Black & White with Official EST Logo and Clear Typography.
  * 4 stickers per A4 Landscape sheet in a 2x2 grid.
  */
 export async function generateCertificateStickersPdf(
@@ -96,17 +120,18 @@ export async function generateCertificateStickersPdf(
   pdfDoc.registerFontkit(fontkit);
 
   const font = await loadStickerFont(pdfDoc);
+  const logoImg = await loadLogoImage(pdfDoc);
 
   const students = options.students && options.students.length > 0
     ? options.students
     : [
         {
-          serialNumber: "128",
-          studentName: "يارا رمضان يوسف ابو الخير",
+          serialNumber: "1",
+          studentName: "Abdelaziz Sameh Mahmoud Aly Aboueyana",
           totalReports: 2,
-          reportsList: "January 2026 - EST I; March 2026 - EST II",
-          batchName: options.batchName || "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
-          certificateCode: "EST-REP-0128",
+          reportsList: "October 2025 - EST I; July 2026 - EST I; January 2026 - EST II; July 2026 - EST II",
+          batchName: options.batchName || "Data for MoE - Nov Batch 2 11.11.2026",
+          certificateCode: "EST-REP-0001",
         },
       ];
 
@@ -135,6 +160,7 @@ export async function generateCertificateStickersPdf(
       drawSimpleBwCertificateSticker({
         page,
         font,
+        logoImg,
         student: pageStudents[i],
         globalOptions: options,
         x: sx,
@@ -153,6 +179,7 @@ export async function generateCertificateStickersPdf(
 function drawSimpleBwCertificateSticker(params: {
   page: any;
   font: any;
+  logoImg: any;
   student: CertificateStudentData;
   globalOptions: CertificateStickersOptions;
   x: number;
@@ -162,13 +189,12 @@ function drawSimpleBwCertificateSticker(params: {
   stickerIndex: number;
   totalStickers: number;
 }) {
-  const { page, font, student, globalOptions, x, y, width, height, stickerIndex } = params;
+  const { page, font, logoImg, student, x, y, width, height, stickerIndex } = params;
 
   const serial = student.serialNumber || stickerIndex;
   const studentName = (student.studentName || "Student Candidate").trim();
-  const totalReports = student.totalReports || 1;
   const rawReportsList = (student.reportsList || "Official EST Score Report").trim();
-  const batchName = (student.batchName || globalOptions.batchName || "Official Report Batch").trim();
+  const reportsParts = parseReportsList(rawReportsList);
 
   // 1. Single Outer Border (Clean 1.2pt Black Frame for precise cutting)
   page.drawRectangle({
@@ -181,102 +207,65 @@ function drawSimpleBwCertificateSticker(params: {
     borderWidth: 1.2,
   });
 
-  // 2. Top Header: Clean, Light Header (No heavy solid black bar, no 79/306 count)
-  const headerH = 38;
-  const headerY = y + height - headerH - 6;
+  // 2. Top Header: Official EST Logo (Centered, clean, no clutter, no subtitles)
+  const logoH = 28;
+  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 48;
+  const logoX = x + (width - logoW) / 2;
+  const logoY = y + height - 8 - logoH;
 
-  // Subtle clean light header background
-  page.drawRectangle({
-    x: x + 2,
-    y: headerY,
-    width: width - 4,
-    height: headerH + 4,
-    color: rgb(0.96, 0.96, 0.97),
-  });
+  if (logoImg) {
+    page.drawImage(logoImg, {
+      x: logoX,
+      y: logoY,
+      width: logoW,
+      height: logoH,
+    });
+  } else {
+    const estText = "EST";
+    const estSize = 20;
+    const estW = font.widthOfTextAtSize(estText, estSize);
+    page.drawText(estText, {
+      x: x + (width - estW) / 2,
+      y: logoY + 4,
+      size: estSize,
+      font,
+      color: COLOR_BLACK,
+    });
+  }
 
-  // Left: EST Emblem Box (Crisp emblem badge)
-  page.drawRectangle({
-    x: x + 10,
-    y: headerY + 6,
-    width: 44,
-    height: 26,
-    color: COLOR_BLACK,
-  });
-
-  page.drawText("EST", {
-    x: x + 17,
-    y: headerY + 12,
-    size: 15,
-    font,
-    color: COLOR_WHITE,
-  });
-
-  // Header Title
-  page.drawText("OFFICIAL SCORE REPORT & CERTIFICATE", {
-    x: x + 62,
-    y: headerY + 21,
-    size: 10,
-    font,
-    color: COLOR_BLACK,
-  });
-
-  // Batch Name on Header
-  const displayBatch = batchName.length > 55 ? batchName.slice(0, 52) + "..." : batchName;
-  page.drawText(displayBatch.toUpperCase(), {
-    x: x + 62,
-    y: headerY + 8,
-    size: 8,
-    font,
-    color: COLOR_DARK_GRAY,
-  });
-
-  // Divider Line below Header
+  // Clean Divider Line below Header
+  const headerDividerY = logoY - 7;
   page.drawLine({
-    start: { x: x + 2, y: headerY },
-    end: { x: x + width - 2, y: headerY },
+    start: { x: x + 8, y: headerDividerY },
+    end: { x: x + width - 8, y: headerDividerY },
     thickness: 1,
     color: COLOR_BLACK,
   });
 
-  // 3. Serial Number & Student Name (Adjusted placement, clear font, generous breathing room)
+  // 3. Serial Number & Student Name (English: STUDENT NAME:)
   const serialStr = String(serial).startsWith("(") ? String(serial) : `(${serial})`;
-  const serialFontSize = serialStr.length > 6 ? 22 : serialStr.length > 4 ? 26 : 30;
+  const serialFontSize = serialStr.length > 6 ? 20 : serialStr.length > 4 ? 23 : 26;
   const serialW = font.widthOfTextAtSize(serialStr, serialFontSize);
 
-  const studentSectionBottomY = headerY - 76;
-  const nameBaselineY = studentSectionBottomY + 18;
-  const labelBaselineY = nameBaselineY + 30;
+  const serialX = x + 14;
+  const nameStartX = Math.max(serialX + serialW + 16, x + 72);
+  const maxNameWidth = width - (nameStartX - x) - 14;
 
-  // Prominent Serial Number on Left
-  page.drawText(serialStr, {
-    x: x + 14,
-    y: nameBaselineY,
-    size: serialFontSize,
-    font,
-    color: COLOR_BLACK,
-  });
-
-  // Calculate start position for candidate name
-  const nameStartX = Math.max(x + 14 + serialW + 16, x + 95);
-
-  // Label above Candidate Name: "اسم الطالب / الطالبة:"
-  const nameIsAr = isArabic(studentName);
-  const labelText = nameIsAr ? "اسم الطالب / الطالبة:" : "CANDIDATE NAME:";
-  page.drawText(labelText, {
+  const studentLabelY = headerDividerY - 14;
+  page.drawText("STUDENT NAME:", {
     x: nameStartX,
-    y: labelBaselineY,
-    size: 10,
+    y: studentLabelY,
+    size: 9.5,
     font,
     color: COLOR_DARK_GRAY,
   });
 
-  // Candidate Name in HUGE FONT (22pt - 26pt bold)
-  const maxNameWidth = width - (nameStartX - x) - 14;
-  let nameSize = 24;
-  while (nameSize > 13 && font.widthOfTextAtSize(studentName, nameSize) > maxNameWidth) {
-    nameSize -= 1;
+  let nameSize = 21;
+  while (nameSize > 11 && font.widthOfTextAtSize(studentName, nameSize) > maxNameWidth) {
+    nameSize -= 0.5;
   }
 
+  const nameBaselineY = studentLabelY - 21;
   page.drawText(studentName, {
     x: nameStartX,
     y: nameBaselineY,
@@ -285,83 +274,125 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
+  // Serial Number aligned with Student Name baseline
+  page.drawText(serialStr, {
+    x: serialX,
+    y: nameBaselineY,
+    size: serialFontSize,
+    font,
+    color: COLOR_BLACK,
+  });
+
   // Divider Line below Student Section
+  const studentDividerY = nameBaselineY - 10;
   page.drawLine({
-    start: { x: x + 10, y: studentSectionBottomY },
-    end: { x: x + width - 10, y: studentSectionBottomY },
+    start: { x: x + 8, y: studentDividerY },
+    end: { x: x + width - 8, y: studentDividerY },
     thickness: 1,
     color: COLOR_BLACK,
   });
 
-  // 4. Reports Summary Row: Total Reports only (TRACKING / DISPATCH ID removed)
-  const summaryY = studentSectionBottomY - 44;
+  // 4. Reports Summary Row: TOTAL REPORTS (100% English, no Arabic text)
+  const totalReportsNum = student.totalReports ? Number(student.totalReports) : reportsParts.length;
+  const totalReportsCount = totalReportsNum > 0 ? totalReportsNum : Math.max(1, reportsParts.length);
+  const totalReportsStr = `${totalReportsCount} ${totalReportsCount === 1 ? "Report" : "Reports"}`;
 
-  // Total Reports Label
-  page.drawText("TOTAL REPORTS / إجمالي التقارير:", {
+  const totalLabelY = studentDividerY - 13;
+  page.drawText("TOTAL REPORTS:", {
     x: x + 14,
-    y: summaryY + 24,
+    y: totalLabelY,
     size: 9,
     font,
     color: COLOR_DARK_GRAY,
   });
 
-  const totalReportsStr = `${totalReports} ${Number(totalReports) === 1 ? "Report" : "Reports"}`;
+  const totalValY = totalLabelY - 17;
   page.drawText(totalReportsStr, {
     x: x + 14,
-    y: summaryY + 4,
-    size: 16,
+    y: totalValY,
+    size: 15,
     font,
     color: COLOR_BLACK,
   });
 
-  // Clean Divider Line
+  // Divider Line below Total Reports
+  const summaryDividerY = totalValY - 8;
   page.drawLine({
-    start: { x: x + 10, y: summaryY - 8 },
-    end: { x: x + width - 10, y: summaryY - 8 },
+    start: { x: x + 8, y: summaryDividerY },
+    end: { x: x + width - 8, y: summaryDividerY },
     thickness: 0.8,
     color: COLOR_LIGHT_GRAY,
   });
 
-  // 5. Enclosed Score Reports List (Simple, Clear, Large Font)
-  const listY = summaryY - 32;
-
+  // 5. Enclosed Score Reports List (Fixed layout for 4+ reports, generous bottom margin)
+  const listTitleY = summaryDividerY - 14;
   page.drawText("ENCLOSED SCORE REPORTS:", {
     x: x + 14,
-    y: listY,
+    y: listTitleY,
     size: 9.5,
     font,
     color: COLOR_BLACK,
   });
 
-  // Normalize any Arabic month to standard English session name to prevent RTL bidi flip
-  const normalizedRaw = normalizeReportItem(rawReportsList);
-  const reportsParts = normalizedRaw
-    .split(/[;؛,]|\s+و\s+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const reportsStartY = listTitleY - 16;
+  const count = reportsParts.length;
 
-  if (reportsParts.length > 1) {
-    let curItemY = listY - 22;
-    for (let r = 0; r < Math.min(4, reportsParts.length); r++) {
-      const itemText = `• ${reportsParts[r]}`;
-      page.drawText(itemText, {
-        x: x + 16,
-        y: curItemY,
-        size: 13,
-        font,
-        color: COLOR_BLACK,
-      });
-      curItemY -= 20;
-    }
-  } else {
-    page.drawText(normalizedRaw, {
+  if (count === 0) {
+    page.drawText("• Official EST Score Report", {
       x: x + 16,
-      y: listY - 22,
-      size: 14,
+      y: reportsStartY,
+      size: 13,
       font,
       color: COLOR_BLACK,
     });
-  }
+  } else if (count <= 4) {
+    // 1 column with generous vertical spacing and no border clipping
+    const step = count <= 2 ? 22 : count === 3 ? 20 : 18;
+    const baseSize = count <= 2 ? 13.5 : count === 3 ? 12.5 : 11.5;
+    const maxLineW = width - 36;
 
-  // 6. Clean bottom: Footer removed completely (No barcode, no dispatch id, no official dispatch seal)
+    for (let r = 0; r < count; r++) {
+      const itemText = `• ${reportsParts[r]}`;
+      let itemSize = baseSize;
+      let itemW = font.widthOfTextAtSize(itemText, itemSize);
+      if (itemW > maxLineW) {
+        itemSize = Math.max(9, (maxLineW / itemW) * itemSize);
+      }
+      const itemY = reportsStartY - r * step;
+      page.drawText(itemText, {
+        x: x + 16,
+        y: itemY,
+        size: itemSize,
+        font,
+        color: COLOR_BLACK,
+      });
+    }
+  } else {
+    // 2 columns for 5+ reports
+    const colWidth = (width - 40) / 2;
+    const rows = Math.ceil(count / 2);
+    const step = Math.min(18, Math.max(14, (reportsStartY - (y + 14)) / rows));
+    const baseSize = 10.5;
+
+    for (let r = 0; r < count; r++) {
+      const colIdx = r < rows ? 0 : 1;
+      const rowIdx = r < rows ? r : r - rows;
+      const colX = colIdx === 0 ? x + 16 : x + 20 + colWidth;
+      const itemText = `• ${reportsParts[r]}`;
+
+      let itemSize = baseSize;
+      let itemW = font.widthOfTextAtSize(itemText, itemSize);
+      if (itemW > colWidth - 6) {
+        itemSize = Math.max(8, ((colWidth - 6) / itemW) * itemSize);
+      }
+      const itemY = reportsStartY - rowIdx * step;
+      page.drawText(itemText, {
+        x: colX,
+        y: itemY,
+        size: itemSize,
+        font,
+        color: COLOR_BLACK,
+      });
+    }
+  }
 }

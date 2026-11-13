@@ -50,52 +50,52 @@ export const BATCH_PRESETS = [
 
 const INITIAL_FALLBACK_STUDENTS: CertificateStudentData[] = [
   {
-    serialNumber: "128",
-    studentName: "يارا رمضان يوسف ابو الخير",
-    totalReports: 2,
-    reportsList: "يناير 2026 - EST I، ومارس 2026 - EST II",
+    serialNumber: "1",
+    studentName: "Abdelaziz Sameh Mahmoud Aly Aboueyana",
+    totalReports: 4,
+    reportsList: "October 2025 - EST I; July 2026 - EST I; January 2026 - EST II; July 2026 - EST II",
     seatNumber: "10245",
     nationalId: "30501011234567",
     schoolName: "Online Portal Direct Candidate",
     governorate: "Cairo",
-    certificateCode: "EST-REP-0128",
-    batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
+    certificateCode: "EST-REP-0001",
+    batchName: "Data for MoE - Nov Batch 2 11.11.2026",
   },
   {
-    serialNumber: "129",
-    studentName: "مريم أحمد محمد عبد الفتاح",
+    serialNumber: "2",
+    studentName: "Abdelrahman Alaa Ahmed Ragheb Ibrahim",
     totalReports: 1,
-    reportsList: "أكتوبر 2026 - EST I",
+    reportsList: "January 2026 - EST I",
     seatNumber: "10246",
     nationalId: "30502021234568",
     schoolName: "Online Portal Direct Candidate",
     governorate: "Giza",
-    certificateCode: "EST-REP-0129",
-    batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
+    certificateCode: "EST-REP-0002",
+    batchName: "Data for MoE - Nov Batch 2 11.11.2026",
   },
   {
-    serialNumber: "130",
-    studentName: "أحمد خالد مصطفى الشناوي",
-    totalReports: 3,
-    reportsList: "مايو 2025 - EST I، يناير 2026 - EST II، مارس 2026 - EST II",
+    serialNumber: "3",
+    studentName: "Abdelrahman Khaled Sabry Ibrahim Elghazaly",
+    totalReports: 2,
+    reportsList: "May 2025 - EST I; January 2026 - EST II",
     seatNumber: "10247",
     nationalId: "30503031234569",
     schoolName: "Online Portal Direct Candidate",
     governorate: "Alexandria",
-    certificateCode: "EST-REP-0130",
-    batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
+    certificateCode: "EST-REP-0003",
+    batchName: "Data for MoE - Nov Batch 2 11.11.2026",
   },
   {
-    serialNumber: "131",
-    studentName: "نور الدين إبراهيم حسن السعدني",
+    serialNumber: "4",
+    studentName: "Adam Wael Ahmed Ahmed Ibrahim",
     totalReports: 2,
-    reportsList: "أكتوبر 2025 - EST I، ديسمبر 2026 - EST I",
+    reportsList: "October 2025 - EST I; December 2026 - EST I",
     seatNumber: "10248",
     nationalId: "30504041234570",
     schoolName: "Online Portal Direct Candidate",
     governorate: "Menofia",
-    certificateCode: "EST-REP-0131",
-    batchName: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
+    certificateCode: "EST-REP-0004",
+    batchName: "Data for MoE - Nov Batch 2 11.11.2026",
   },
 ];
 
@@ -158,7 +158,7 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): Certificat
       if (h.includes("batch") || h.includes("باتش")) batchName = v;
     });
 
-    const studentName = nameAr || nameEn;
+    const studentName = nameEn || nameAr;
     if (!studentName) continue;
 
     const finalSerial = serial || String(results.length + 1);
@@ -746,48 +746,48 @@ export default function CertificateStickersPage() {
 
           {/* Realistic Card Simulation - Clean Light Header & Simple Layout */}
           {(() => {
-            const sample = filteredStudents.find((s) => String(s.serialNumber) === "128") || filteredStudents[0];
+            const sample = filteredStudents.find((s) => String(s.serialNumber) === "1" || String(s.serialNumber) === "128") || filteredStudents[0];
+            const parsedReports = (sample.reportsList || "Official EST Score Report")
+              .split(/[;؛،,\n\r•]|\s+و\s+/)
+              .map((p) => p.replace(/^[-•*]\s*/, "").trim())
+              .filter(Boolean);
             return (
               <div className="mx-auto max-w-lg rounded-xl border-2 border-black bg-white p-5 shadow-sm text-black">
-                {/* Header: Clean Light Background with Crisp Badge (No Heavy Black Bar, No 79/306) */}
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-slate-50 px-3 py-2 text-black">
-                  <div className="flex items-center gap-2.5">
-                    <span className="rounded bg-black px-2 py-0.5 text-xs font-black text-white tracking-wider">
-                      EST
-                    </span>
-                    <div>
-                      <div className="text-[11px] font-bold text-black tracking-wide">
-                        OFFICIAL SCORE REPORT & CERTIFICATE
-                      </div>
-                      <div className="text-[9px] text-gray-500 font-mono line-clamp-1 uppercase">
-                        {sample.batchName || activeBatch?.name}
-                      </div>
-                    </div>
-                  </div>
+                {/* Header: Official EST Logo Centered (No Text Clutter, No Subtitles) */}
+                <div className="flex items-center justify-center border-b border-black pb-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/est-logo.jpg"
+                    alt="EST Official Logo"
+                    className="h-9 w-auto object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
                 </div>
 
-                {/* Serial and Candidate Name Row (Properly aligned, generous spacing, clear font) */}
-                <div className="mt-5 flex items-center gap-4">
+                {/* Serial and Student Name Row (100% English: STUDENT NAME:) */}
+                <div className="mt-4 flex items-center gap-4">
                   <div className="font-mono text-3xl font-black text-black shrink-0">
                     ({sample.serialNumber})
                   </div>
                   <div className="flex-1 text-start">
-                    <div className="text-xs font-bold text-gray-500 mb-0.5">
-                      اسم الطالب / الطالبة:
+                    <div className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">
+                      STUDENT NAME:
                     </div>
-                    <div className="text-2xl font-black text-black leading-tight">
+                    <div className="text-xl sm:text-2xl font-black text-black leading-tight mt-0.5">
                       {sample.studentName}
                     </div>
                   </div>
                 </div>
 
                 {/* Divider Line */}
-                <div className="my-4 border-t border-black" />
+                <div className="my-3.5 border-t border-black" />
 
-                {/* Reports Summary Row: Only Total Reports (Tracking ID removed) */}
+                {/* Reports Summary Row: TOTAL REPORTS (100% English) */}
                 <div className="text-start">
-                  <div className="text-xs font-bold text-gray-500 uppercase">
-                    إجمالي التقارير / TOTAL REPORTS:
+                  <div className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">
+                    TOTAL REPORTS:
                   </div>
                   <div className="text-lg font-black text-black mt-0.5">
                     {sample.totalReports} {Number(sample.totalReports) === 1 ? "Report" : "Reports"}
@@ -797,15 +797,16 @@ export default function CertificateStickersPage() {
                 {/* Divider Line */}
                 <div className="my-3 border-t border-gray-200" />
 
-                {/* Reports List */}
+                {/* Enclosed Score Reports List (Cleanly handles 4+ reports with zero overflow) */}
                 <div className="text-start pb-2">
-                  <div className="text-xs font-bold uppercase text-black mb-1.5">
-                    قائمة التقارير / ENCLOSED SCORE REPORTS:
+                  <div className="text-[11px] font-bold tracking-wider uppercase text-black mb-2">
+                    ENCLOSED SCORE REPORTS:
                   </div>
-                  <div className="text-sm font-bold text-black leading-relaxed space-y-1">
-                    {(sample.reportsList || "Official EST Score Report").split(/[;؛،,]/).map((p, i) => (
-                      <div key={i} className="py-0.5">
-                        • {p.trim()}
+                  <div className="text-sm font-bold text-black space-y-1.5">
+                    {parsedReports.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-black text-base leading-none">•</span>
+                        <span>{p}</span>
                       </div>
                     ))}
                   </div>

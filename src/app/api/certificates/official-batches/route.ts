@@ -72,7 +72,7 @@ function parseWorkbook(filePath: string, batchName: string): CertificateStudentD
       if (h.includes("requestid") || h.includes("كود")) reqId = v;
     });
 
-    const studentName = nameAr || nameEn;
+    const studentName = nameEn || nameAr;
     if (studentName) {
       students.push({
         id: `batch-${r}`,

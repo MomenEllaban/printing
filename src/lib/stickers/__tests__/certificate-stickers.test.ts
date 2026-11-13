@@ -68,9 +68,26 @@ describe("Certificate & Score Report Stickers PDF Generator", () => {
     expect(Math.round(page1.getHeight())).toBe(595);
   });
 
-  it("should handle empty fallback and render default Yara Ramadan sample sticker", async () => {
+  it("should handle empty fallback and render default sample sticker", async () => {
     const pdfBytes = await generateCertificateStickersPdf({
       students: [],
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const doc = await PDFDocument.load(pdfBytes);
+    expect(doc.getPageCount()).toBe(1);
+  });
+
+  it("should cleanly format stickers with 4 enclosed score reports without overflow", async () => {
+    const fourReportsStudent: CertificateStudentData = {
+      serialNumber: "1",
+      studentName: "Abdelaziz Sameh Mahmoud Aly Aboueyana",
+      totalReports: 4,
+      reportsList: "October 2025 - EST I; July 2026 - EST I; January 2026 - EST II; July 2026 - EST II",
+    };
+
+    const pdfBytes = await generateCertificateStickersPdf({
+      students: [fourReportsStudent],
     });
 
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
