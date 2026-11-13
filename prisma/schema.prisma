@@ -118,3 +118,24 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
 }
+
+model CertificateStickerBatch {
+  id            String   @id @default(cuid())
+  userId        String?
+  name          String
+  shortName     String?
+  fileName      String?
+  driveFileId   String?
+  driveFolderId String?
+  batchType     String   @default("uploaded")
+  sourceKey     String?
+  studentsData  Json
+  receiptsData  Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([driveFileId])
+  @@index([sourceKey])
+  @@index([batchType])
+}
