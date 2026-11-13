@@ -218,7 +218,7 @@ export function PrintDocument({
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
-            padding: 8mm 7mm 8mm 7mm !important;
+            padding: 4mm 7mm 8mm 7mm !important;
             margin: 0 !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -239,7 +239,7 @@ export function PrintDocument({
         .sheet-page {
           width: 100%;
           box-sizing: border-box;
-          padding: 8mm 7mm 8mm 7mm;
+          padding: 4mm 7mm 8mm 7mm;
           page-break-after: always;
           break-after: page;
           page-break-inside: avoid;
@@ -255,11 +255,13 @@ export function PrintDocument({
           align-items: center;
           justify-content: space-between;
           border-bottom: 2px solid #000;
-          padding-bottom: 5px;
-          margin-bottom: 7px;
+          padding-top: 0;
+          padding-bottom: 4px;
+          margin-top: 0;
+          margin-bottom: 6px;
         }
-        .header-logo { width: 130px; display: flex; align-items: center; }
-        .est-logo-img { height: 46px; width: auto; object-fit: contain; }
+        .header-logo { width: 320px; display: flex; align-items: center; }
+        .est-logo-img { height: 140px; width: auto; object-fit: contain; display: block; }
         .header-center { flex: 1; text-align: center; padding: 0 10px; }
         .est-register-title {
           margin: 0 0 3px;
