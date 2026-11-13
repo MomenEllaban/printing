@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   FileSpreadsheet,
   Printer,
@@ -17,6 +17,11 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import type { DriveItem } from "@/lib/types";
 import { ExcelRegisterWorkspace } from "./excel-register-workspace";
+import { GenericExcelView } from "./preview/generic-excel-view";
+import {
+  applyRegisterSheetNormalization,
+  detectExcelWorkbookKind,
+} from "@/lib/excel-workbook-kind";
 import {
   computeRoomSpans,
   parseSheetDetails,
@@ -52,6 +57,10 @@ export function ExcelViewerModal({
   const [isEditing, setIsEditing] = useState(false);
   const [viewAll, setViewAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const registerMode = useMemo(
+    () => detectExcelWorkbookKind(sheets, file?.name) === "register",
+    [sheets, file?.name],
+  );
 
   // Load workbook content
   useEffect(() => {
@@ -96,59 +105,15 @@ export function ExcelViewerModal({
             blankrows: true,
           });
 
-          const cleanRows =
-            rows.length > 0
-              ? rows
-              : [
-                  ["Center :", `AAST Sheraton ${name}`, "", "", "", "Date: 09 - 10 - 2026", "", "EST Type : 1", "", ""],
-                  [],
-                  [
-                    "No.",
-                    "Name",
-                    "Proctor Type",
-                    "Mobile",
-                    "IP / EP",
-                    "Room",
-                    "Arrival Signature",
-                    "Time",
-                    "Departure Signature",
-                    "Time",
-                  ],
-                ];
-
-          // Auto-fill inherited room values for each proctor row from vertical merges
-          let headerIdx = -1;
-          for (let r = 0; r < Math.min(15, cleanRows.length); r++) {
-            const cell0 = String(cleanRows[r]?.[0] ?? "").trim();
-            const cell1 = String(cleanRows[r]?.[1] ?? "").trim();
-            if (/^No\.?$/i.test(cell0) || /^Name$/i.test(cell1)) {
-              headerIdx = r;
-              break;
-            }
-          }
-          if (headerIdx !== -1) {
-            let activeRoom = "";
-            for (let r = headerIdx + 1; r < cleanRows.length; r++) {
-              const row = cleanRows[r] || [];
-              const cell1 = String(row[1] ?? "").trim();
-              if (/^Head$/i.test(cell1) || /Mohamed\s*Nabil/i.test(cell1)) break;
-              if (!row[0] && !row[1] && !row[2]) continue;
-
-              const currentRoom = String(row[5] ?? "").trim();
-              if (currentRoom) {
-                activeRoom = currentRoom;
-              } else if (activeRoom) {
-                while (row.length <= 5) row.push("");
-                row[5] = activeRoom;
-              }
-            }
-          }
-
           parsed.push({
             name,
-            rows: cleanRows,
+            rows: rows.length > 0 ? rows : [[]],
             merges: ws["!merges"] || [],
           });
+        }
+
+        if (detectExcelWorkbookKind(parsed, file.name) === "register") {
+          for (const s of parsed) applyRegisterSheetNormalization(s);
         }
 
         if (!isCancelled) {
@@ -196,7 +161,7 @@ export function ExcelViewerModal({
 
   // Add new row to active tab with sequential numbering
   const handleAddRow = () => {
-    if (sheets.length === 0) return;
+    if (!registerMode || sheets.length === 0) return;
     setSheets((prev) => {
       const copy = [...prev];
       const targetSheet = { ...copy[activeTabIdx] };
@@ -240,7 +205,7 @@ export function ExcelViewerModal({
 
   // Delete row with sequential re-numbering
   const handleDeleteRow = (rowIdx: number, sheetIdx?: number) => {
-    if (sheets.length === 0) return;
+    if (!registerMode || sheets.length === 0) return;
     const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
     setSheets((prev) => {
       const copy = [...prev];
@@ -280,7 +245,7 @@ export function ExcelViewerModal({
 
   // Delete last proctor row
   const handleDeleteLastRow = (sheetIdx?: number) => {
-    if (sheets.length === 0) return;
+    if (!registerMode || sheets.length === 0) return;
     const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
     const targetSheet = sheets[targetIdx];
     if (!targetSheet) return;
@@ -295,6 +260,7 @@ export function ExcelViewerModal({
 
   // Add new floor tab
   const handleAddNewTab = () => {
+    if (!registerMode) return;
     const floorNum = sheets.length;
     const newTabName = `${locale === "ar" ? "الدور" : "Floor"} ${floorNum}`;
     const newRows: (string | number | null)[][] = [
@@ -346,39 +312,43 @@ export function ExcelViewerModal({
       for (const s of sheets) {
         const ws = XLSX.utils.aoa_to_sheet(s.rows);
 
-        const otherMerges = (s.merges || []).filter((m) => m.s.c !== 5 || m.e.c !== 5);
-        const roomMerges: XLSX.Range[] = [];
-        const parsed = parseSheetDetails(s, buildingName);
-        const { spanMap } = computeRoomSpans(parsed.dataRows);
+        if (registerMode) {
+          const otherMerges = (s.merges || []).filter((m) => m.s.c !== 5 || m.e.c !== 5);
+          const roomMerges: XLSX.Range[] = [];
+          const parsed = parseSheetDetails(s, buildingName);
+          const { spanMap } = computeRoomSpans(parsed.dataRows);
 
-        for (const [startIdx, span] of spanMap.entries()) {
-          if (span > 1 && startIdx + span - 1 < parsed.dataRows.length) {
-            const startRow = parsed.dataRows[startIdx].rawRowIdx;
-            const endRow = parsed.dataRows[startIdx + span - 1].rawRowIdx;
-            roomMerges.push({
-              s: { r: startRow, c: 5 },
-              e: { r: endRow, c: 5 },
-            });
+          for (const [startIdx, span] of spanMap.entries()) {
+            if (span > 1 && startIdx + span - 1 < parsed.dataRows.length) {
+              const startRow = parsed.dataRows[startIdx].rawRowIdx;
+              const endRow = parsed.dataRows[startIdx + span - 1].rawRowIdx;
+              roomMerges.push({
+                s: { r: startRow, c: 5 },
+                e: { r: endRow, c: 5 },
+              });
+            }
           }
-        }
 
-        const allMerges = [...otherMerges, ...roomMerges];
-        if (allMerges.length > 0) {
-          ws["!merges"] = allMerges;
-        }
+          const allMerges = [...otherMerges, ...roomMerges];
+          if (allMerges.length > 0) {
+            ws["!merges"] = allMerges;
+          }
 
-        ws["!cols"] = [
-          { wch: 6 },  // 1: No.
-          { wch: 32 }, // 2: Name
-          { wch: 14 }, // 3: Proctor Type
-          { wch: 15 }, // 4: Mobile
-          { wch: 9 },  // 5: IP / EP
-          { wch: 10 }, // 6: Room
-          { wch: 20 }, // 7: Arrival Signature
-          { wch: 10 }, // 8: Time (Arrival)
-          { wch: 20 }, // 9: Departure Signature
-          { wch: 10 }, // 10: Time (Departure)
-        ];
+          ws["!cols"] = [
+            { wch: 6 },
+            { wch: 32 },
+            { wch: 14 },
+            { wch: 15 },
+            { wch: 9 },
+            { wch: 10 },
+            { wch: 20 },
+            { wch: 10 },
+            { wch: 20 },
+            { wch: 10 },
+          ];
+        } else if (s.merges && s.merges.length > 0) {
+          ws["!merges"] = s.merges;
+        }
 
         XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
       }
@@ -428,6 +398,7 @@ export function ExcelViewerModal({
 
   // Clean Landscape Printing
   const handlePrint = (singleSheet: boolean = false) => {
+    if (!registerMode) return;
     const sheetsToPrint = singleSheet && sheets[activeTabIdx] ? [sheets[activeTabIdx]] : sheets;
     if (sheetsToPrint.length === 0) return;
 
@@ -470,9 +441,13 @@ export function ExcelViewerModal({
                 )}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {locale === "ar"
-                  ? `ريجستر تفاصيل المبنى الرسمي • ${sheets.length} تابات متوفرة • 10 أعمدة معتمدة`
-                  : `Official Building Register Workbook • ${sheets.length} Sheets Available • 10 Standard Columns`}
+                {registerMode
+                  ? locale === "ar"
+                    ? `ريجستر تفاصيل المبنى الرسمي • ${sheets.length} تابات متوفرة • 10 أعمدة معتمدة`
+                    : `Official Building Register Workbook • ${sheets.length} Sheets Available • 10 Standard Columns`
+                  : locale === "ar"
+                    ? `عرض الشيت الأصلي كما تم رفعه • ${sheets.length} شيت`
+                    : `Original uploaded workbook • ${sheets.length} sheets`}
               </p>
             </div>
           </div>
@@ -515,6 +490,7 @@ export function ExcelViewerModal({
               </div>
             )}
 
+            {registerMode && (
             <Button
               type="button"
               variant="secondary"
@@ -526,6 +502,7 @@ export function ExcelViewerModal({
               <Printer className="size-3.5 text-indigo-600" />
               <span>{locale === "ar" ? "طباعة الكل (A4)" : "Print All"}</span>
             </Button>
+            )}
 
             <Button
               type="button"
@@ -564,7 +541,7 @@ export function ExcelViewerModal({
             </div>
           )}
 
-          {!loading && !error && (
+          {!loading && !error && registerMode && (
             <ExcelRegisterWorkspace
               sheets={sheets}
               activeTabIdx={activeTabIdx}
@@ -585,6 +562,17 @@ export function ExcelViewerModal({
               isModal={true}
             />
           )}
+
+          {!loading && !error && !registerMode && (
+            <GenericExcelView
+              sheets={sheets}
+              activeTabIdx={activeTabIdx}
+              setActiveTabIdx={setActiveTabIdx}
+              isEditing={isEditing}
+              onCellChange={handleCellChange}
+              locale={locale}
+            />
+          )}
         </div>
 
         {/* Modal Bottom Footer Note */}
@@ -592,9 +580,13 @@ export function ExcelViewerModal({
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="size-3.5 text-emerald-600" />
             <span>
-              {locale === "ar"
-                ? "جدول بيانات المراقبين بالـ 10 أعمدة المعتمدة مع خانات توقيع الحضور والانصراف المستقلة، وطباعة A4 بالعرض (Landscape)."
-                : "Proctor Data Table with the 10 required columns, separate Arrival and Departure signatures and times, formatted for A4 Landscape."}
+              {registerMode
+                ? locale === "ar"
+                  ? "جدول بيانات المراقبين بالـ 10 أعمدة المعتمدة مع خانات توقيع الحضور والانصراف المستقلة، وطباعة A4 بالعرض (Landscape)."
+                  : "Proctor Data Table with the 10 required columns, separate Arrival and Departure signatures and times, formatted for A4 Landscape."
+                : locale === "ar"
+                  ? "عرض وتعديل الشيت كما تم رفعه، بدون إضافة أعمدة Departure Signature أو Time."
+                  : "View and edit the sheet as uploaded, without adding Departure Signature or Time columns."}
             </span>
           </div>
           <Button type="button" variant="ghost" onClick={onClose} className="text-xs py-1 px-3">

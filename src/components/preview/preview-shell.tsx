@@ -207,6 +207,7 @@ export function PreviewShell({
             isEditing={isEditing}
             onEditingChange={setIsEditing}
             saveRef={saveExcelRef}
+            fileName={item.name}
           />
         )}
         {kind === "word" && <DocxViewer fileId={item.id} extension={item.extension} />}

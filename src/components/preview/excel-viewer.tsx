@@ -7,6 +7,11 @@ import { useI18n } from "@/components/locale-provider";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { ExcelRegisterWorkspace } from "@/components/excel-register-workspace";
+import { GenericExcelView } from "@/components/preview/generic-excel-view";
+import {
+  applyRegisterSheetNormalization,
+  detectExcelWorkbookKind,
+} from "@/lib/excel-workbook-kind";
 import {
   computeRoomSpans,
   parseSheetDetails,
@@ -22,147 +27,7 @@ export interface ExcelViewerProps {
   onEditingChange?: (editing: boolean) => void;
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   buildingName?: string;
-}
-
-function isRegisterSheet(sheet: SheetData): boolean {
-  const scanRows = sheet.rows.slice(0, 20);
-  let hasDeparture = false;
-  let hasArrival = false;
-  let hasProctorType = false;
-  let hasName = false;
-  for (const row of scanRows) {
-    for (const cell of row || []) {
-      const v = String(cell ?? "").trim().toLowerCase();
-      if (v.includes("departure signature")) hasDeparture = true;
-      if (v.includes("arrival signature")) hasArrival = true;
-      if (v === "proctor type" || v.includes("proctor type")) hasProctorType = true;
-      if (v === "name" || v === "student name") hasName = true;
-    }
-  }
-  return hasDeparture && hasArrival && hasProctorType && hasName;
-}
-
-function colLabel(index: number): string {
-  let n = index + 1;
-  let s = "";
-  while (n > 0) {
-    const r = (n - 1) % 26;
-    s = String.fromCharCode(65 + r) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-function GenericExcelView({
-  sheets,
-  activeTabIdx,
-  setActiveTabIdx,
-  isEditing,
-  onCellChange,
-  locale,
-}: {
-  sheets: SheetData[];
-  activeTabIdx: number;
-  setActiveTabIdx: (idx: number) => void;
-  isEditing: boolean;
-  onCellChange: (sheetIdx: number, rowIdx: number, colIdx: number, value: string) => void;
-  locale: string;
-}) {
-  const active = sheets[activeTabIdx];
-  const colCount = useMemo(() => {
-    if (!active) return 0;
-    return Math.max(1, ...active.rows.map((r) => r?.length || 0));
-  }, [active]);
-
-  return (
-    <div className="w-full space-y-3">
-      {sheets.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface/70 p-2">
-          <span className="px-1 text-[11px] font-bold uppercase tracking-wider text-muted">
-            {locale === "ar" ? "Ø§Ù„Ø´ÙŠØªØ§Øª" : "Sheets"}
-          </span>
-          {sheets.map((s, idx) => (
-            <button
-              key={`${s.name}-${idx}`}
-              type="button"
-              onClick={() => setActiveTabIdx(idx)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
-                idx === activeTabIdx
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 shadow-sm dark:text-emerald-300"
-                  : "border-border bg-surface text-foreground hover:bg-surface-soft hover:border-emerald-500/30"
-              }`}
-            >
-              {s.name || `${locale === "ar" ? "Ø´ÙŠØª" : "Sheet"} ${idx + 1}`}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.03]">
-        <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-emerald-500/10 via-surface to-sky-500/10 px-4 py-2.5">
-          <div className="text-xs font-bold text-foreground">
-            {active?.name || (locale === "ar" ? "Ø´ÙŠØª" : "Sheet")}
-          </div>
-          <div className="text-[11px] text-muted">
-            {(active?.rows?.length || 0).toLocaleString()} {locale === "ar" ? "ØµÙ" : "rows"} Ã— {colCount.toLocaleString()} {locale === "ar" ? "Ø¹Ù…ÙˆØ¯" : "cols"}
-          </div>
-        </div>
-
-        <div className="overflow-auto max-h-[70vh]">
-          <table className="min-w-full border-separate border-spacing-0 text-[13px]">
-            <thead className="sticky top-0 z-10">
-              <tr>
-                <th className="sticky start-0 z-20 border-b border-e border-border bg-surface-soft/95 backdrop-blur px-2 py-2 text-center text-[11px] font-bold text-muted w-12 min-w-12">#</th>
-                {Array.from({ length: colCount }).map((_, cIdx) => (
-                  <th key={cIdx} className="border-b border-e border-border bg-surface-soft/95 backdrop-blur px-3 py-2 text-center text-[11px] font-bold text-muted min-w-[140px] last:border-e-0">
-                    {colLabel(cIdx)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(active?.rows || []).map((row, rIdx) => (
-                <tr key={rIdx} className="group">
-                  <td className="sticky start-0 z-[5] border-b border-e border-border bg-surface-soft/80 px-2 py-2 text-center text-[11px] font-semibold text-muted">
-                    {rIdx + 1}
-                  </td>
-                  {Array.from({ length: colCount }).map((_, cIdx) => {
-                    const value = row?.[cIdx] ?? "";
-                    const text = value === null || value === undefined ? "" : String(value);
-                    return (
-                      <td
-                        key={cIdx}
-                        className={`border-b border-e border-border/70 p-0 align-top min-w-[140px] max-w-[460px] last:border-e-0 ${rIdx % 2 === 0 ? "bg-surface" : "bg-surface-soft/20"} group-hover:bg-emerald-500/[0.03]`}
-                      >
-                        {isEditing ? (
-                          <input
-                            value={text}
-                            onChange={(e) => onCellChange(activeTabIdx, rIdx, cIdx, e.target.value)}
-                            className="h-full w-full min-w-[140px] bg-transparent px-3 py-2 text-[13px] text-foreground outline-none transition-colors focus:bg-white dark:focus:bg-slate-950 focus:ring-2 focus:ring-inset focus:ring-emerald-500/40"
-                          />
-                        ) : (
-                          <div className="whitespace-pre-wrap break-words px-3 py-2 leading-relaxed text-foreground">
-                            {text || <span className="text-muted/40"> </span>}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {(!active || active.rows.length === 0) && (
-                <tr>
-                  <td colSpan={colCount + 1} className="px-4 py-10 text-center text-sm text-muted">
-                    {locale === "ar" ? "Ø§Ù„Ø´ÙŠØª ÙØ§Ø±Øº" : "Empty sheet"}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+  fileName?: string;
 }
 
 export function ExcelViewer({
@@ -172,6 +37,7 @@ export function ExcelViewer({
   onEditingChange,
   saveRef,
   buildingName,
+  fileName,
 }: ExcelViewerProps) {
   const { locale, t } = useI18n();
   const [sheets, setSheets] = useState<SheetData[]>([]);
@@ -188,7 +54,10 @@ export function ExcelViewer({
     onEditingChange?.(val);
   };
 
-  const registerMode = useMemo(() => sheets.length > 0 && sheets.every(isRegisterSheet), [sheets]);
+  const registerMode = useMemo(
+    () => detectExcelWorkbookKind(sheets, fileName) === "register",
+    [sheets, fileName],
+  );
 
   const loadWorkbook = async (cancelled = false) => {
     setLoading(true);
@@ -235,44 +104,9 @@ export function ExcelViewer({
 
       if (cancelled) return;
 
-      // Apply register-specific normalization only for register workbooks
-      const detectedRegister = parsed.length > 0 && parsed.every(isRegisterSheet);
-      if (detectedRegister) {
+      if (detectExcelWorkbookKind(parsed, fileName) === "register") {
         for (const s of parsed) {
-          if (s.rows.length === 0) {
-            s.rows = [
-              ["Center :", `AAST Sheraton ${s.name}`, "", "", "", "Date: 09 - 10 - 2026", "", "EST Type : 1", "", ""],
-              [],
-              ["No.", "Name", "Proctor Type", "Mobile", "IP / EP", "Room", "Arrival Signature", "Time", "Departure Signature", "Time"],
-            ];
-          }
-
-          let headerIdx = -1;
-          for (let r = 0; r < Math.min(15, s.rows.length); r++) {
-            const cell0 = String(s.rows[r]?.[0] ?? "").trim();
-            const cell1 = String(s.rows[r]?.[1] ?? "").trim();
-            if (/^No\.?$/i.test(cell0) || /^Name$/i.test(cell1)) {
-              headerIdx = r;
-              break;
-            }
-          }
-          if (headerIdx !== -1) {
-            let activeRoom = "";
-            for (let r = headerIdx + 1; r < s.rows.length; r++) {
-              const row = s.rows[r] || [];
-              const cell1 = String(row[1] ?? "").trim();
-              if (/^Head$/i.test(cell1) || /Mohamed\s*Nabil/i.test(cell1)) break;
-              if (!row[0] && !row[1] && !row[2]) continue;
-
-              const currentRoom = String(row[5] ?? "").trim();
-              if (currentRoom) {
-                activeRoom = currentRoom;
-              } else if (activeRoom) {
-                while (row.length <= 5) row.push("");
-                row[5] = activeRoom;
-              }
-            }
-          }
+          applyRegisterSheetNormalization(s);
         }
       }
 
@@ -291,7 +125,7 @@ export function ExcelViewer({
     return () => {
       cancelled = true;
     };
-  }, [extension, fileId]);
+  }, [extension, fileId, fileName]);
 
   const handleCellChange = (sheetIdx: number, rowIdx: number, colIdx: number, value: string) => {
     setSheets((prev) => {
@@ -309,7 +143,6 @@ export function ExcelViewer({
     });
   };
 
-  // --- Register-only actions ---
   const handleAddRow = () => {
     if (!registerMode || sheets.length === 0) return;
     setSheets((prev) => {
@@ -334,6 +167,7 @@ export function ExcelViewer({
       copy[activeTabIdx] = targetSheet;
       return copy;
     });
+    toast.success(locale === "ar" ? "تمت إضافة مراقب جديد للجدول" : "Added new proctor row");
   };
 
   const handleDeleteRow = (rowIdx: number, sheetIdx?: number) => {
@@ -346,7 +180,10 @@ export function ExcelViewer({
       const targetRows = targetSheet.rows.filter((_, idx) => idx !== rowIdx);
       let headerIdx = -1;
       for (let r = 0; r < Math.min(10, targetRows.length); r++) {
-        if (/^No\.?$/i.test(String(targetRows[r]?.[0] ?? "").trim())) { headerIdx = r; break; }
+        if (/^No\.?$/i.test(String(targetRows[r]?.[0] ?? "").trim())) {
+          headerIdx = r;
+          break;
+        }
       }
       if (headerIdx !== -1) {
         let count = 1;
@@ -363,6 +200,11 @@ export function ExcelViewer({
       copy[targetIdx] = targetSheet;
       return copy;
     });
+    toast.success(
+      locale === "ar"
+        ? "تم حذف المراقب من الجدول بنجاح. اضغط 'حفظ التعديلات' بالأعلى."
+        : "Proctor row removed successfully. Click 'Save Changes' to update file.",
+    );
   };
 
   const handleDeleteLastRow = (sheetIdx?: number) => {
@@ -371,7 +213,10 @@ export function ExcelViewer({
     const targetSheet = sheets[targetIdx];
     if (!targetSheet) return;
     const parsed = parseSheetDetails(targetSheet, buildingName);
-    if (parsed.dataRows.length === 0) return;
+    if (parsed.dataRows.length === 0) {
+      toast.error(locale === "ar" ? "لا يوجد مراقبين لحذفهم" : "No proctors to delete");
+      return;
+    }
     const lastRow = parsed.dataRows[parsed.dataRows.length - 1];
     handleDeleteRow(lastRow.rawRowIdx, targetIdx);
   };
@@ -379,7 +224,7 @@ export function ExcelViewer({
   const handleAddTab = () => {
     if (!registerMode) return;
     const floorNum = sheets.length;
-    const newTabName = `${locale === "ar" ? "Ø§Ù„Ø¯ÙˆØ±" : "Floor"} ${floorNum}`;
+    const newTabName = `${locale === "ar" ? "الدور" : "Floor"} ${floorNum}`;
     const newRows: (string | number | null)[][] = [
       ["Center :", `AAST Sheraton Management ${newTabName}`, null, null, null, "Date: 09 - 10 - 2026", null, "EST Type : 1", null, null],
       [],
@@ -393,6 +238,9 @@ export function ExcelViewer({
     ];
     setSheets((prev) => [...prev, { name: newTabName, rows: newRows }]);
     setActiveTabIdx(sheets.length);
+    toast.success(
+      locale === "ar" ? `تم إضافة تاب جديد باسم "${newTabName}"` : `Added new tab "${newTabName}"`,
+    );
   };
 
   const handleSaveChanges = async () => {
@@ -419,8 +267,16 @@ export function ExcelViewer({
           const allMerges = [...otherMerges, ...roomMerges];
           if (allMerges.length > 0) ws["!merges"] = allMerges;
           ws["!cols"] = [
-            { wch: 6 }, { wch: 32 }, { wch: 14 }, { wch: 15 }, { wch: 9 },
-            { wch: 10 }, { wch: 20 }, { wch: 10 }, { wch: 20 }, { wch: 10 },
+            { wch: 6 },
+            { wch: 32 },
+            { wch: 14 },
+            { wch: 15 },
+            { wch: 9 },
+            { wch: 10 },
+            { wch: 20 },
+            { wch: 10 },
+            { wch: 20 },
+            { wch: 10 },
           ];
         } else if (s.merges && s.merges.length > 0) {
           ws["!merges"] = s.merges;
@@ -445,10 +301,10 @@ export function ExcelViewer({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || (locale === "ar" ? "ÙØ´Ù„ Ø­ÙØ¸ Ø§Ù„Ù…Ù„Ù" : "Failed to save file"));
+        throw new Error(errData.message || (locale === "ar" ? "فشل حفظ الملف" : "Failed to save file"));
       }
 
-      toast.success(locale === "ar" ? "ØªÙ… Ø­ÙØ¸ Ø§Ù„Ù…Ù„Ù Ø¨Ù†Ø¬Ø§Ø­" : "File saved successfully");
+      toast.success(locale === "ar" ? "تم حفظ الملف بنجاح" : "File saved successfully");
       setIsEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
@@ -459,21 +315,25 @@ export function ExcelViewer({
 
   useEffect(() => {
     if (saveRef) saveRef.current = handleSaveChanges;
-    return () => { if (saveRef) saveRef.current = null; };
+    return () => {
+      if (saveRef) saveRef.current = null;
+    };
   }, [sheets, fileId, buildingName, registerMode, extension]);
 
   const handlePrint = (singleSheet: boolean = false) => {
     if (!registerMode) return;
     const sheetsToPrint = singleSheet && sheets[activeTabIdx] ? [sheets[activeTabIdx]] : sheets;
     if (sheetsToPrint.length === 0) return;
-    printEstSheetsWithIframe(sheetsToPrint, { buildingName, title: "EST Building Register" });
+    printEstSheetsWithIframe(sheetsToPrint, { buildingName, title: fileName || "EST Building Register" });
   };
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
         <Spinner className="size-8 text-emerald-600" />
-        <p className="text-sm font-medium">{locale === "ar" ? "Ø¬Ø§Ø±Ù ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ù…Ù„Ù..." : "Loading spreadsheet..."}</p>
+        <p className="text-sm font-medium">
+          {locale === "ar" ? "جاري قراءة وتنسيق تابات الإكسيل..." : "Loading and parsing workbook tabs..."}
+        </p>
       </div>
     );
   }
@@ -492,8 +352,8 @@ export function ExcelViewer({
             </span>
             <div className="text-xs text-muted truncate">
               {locale === "ar"
-                ? "عرض/تعديل ملف Excel كما تم رفعه بدون أي أعمدة إضافية"
-                : "View/edit the Excel file exactly as uploaded, with no extra columns"}
+                ? "عرض/تعديل ملف Excel كما تم رفعه بدون أعمدة Departure Signature أو Time"
+                : "View/edit the uploaded Excel as-is, without Departure Signature or Time columns"}
             </div>
           </div>
           {isEditing && (
