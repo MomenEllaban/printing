@@ -258,12 +258,12 @@ export function PrintDocument({
           justify-content: space-between;
           border-bottom: 2px solid #000;
           padding-top: 0;
-          padding-bottom: 4px;
+          padding-bottom: 2px;
           margin-top: 0;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
-        .header-logo { width: 320px; display: flex; align-items: center; }
-        .est-logo-img { height: 140px; width: auto; object-fit: contain; display: block; }
+        .header-logo { width: 280px; display: flex; align-items: center; }
+        .est-logo-img { height: 112px; width: auto; object-fit: contain; display: block; }
         .header-center { flex: 1; text-align: center; padding: 0 10px; }
         .est-register-title {
           margin: 0 0 3px;
@@ -582,7 +582,7 @@ export function PrintDocument({
                 {/* Official Footer with Building Head & Page Indicator */}
                 <div className="official-footer">
                   <div className="footer-head">
-                    <strong>Head of Building:</strong> {pageObj.headName}
+                    <strong>Head of Building:</strong> <span className="footer-head-name">{pageObj.headName}</span>
                   </div>
                   <div className="footer-page">
                     <strong>Page:</strong> {pageObj.pageIndex + 1} of {pageObj.totalPages}

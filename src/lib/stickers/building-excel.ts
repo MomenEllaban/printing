@@ -496,17 +496,17 @@ export function generateEstPrintHtml(
             justify-content: space-between;
             border-bottom: 2px solid #000;
             padding-top: 0;
-            padding-bottom: 4px;
+            padding-bottom: 2px;
             margin-top: 0;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
           }
           .header-logo {
-            width: 320px;
+            width: 280px;
             display: flex;
             align-items: center;
           }
           .est-logo-img {
-            height: 140px;
+            height: 112px;
             width: auto;
             object-fit: contain;
             display: block;
@@ -664,28 +664,31 @@ export function generateEstPrintHtml(
           .official-footer {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-top: 8px;
-            padding-top: 6px;
+            align-items: flex-end;
+            margin-top: 4px;
+            padding-top: 3px;
             border-top: 2px solid #000;
-            font-size: 14pt;
             color: #000;
           }
           .footer-head {
             white-space: nowrap;
-            font-size: 14pt;
+            font-size: 26pt;
+            line-height: 1.05;
           }
           .footer-head strong {
             font-weight: 800;
+            font-size: 26pt;
           }
           .footer-head-name {
             font-weight: 900;
+            font-size: 26pt;
           }
           .footer-page {
             text-align: right;
             font-weight: 800;
             white-space: nowrap;
             font-size: 12pt;
+            line-height: 1.1;
           }
         </style>
       </head>
