@@ -1833,30 +1833,19 @@ function drawQuarterExamSticker(params: {
   });
 
   const heroValue = item.room || "";
-  let heroSize = 46;
+  let heroSize = 52;
   let heroW = font.widthOfTextAtSize(heroValue, heroSize);
   if (heroW > leftW - 8) {
-    heroSize = Math.max(16, ((leftW - 8) / heroW) * heroSize);
+    heroSize = Math.max(18, ((leftW - 8) / heroW) * heroSize);
     heroW = font.widthOfTextAtSize(heroValue, heroSize);
   }
-  const heroY = bodyBottom + (bodyH - heroSize) / 2;
+  const heroY = bodyBottom + (bodyH - heroSize) / 2 + 2;
   page.drawText(heroValue, {
     x: leftX + (leftW - heroW) / 2,
     y: heroY,
     size: heroSize,
     font,
     color: COLOR_CHARCOAL,
-  });
-
-  const packetText = "ROOM PACKET";
-  const packetSize = 7.5;
-  const packetW = font.widthOfTextAtSize(packetText, packetSize);
-  page.drawText(packetText, {
-    x: leftX + (leftW - packetW) / 2,
-    y: bodyBottom + 10,
-    size: packetSize,
-    font,
-    color: COLOR_MUTED,
   });
 
   // 2. RIGHT COLUMN: SUBJECT & CANDIDATES

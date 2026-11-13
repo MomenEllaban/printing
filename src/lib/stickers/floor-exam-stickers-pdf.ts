@@ -477,7 +477,7 @@ function drawFloorSubjectPlacardPage(params: {
     color: COLOR_GOLD,
   });
 
-  const dirSubtitle = "[ CHECK OFF [  ] EACH ROOM PACKET UPON PACKING ]";
+  const dirSubtitle = "[ CHECK OFF [  ] EACH ROOM UPON PACKING ]";
   const dirSubW = font.widthOfTextAtSize(dirSubtitle, 7);
   page.drawText(dirSubtitle, {
     x: rightX + rightW - dirSubW - 14,
