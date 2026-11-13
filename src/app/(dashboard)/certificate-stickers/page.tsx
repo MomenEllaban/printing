@@ -4,18 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Award,
-  CheckCircle2,
-  Copy,
   Download,
   Eye,
   FileSpreadsheet,
-  FileUp,
-  Filter,
   Layers,
   Loader2,
   Package,
   Printer,
-  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -47,6 +42,17 @@ export const BATCH_PRESETS = [
     color: "emerald",
   },
 ];
+
+const CUSTOM_BATCHES_STORAGE_KEY = "certificate_sticker_custom_batches_v1";
+
+type SavedCustomBatch = {
+  id: string;
+  name: string;
+  shortName: string;
+  fileName: string;
+  students: CertificateStudentData[];
+  savedAt: string;
+};
 
 const INITIAL_FALLBACK_STUDENTS: CertificateStudentData[] = [
   {
@@ -144,18 +150,18 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): Certificat
       if (h === "sn" || h === "serial" || h === "no" || (colIdx === 0 && !isNaN(Number(v)))) {
         if (!serial) serial = v;
       }
-      if (h.includes("namear") || h.includes("اسم")) {
+      if (h.includes("namear")) {
         nameAr = v;
       } else if (h.includes("nameen") || h.includes("name") || h.includes("student")) {
         if (!nameEn) nameEn = v;
       }
-      if (h.includes("national") || h.includes("قومي")) nationalId = v;
-      if (h.includes("totalreport") || h.includes("nbofreport") || h.includes("اجمالي")) totalReports = v;
-      if (h.includes("reportlist") || h.includes("قائمة") || h.includes("reports")) reportList = v;
-      if (h.includes("school") || h.includes("مدرسة")) school = v;
-      if (h.includes("governorate") || h.includes("محافظة") || h.includes("city")) gov = v;
-      if (h.includes("requestid") || h.includes("كود")) reqId = v;
-      if (h.includes("batch") || h.includes("باتش")) batchName = v;
+      if (h.includes("national")) nationalId = v;
+      if (h.includes("totalreport") || h.includes("nbofreport")) totalReports = v;
+      if (h.includes("reportlist") || h.includes("reports")) reportList = v;
+      if (h.includes("school")) school = v;
+      if (h.includes("governorate") || h.includes("city")) gov = v;
+      if (h.includes("requestid")) reqId = v;
+      if (h.includes("batch")) batchName = v;
     });
 
     const studentName = nameEn || nameAr;
@@ -189,6 +195,7 @@ export default function CertificateStickersPage() {
 
   const [activeBatchId, setActiveBatchId] = useState<string>("batch-1");
   const [customBatchName, setCustomBatchName] = useState<string>(BATCH_PRESETS[0].name);
+  const [savedCustomBatches, setSavedCustomBatches] = useState<SavedCustomBatch[]>([]);
 
   const [students, setStudents] = useState<CertificateStudentData[]>(INITIAL_FALLBACK_STUDENTS);
   const [loadingBatch, setLoadingBatch] = useState(false);
@@ -200,11 +207,41 @@ export default function CertificateStickersPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("");
 
-  const activeBatch = useMemo(() => {
-    return BATCH_PRESETS.find((b) => b.id === activeBatchId);
-  }, [activeBatchId]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_BATCHES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSavedCustomBatches(parsed.filter((b) => b && b.id && b.name && Array.isArray(b.students)));
+      }
+    } catch {}
+  }, []);
 
-  // Load batch data from API on batch switch
+  const persistCustomBatches = useCallback((batches: SavedCustomBatch[]) => {
+    setSavedCustomBatches(batches);
+    try {
+      window.localStorage.setItem(CUSTOM_BATCHES_STORAGE_KEY, JSON.stringify(batches));
+    } catch {}
+  }, []);
+
+  const activeBatch = useMemo(() => {
+    const preset = BATCH_PRESETS.find((b) => b.id === activeBatchId);
+    if (preset) return preset;
+    const custom = savedCustomBatches.find((b) => b.id === activeBatchId);
+    if (custom) {
+      return {
+        id: custom.id,
+        name: custom.name,
+        shortName: custom.shortName,
+        date: custom.savedAt ? new Date(custom.savedAt).toLocaleDateString() : "",
+        courier: custom.fileName || (locale === "ar" ? "ملف Excel مرفوع" : "Uploaded Excel"),
+        color: "sky",
+      };
+    }
+    return undefined;
+  }, [activeBatchId, savedCustomBatches, locale]);
+
   const fetchBatchData = useCallback(
     async (batchId: string) => {
       try {
@@ -218,11 +255,10 @@ export default function CertificateStickersPage() {
           setUploadedFileName(null);
           toast.success(
             locale === "ar"
-              ? `تم تحميل ${data.students.length} استيكر لـ "${data.batchName}"`
+              ? `تم تحميل ${data.students.length} استيكر من "${data.batchName}"`
               : `Loaded ${data.students.length} stickers for "${data.batchName}"`,
           );
         } else {
-          // Fallback to presets
           setStudents(INITIAL_FALLBACK_STUDENTS);
         }
       } catch {
@@ -245,9 +281,36 @@ export default function CertificateStickersPage() {
       if (preset) {
         setCustomBatchName(preset.name);
         void fetchBatchData(batchId);
+        return;
+      }
+
+      const custom = savedCustomBatches.find((b) => b.id === batchId);
+      if (custom) {
+        setStudents(custom.students);
+        setCustomBatchName(custom.name);
+        setUploadedFileName(custom.fileName);
+        toast.success(
+          locale === "ar"
+            ? `تم تحميل ${custom.students.length} استيكر من "${custom.shortName}"`
+            : `Loaded ${custom.students.length} stickers from "${custom.shortName}"`,
+        );
       }
     },
-    [fetchBatchData],
+    [fetchBatchData, savedCustomBatches, locale],
+  );
+
+  const deleteCustomBatch = useCallback(
+    (batchId: string) => {
+      const next = savedCustomBatches.filter((b) => b.id !== batchId);
+      persistCustomBatches(next);
+      toast.success(locale === "ar" ? "تم حذف الباتش المحفوظ" : "Saved batch deleted");
+
+      if (activeBatchId === batchId) {
+        setActiveBatchId("batch-1");
+        void fetchBatchData("batch-1");
+      }
+    },
+    [savedCustomBatches, persistCustomBatches, activeBatchId, fetchBatchData, locale],
   );
 
   const handleFileUpload = useCallback(
@@ -262,36 +325,54 @@ export default function CertificateStickersPage() {
           : workbook.SheetNames[0];
 
         if (!sheetName) {
-          toast.error(locale === "ar" ? "الملف لا يحتوي على أي شيت" : "File contains no sheets");
+          toast.error(locale === "ar" ? "الملف لا يحتوي على أي Sheet" : "File contains no sheets");
           return;
         }
 
         const sheet = workbook.Sheets[sheetName];
         const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-        const currentBatch = activeBatch?.name || customBatchName;
-        const parsed = parseSmartSheet(rawRows, currentBatch);
+        const baseName = file.name.replace(/\.[^.]+$/, "").trim() || (activeBatch?.name || customBatchName || "Uploaded Batch");
+        const parsed = parseSmartSheet(rawRows, baseName);
         if (parsed.length === 0) {
           toast.error(
             locale === "ar"
-              ? "لم يتم العثور على بيانات طلاب صالحة في الشيت. تأكد من وجود عمود اسم الطالب أو الرقم."
+              ? "لم يتم العثور على بيانات طلاب صالحة. تأكد من وجود أعمدة الاسم/الرقم/التقارير."
               : "No valid student data found. Ensure Student Name or Serial columns exist.",
           );
           return;
         }
 
+        const batchId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const savedBatch: SavedCustomBatch = {
+          id: batchId,
+          name: baseName,
+          shortName: baseName.length > 46 ? `${baseName.slice(0, 43)}...` : baseName,
+          fileName: file.name,
+          students: parsed,
+          savedAt: new Date().toISOString(),
+        };
+
+        const nextBatches = [savedBatch, ...savedCustomBatches];
+        persistCustomBatches(nextBatches);
+
+        setActiveBatchId(batchId);
         setStudents(parsed);
         setUploadedFileName(file.name);
+        setCustomBatchName(baseName);
+
+        if (fileInputRef.current) fileInputRef.current.value = "";
+
         toast.success(
           locale === "ar"
-            ? `تم استيراد ${parsed.length} طالب بنجاح من شيت "${file.name}"`
-            : `Imported ${parsed.length} candidates from "${file.name}"`,
+            ? `تم استيراد وحفظ ${parsed.length} طالب من "${file.name}" في القائمة`
+            : `Imported and saved ${parsed.length} candidates from "${file.name}" to the list`,
         );
       } catch (err: any) {
         toast.error((locale === "ar" ? "خطأ في قراءة ملف الإكسيل: " : "Failed to parse Excel file: ") + (err?.message || ""));
       }
     },
-    [activeBatch, customBatchName, locale],
+    [activeBatch, customBatchName, locale, persistCustomBatches, savedCustomBatches],
   );
 
   const handleDrop = useCallback(
@@ -310,37 +391,36 @@ export default function CertificateStickersPage() {
     setStudents([]);
     setUploadedFileName(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    toast.info(locale === "ar" ? "تم مسح البيانات" : "Cleared data");
+    toast.info(locale === "ar" ? "تم مسح البيانات المعروضة" : "Cleared displayed data");
   }, [locale]);
 
   const downloadSampleTemplate = useCallback(() => {
     const ws = XLSX.utils.json_to_sheet([
       {
-        "رقم (Serial)": "128",
-        "اسم الطالبة (Candidate Name)": "يارا رمضان يوسف ابو الخير",
-        "إجمالي التقارير (Total reports)": 2,
-        "قائمة التقارير (Reports list)": "يناير 2026 - EST I، ومارس 2026 - EST II",
-        "رقم الجلوس (Seat No)": "10245",
-        "الرقم القومي (National ID)": "30501011234567",
-        "الدفعة (Batch)": activeBatch?.name || "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
+        "Serial": "128",
+        "Candidate Name": "Yara Ramadan Youssef Abou Elkhair",
+        "Total reports": 2,
+        "Reports list": "January 2026 - EST I; March 2026 - EST II",
+        "Seat No": "10245",
+        "National ID": "30501011234567",
+        "Batch": activeBatch?.name || "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
       },
       {
-        "رقم (Serial)": "129",
-        "اسم الطالبة (Candidate Name)": "مريم أحمد محمد عبد الفتاح",
-        "إجمالي التقارير (Total reports)": 1,
-        "قائمة التقارير (Reports list)": "أكتوبر 2026 - EST I",
-        "رقم الجلوس (Seat No)": "10246",
-        "الرقم القومي (National ID)": "30502021234568",
-        "الدفعة (Batch)": activeBatch?.name || "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
+        "Serial": "129",
+        "Candidate Name": "Mariam Ahmed Mohamed Abdel Fattah",
+        "Total reports": 1,
+        "Reports list": "October 2026 - EST I",
+        "Seat No": "10246",
+        "National ID": "30502021234568",
+        "Batch": activeBatch?.name || "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
       },
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "EST Score Report Stickers");
     XLSX.writeFile(wb, `EST_Report_Stickers_Template_${activeBatchId}.xlsx`);
-    toast.success(locale === "ar" ? "تم تنزيل نموذج الإكسيل التجريبي" : "Downloaded Excel template");
+    toast.success(locale === "ar" ? "تم تنزيل نموذج الإكسيل" : "Downloaded Excel template");
   }, [activeBatch, activeBatchId, locale]);
 
-  // Filtering
   const filteredStudents = useMemo(() => {
     let list = students;
     if (searchQuery.trim()) {
@@ -359,7 +439,6 @@ export default function CertificateStickersPage() {
 
   const totalSheetsA4 = Math.ceil(filteredStudents.length / 4);
 
-  // Generate PDF
   const fetchPdfBlob = useCallback(async (): Promise<Blob> => {
     if (filteredStudents.length === 0) {
       throw new Error(locale === "ar" ? "لا توجد بيانات طلاب للطباعة" : "No student data to print");
@@ -428,7 +507,7 @@ export default function CertificateStickersPage() {
           }, 60_000);
         }, 500);
       };
-      toast.success(locale === "ar" ? "جاري تحضير أمر الطباعة..." : "Preparing print job...");
+      toast.success(locale === "ar" ? "جارٍ تجهيز أمر الطباعة..." : "Preparing print job...");
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -459,7 +538,6 @@ export default function CertificateStickersPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Page Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
@@ -469,7 +547,7 @@ export default function CertificateStickersPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-black tracking-tight text-foreground">
-                  {locale === "ar" ? "ستيكر الشهادات وتقارير الطلاب" : "Certificate & Report Stickers"}
+                  {locale === "ar" ? "استيكرات الشهادات والتقارير" : "Certificate & Report Stickers"}
                 </h1>
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
                   {locale === "ar" ? "ربع A4" : "Quarter A4"}
@@ -477,54 +555,44 @@ export default function CertificateStickersPage() {
               </div>
               <p className="text-xs text-muted">
                 {locale === "ar"
-                  ? "توليد وطباعة استيكرات تقارير شهادات EST لباتشات الشحن (Aramex Online و MoE Delivery) بمقاس ربع A4 بتصميم مبسط وواضح بالبيانات الأساسية."
-                  : "Generate & print official EST student report stickers (Quarter A4) for Aramex Online & MoE Delivery batches in a clean, clear format."}
+                  ? "توليد وطباعة استيكرات تقارير طلاب EST للباتشات الرسمية والملفات المرفوعة، مع حفظ الملفات المرفوعة في قائمة للاختيار لاحقًا."
+                  : "Generate & print EST student report stickers for official and uploaded batches, with uploaded files saved in a selectable list."}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Quick Top Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            onClick={downloadSampleTemplate}
-            className="cursor-pointer gap-1.5 text-xs h-8 px-3"
-          >
+          <Button variant="secondary" onClick={downloadSampleTemplate} className="cursor-pointer gap-1.5 text-xs h-8 px-3">
             <Download className="size-3.5" />
-            <span>{locale === "ar" ? "نموذج إكسيل تجريبي" : "Sample Template"}</span>
+            <span>{locale === "ar" ? "نموذج إكسيل" : "Sample Template"}</span>
           </Button>
 
           {students.length > 0 && (
-            <Button
-              variant="danger"
-              onClick={clearData}
-              className="cursor-pointer gap-1.5 text-xs h-8 px-3"
-            >
+            <Button variant="danger" onClick={clearData} className="cursor-pointer gap-1.5 text-xs h-8 px-3">
               <Trash2 className="size-3.5" />
-              <span>{locale === "ar" ? "مسح" : "Clear"}</span>
+              <span>{locale === "ar" ? "مسح العرض" : "Clear View"}</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* Two Batch Selector Tabs (The 2 Batches Requested!) */}
       <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-3">
           <div className="flex items-center gap-2">
             <Package className="size-4 text-accent" />
             <span className="text-xs font-bold uppercase tracking-wider text-muted">
-              {locale === "ar" ? "اختر الباتش المراد طباعة استيكراته:" : "Select Active Batch for Stickers:"}
+              {locale === "ar" ? "اختر الباتش / الملف:" : "Select Batch / File:"}
             </span>
           </div>
           <div className="text-[11px] font-medium text-muted">
             {locale === "ar"
-              ? "البيانات الرسمية للدفعتين جاهزة ومحملة تلقائياً بالكامل"
-              : "Official data for both batches are preloaded and ready to print"}
+              ? "الباتشات الرسمية جاهزة، وأي ملف إكسيل ترفعه يتم حفظه هنا تلقائيًا."
+              : "Official batches are ready, and any Excel you upload is saved here automatically."}
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {BATCH_PRESETS.map((batch) => {
             const isSelected = activeBatchId === batch.id;
             return (
@@ -546,8 +614,8 @@ export default function CertificateStickersPage() {
                       </span>
                       <h3 className="text-sm font-bold text-foreground">{batch.shortName}</h3>
                       {isSelected && (
-                        <span className="rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2">
-                          {locale === "ar" ? "النشط" : "Active"}
+                        <span className="rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                          {locale === "ar" ? "نشط" : "Active"}
                         </span>
                       )}
                     </div>
@@ -564,11 +632,62 @@ export default function CertificateStickersPage() {
 
                 <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2 text-xs">
                   <span className="text-muted text-[11px]">{batch.courier}</span>
-                  <span className="font-semibold text-amber-600 dark:text-amber-400 text-[11px]">
-                    {isSelected && loadingBatch ? (
-                      <Loader2 className="size-3 animate-spin inline me-1" />
-                    ) : null}
-                    {isSelected ? `${students.length} استيكر جاهز` : "اضغط للتحميل"}
+                  <span className="font-semibold text-amber-600 dark:text-amber-400 text-[11px] flex items-center gap-1">
+                    {isSelected && loadingBatch ? <Loader2 className="size-3 animate-spin inline" /> : null}
+                    {isSelected ? `${students.length} ${locale === "ar" ? "طالب" : "students"}` : (locale === "ar" ? "جاهز للتحميل" : "Ready")}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {savedCustomBatches.map((batch) => {
+            const isSelected = activeBatchId === batch.id;
+            return (
+              <div
+                key={batch.id}
+                onClick={() => switchBatch(batch.id)}
+                className={cn(
+                  "relative flex flex-col justify-between rounded-xl border p-4 transition-all cursor-pointer",
+                  isSelected
+                    ? "border-sky-500 bg-sky-500/[0.04] ring-2 ring-sky-500/20 shadow-sm"
+                    : "border-border bg-surface-soft/40 hover:border-sky-500/50 hover:bg-surface-soft",
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="flex size-6 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                        <FileSpreadsheet className="size-3.5" />
+                      </span>
+                      <h3 className="text-sm font-bold text-foreground truncate" title={batch.name}>{batch.shortName}</h3>
+                      {isSelected && (
+                        <span className="rounded-full bg-sky-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                          {locale === "ar" ? "نشط" : "Active"}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 font-mono text-[11px] text-muted line-clamp-1" title={batch.fileName}>
+                      {batch.fileName}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteCustomBatch(batch.id);
+                    }}
+                    className="shrink-0 rounded-lg p-1.5 text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20"
+                    title={locale === "ar" ? "حذف الملف المحفوظ" : "Delete saved file"}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2 text-xs">
+                  <span className="text-muted text-[11px]">{locale === "ar" ? "ملف مرفوع محفوظ" : "Saved uploaded file"}</span>
+                  <span className="font-semibold text-sky-600 dark:text-sky-400 text-[11px]">
+                    {batch.students.length} {locale === "ar" ? "طالب" : "students"}
                   </span>
                 </div>
               </div>
@@ -577,7 +696,6 @@ export default function CertificateStickersPage() {
         </div>
       </div>
 
-      {/* Upload Zone */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -614,20 +732,19 @@ export default function CertificateStickersPage() {
               {uploadedFileName} ({students.length} {locale === "ar" ? "طالب" : "candidates"})
             </span>
           ) : locale === "ar" ? (
-            `اسحب وأفلت شيت إكسيل لـ "${activeBatch?.shortName || "الباتش الحالي"}" هنا أو اضغط للتصفح`
+            `اسحب ملف إكسيل هنا أو اضغط للرفع (سيتم حفظه في القائمة)`
           ) : (
-            `Drop Excel sheet for "${activeBatch?.shortName || "Current Batch"}" here, or click to browse`
+            `Drop Excel sheet here, or click to browse (it will be saved in the list)`
           )}
         </h3>
 
         <p className="mt-1 text-xs text-muted max-w-md">
           {locale === "ar"
-            ? "يتعرف تلقائياً على الأعمدة: رقم المسلسل (128)، اسم الطالبة بالعربي، إجمالي التقارير، وقائمة التقارير."
-            : "Auto-detects: Serial No (128), Student Name in Arabic, Total Reports, and Reports List."}
+            ? "يتم التعرف تلقائيًا على: الرقم التسلسلي، اسم الطالب، إجمالي التقارير، وقائمة التقارير. بعد الرفع سيبقى الملف متاحًا للاختيار من القائمة أعلاه."
+            : "Auto-detects: Serial No, Student Name, Total Reports, and Reports List. After upload, the file remains selectable from the list above."}
         </p>
       </div>
 
-      {/* KPI Cards when data loaded */}
       {students.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-border bg-surface-soft p-4 shadow-sm">
@@ -649,20 +766,18 @@ export default function CertificateStickersPage() {
               <Layers className="size-4 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="mt-2 text-2xl font-black text-amber-600 dark:text-amber-400">{totalSheetsA4}</div>
-            <div className="text-[10px] text-muted">
-              {locale === "ar" ? "4 استيكرات ربع A4 في الورقة" : "4 quarter-A4 stickers per sheet"}
-            </div>
+            <div className="text-[10px] text-muted">{locale === "ar" ? "4 استيكرات في كل ورقة" : "4 quarter-A4 stickers per sheet"}</div>
           </div>
 
           <div className="rounded-xl border border-border bg-surface-soft p-4 shadow-sm">
             <div className="flex items-center justify-between text-muted">
-              <span className="text-xs font-medium">{locale === "ar" ? "الدفعة الحالية" : "Active Batch"}</span>
+              <span className="text-xs font-medium">{locale === "ar" ? "الباتش النشط" : "Active Batch"}</span>
               <Truck className="size-4 text-sky-600 dark:text-sky-400" />
             </div>
             <div className="mt-1.5 text-xs font-bold text-foreground line-clamp-2" title={customBatchName}>
               {activeBatch?.shortName || customBatchName}
             </div>
-            <div className="text-[10px] text-muted">{activeBatch?.date || "Nov 2026"}</div>
+            <div className="text-[10px] text-muted">{activeBatch?.date || ""}</div>
           </div>
 
           <div className="rounded-xl border border-border bg-surface-soft p-4 shadow-sm">
@@ -670,31 +785,24 @@ export default function CertificateStickersPage() {
               <span className="text-xs font-medium">{locale === "ar" ? "شكل الاستيكر" : "Sticker Format"}</span>
               <Award className="size-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <div className="mt-1 text-xs font-bold text-foreground">
-              {locale === "ar" ? "تصميم مبسط وأنيق" : "Clean Simple Layout"}
-            </div>
-            <div className="text-[10px] text-muted">
-              {locale === "ar" ? "بيانات أساسية + خط واضح" : "Essential Data + Clear Font"}
-            </div>
+            <div className="mt-1 text-xs font-bold text-foreground">{locale === "ar" ? "تصميم بسيط وواضح" : "Clean Simple Layout"}</div>
+            <div className="text-[10px] text-muted">{locale === "ar" ? "بيانات أساسية + خط واضح" : "Essential Data + Clear Font"}</div>
           </div>
         </div>
       )}
 
-      {/* Actions Toolbar */}
       {students.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-          {/* Search */}
           <div className="relative flex-1 min-w-[220px]">
             <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={locale === "ar" ? "بحث برقم المسلسل (128)، اسم الطالبة، أو التقرير..." : "Search serial #128, student name, or report..."}
+              placeholder={locale === "ar" ? "ابحث بالرقم أو الاسم أو التقرير..." : "Search serial, student name, or report..."}
               className="ps-8 text-xs h-9"
             />
           </div>
 
-          {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
@@ -703,7 +811,7 @@ export default function CertificateStickersPage() {
               className="cursor-pointer gap-1.5 text-xs font-semibold h-8 px-3"
             >
               {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-accent" />}
-              <span>{locale === "ar" ? "معاينة الاستيكرات PDF" : "Preview PDF"}</span>
+              <span>{locale === "ar" ? "معاينة PDF" : "Preview PDF"}</span>
             </Button>
 
             <Button
@@ -723,13 +831,12 @@ export default function CertificateStickersPage() {
               className="cursor-pointer gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white h-8 px-3"
             >
               {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
-              <span>{locale === "ar" ? "طباعة مباشرة لجميع الاستيكرات" : "Print All Stickers"}</span>
+              <span>{locale === "ar" ? "طباعة جميع الاستيكرات" : "Print All Stickers"}</span>
             </Button>
           </div>
         </div>
       )}
 
-      {/* Example Preview Card as requested by User */}
       {filteredStudents.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
           <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-4">
@@ -740,20 +847,18 @@ export default function CertificateStickersPage() {
               </h2>
             </div>
             <span className="text-[11px] font-mono text-muted">
-              {locale === "ar" ? "مطابق تماماً لمواصفات EST الرسمية" : "Matches official EST specifications"}
+              {locale === "ar" ? "مطابق لمواصفات EST الرسمية" : "Matches official EST specifications"}
             </span>
           </div>
 
-          {/* Realistic Card Simulation - Clean Light Header & Simple Layout */}
           {(() => {
             const sample = filteredStudents.find((s) => String(s.serialNumber) === "1" || String(s.serialNumber) === "128") || filteredStudents[0];
             const parsedReports = (sample.reportsList || "Official EST Score Report")
-              .split(/[;؛،,\n\r•]|\s+و\s+/)
+              .split(/[;\n\r,]+/)
               .map((p) => p.replace(/^[-•*]\s*/, "").trim())
               .filter(Boolean);
             return (
               <div className="mx-auto max-w-lg rounded-xl border-2 border-black bg-white p-5 shadow-sm text-black">
-                {/* Header: Official EST Logo Centered (No Text Clutter, No Subtitles) */}
                 <div className="flex items-center justify-center border-b border-black pb-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -766,42 +871,31 @@ export default function CertificateStickersPage() {
                   />
                 </div>
 
-                {/* Serial and Student Name Row (100% English: STUDENT NAME:) */}
                 <div className="mt-4 flex items-center gap-4">
                   <div className="font-mono text-3xl font-black text-black shrink-0">
                     ({sample.serialNumber})
                   </div>
                   <div className="flex-1 text-start">
-                    <div className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">
-                      STUDENT NAME:
-                    </div>
+                    <div className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">STUDENT NAME:</div>
                     <div className="text-xl sm:text-2xl font-black text-black leading-tight mt-0.5">
                       {sample.studentName}
                     </div>
                   </div>
                 </div>
 
-                {/* Divider Line */}
                 <div className="my-3.5 border-t border-black" />
 
-                {/* Reports Summary Row: TOTAL REPORTS (100% English) */}
                 <div className="text-start">
-                  <div className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">
-                    TOTAL REPORTS:
-                  </div>
+                  <div className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">TOTAL REPORTS:</div>
                   <div className="text-lg font-black text-black mt-0.5">
                     {sample.totalReports} {Number(sample.totalReports) === 1 ? "Report" : "Reports"}
                   </div>
                 </div>
 
-                {/* Divider Line */}
                 <div className="my-3 border-t border-gray-200" />
 
-                {/* Enclosed Score Reports List (Cleanly handles 4+ reports with zero overflow) */}
                 <div className="text-start pb-2">
-                  <div className="text-[11px] font-bold tracking-wider uppercase text-black mb-2">
-                    ENCLOSED SCORE REPORTS:
-                  </div>
+                  <div className="text-[11px] font-bold tracking-wider uppercase text-black mb-2">ENCLOSED SCORE REPORTS:</div>
                   <div className="text-sm font-bold text-black space-y-1.5">
                     {parsedReports.map((p, i) => (
                       <div key={i} className="flex items-center gap-2">
@@ -817,7 +911,6 @@ export default function CertificateStickersPage() {
         </div>
       )}
 
-      {/* Students Table */}
       {students.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
           <div className="overflow-x-auto">
@@ -825,8 +918,8 @@ export default function CertificateStickersPage() {
               <thead className="border-b border-border bg-surface-soft/60 font-semibold text-muted">
                 <tr>
                   <th className="px-4 py-3 text-start">#</th>
-                  <th className="px-4 py-3 text-start">{locale === "ar" ? "الرقم المسلسل" : "Serial No"}</th>
-                  <th className="px-4 py-3 text-start">{locale === "ar" ? "اسم الطالبة / الطالب" : "Candidate Name"}</th>
+                  <th className="px-4 py-3 text-start">{locale === "ar" ? "الرقم التسلسلي" : "Serial No"}</th>
+                  <th className="px-4 py-3 text-start">{locale === "ar" ? "اسم الطالب" : "Candidate Name"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "إجمالي التقارير" : "Total Reports"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "قائمة التقارير" : "Reports List"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "كود التتبع" : "Tracking Code"}</th>
@@ -847,9 +940,9 @@ export default function CertificateStickersPage() {
                         {s.totalReports || 1}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-foreground max-w-xs">{s.reportsList || "—"}</td>
+                    <td className="px-4 py-2.5 text-foreground max-w-xs">{s.reportsList || "-"}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-emerald-600 dark:text-emerald-400">
-                      {s.certificateCode || "—"}
+                      {s.certificateCode || "-"}
                     </td>
                   </tr>
                 ))}
@@ -859,7 +952,6 @@ export default function CertificateStickersPage() {
         </div>
       )}
 
-      {/* PDF Preview Modal */}
       {previewOpen && pdfPreviewBlobUrl && (
         <StickerPreviewModal
           open={previewOpen}
@@ -876,8 +968,8 @@ export default function CertificateStickersPage() {
           customTitle={previewTitle}
           customDescription={
             locale === "ar"
-              ? `استيكرات شهادات وتقارير طلاب EST رسمية مقاس ربع A4 (4 استيكرات في كل ورقة A4) بتصميم مبسط وخط واضح بالبيانات الأساسية.`
-              : `Official EST Student Report Placards (Quarter A4, 4 per sheet) with clean simple typography and essential data only.`
+              ? "استيكرات تقارير طلاب EST (ربع A4، 4 في كل ورقة) بتصميم بسيط وواضح."
+              : "EST student report stickers (Quarter A4, 4 per sheet) with a clean, simple layout."
           }
         />
       )}
