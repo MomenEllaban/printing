@@ -11,11 +11,13 @@ import {
   FolderPlus,
   Loader2,
   Package,
+  Pencil,
   Printer,
   RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button, Input } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
@@ -578,9 +580,12 @@ export default function CertificateStickersPage() {
                   </div>
 
                   {batch.driveFileId && (
-                    <div className="mt-3 pt-2 border-t border-border/40 flex items-center gap-2">
+                    <div className="mt-3 pt-2 border-t border-border/40 flex flex-wrap items-center gap-2">
+                      <Link href={`/preview/${batch.driveFileId}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:underline">
+                        <Pencil className="size-3" /> {locale === "ar" ? "فتح/تعديل" : "View/Edit"}
+                      </Link>
                       <a href={`https://drive.google.com/file/d/${batch.driveFileId}/view`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline">
-                        <ExternalLink className="size-3" /> {locale === "ar" ? "عرض" : "View"}
+                        <ExternalLink className="size-3" /> {locale === "ar" ? "Google Drive" : "Google Drive"}
                       </a>
                       <a href={`/api/drive/files/${batch.driveFileId}/content?download=1`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline">
                         <Download className="size-3" /> {locale === "ar" ? "تحميل" : "Download"}
@@ -643,7 +648,8 @@ export default function CertificateStickersPage() {
           <div className="flex flex-wrap items-center gap-2">
             {activeDriveFileId && (
               <>
-                <a href={`https://drive.google.com/file/d/${activeDriveFileId}/view`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-surface-soft"><ExternalLink className="size-3.5" />{locale === "ar" ? "عرض الملف" : "View File"}</a>
+                <Link href={`/preview/${activeDriveFileId}`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-surface-soft"><Pencil className="size-3.5" />{locale === "ar" ? "فتح/تعديل الملف" : "View/Edit File"}</Link>
+                <a href={`https://drive.google.com/file/d/${activeDriveFileId}/view`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-surface-soft"><ExternalLink className="size-3.5" />{locale === "ar" ? "Google Drive" : "Google Drive"}</a>
                 <a href={`/api/drive/files/${activeDriveFileId}/content?download=1`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-surface-soft"><Download className="size-3.5" />{locale === "ar" ? "تحميل Excel" : "Download Excel"}</a>
               </>
             )}
