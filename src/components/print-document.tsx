@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
 import type { DriveItem } from "@/lib/types";
 import { EST_LOGO_BASE64 } from "@/lib/stickers/est-logo-base64";
+import { detectExcelWorkbookKind } from "@/lib/excel-workbook-kind";
 import {
   computeRoomSpans,
   parseSheetDetails,
@@ -131,6 +132,7 @@ export function PrintDocument({
     return () => window.clearTimeout(handle);
   }, [kind, ready]);
 
+  const registerMode = kind === "excel" && detectExcelWorkbookKind(sheets, item.name) === "register";
   const visibleSheets = selectedSheet === "all" ? sheets : sheets.filter((s) => s.name === selectedSheet);
 
   const ROWS_PER_PAGE = 15;
@@ -145,7 +147,7 @@ export function PrintDocument({
     rows: ParsedProctorRow[];
   }[] = [];
 
-  if (kind === "excel") {
+  if (kind === "excel" && registerMode) {
     for (const sheet of visibleSheets) {
       const parsed = parseSheetDetails(sheet);
       const centerClean = parsed.center.replace(/^Center\s*:\s*/i, "").trim();
@@ -455,7 +457,34 @@ export function PrintDocument({
           />
         )}
 
-        {kind === "excel" &&
+        {kind === "excel" && !registerMode &&
+          visibleSheets.map((sheet, sheetIdx) => {
+            const colCount = Math.max(1, ...sheet.rows.map((r) => r?.length || 0));
+            const isLast = sheetIdx === visibleSheets.length - 1;
+            return (
+              <section
+                key={sheet.name}
+                dir="ltr"
+                style={{ direction: "ltr" }}
+                className={`sheet-page mb-6 ${isLast ? "sheet-page-last" : "break-after-page"}`}
+              >
+                <div className="mb-3 text-sm font-bold">{sheet.name}</div>
+                <table className="exam-table">
+                  <tbody>
+                    {sheet.rows.map((row, rIdx) => (
+                      <tr key={rIdx}>
+                        {Array.from({ length: colCount }).map((_, cIdx) => (
+                          <td key={cIdx}>{row?.[cIdx] == null || row[cIdx] === "" ? "\u00A0" : String(row[cIdx])}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            );
+          })}
+
+        {kind === "excel" && registerMode &&
           printablePages.map((pageObj, pageGlobalIdx) => {
             const { spanMap, resolvedRoomMap } = computeRoomSpans(pageObj.rows);
             const isLastGlobalPage = pageGlobalIdx === printablePages.length - 1;
