@@ -9,16 +9,12 @@ import {
   Eye,
   FileSpreadsheet,
   FolderPlus,
-  Layers,
   Loader2,
   Package,
   Printer,
   RefreshCw,
   Search,
-  Sparkles,
   Trash2,
-  Truck,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Input } from "@/components/ui";
@@ -26,23 +22,6 @@ import { useI18n } from "@/components/locale-provider";
 import { cn } from "@/lib/cn";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
 import type { CertificateStudentData } from "@/lib/stickers/certificate-stickers-pdf";
-
-export const BATCH_PRESETS = [
-  {
-    id: "batch-1",
-    name: "Aramex-Official_Report-Batch 1 Online - 07.11.2026",
-    shortName: "Batch 1: Aramex Online",
-    date: "07.11.2026",
-    courier: "Aramex Courier Dispatch",
-  },
-  {
-    id: "batch-2",
-    name: "Data for MoE - Nov Batch 2 11.11.2026",
-    shortName: "Batch 2: MoE Delivery",
-    date: "11.11.2026",
-    courier: "Ministry of Education (MoE) Handover",
-  },
-];
 
 type StudentWithReceipt = CertificateStudentData & {
   received?: boolean;
@@ -65,10 +44,6 @@ type ServerBatch = {
   createdAt?: string;
   updatedAt?: string;
 };
-
-type ActiveBatchKind = "preset" | "server";
-
-const RECEIPTS_STORAGE_PREFIX = "certificate_sticker_receipts_v1:";
 
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/[\s_\-#:()]+/g, "");
@@ -114,7 +89,7 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): StudentWit
         if (!serial) serial = v;
       }
       if (h.includes("namear")) nameAr = v;
-      else if (h.includes("nameen") || h.includes("name") || h.includes("student")) if (!nameEn) nameEn = v;
+      else if ((h.includes("nameen") || h.includes("name") || h.includes("student")) && !nameEn) nameEn = v;
       if (h.includes("national")) nationalId = v;
       if (h.includes("totalreport") || h.includes("nbofreport")) totalReports = v;
       if (h.includes("reportlist") || h.includes("reports")) reportList = v;
@@ -156,9 +131,8 @@ export default function CertificateStickersPage() {
   const [loadingServerBatches, setLoadingServerBatches] = useState(false);
   const [initializingDrive, setInitializingDrive] = useState(false);
 
-  const [activeBatchKind, setActiveBatchKind] = useState<ActiveBatchKind>("preset");
-  const [activeBatchId, setActiveBatchId] = useState<string>("batch-1");
-  const [customBatchName, setCustomBatchName] = useState<string>(BATCH_PRESETS[0].name);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [customBatchName, setCustomBatchName] = useState<string>("");
 
   const [students, setStudents] = useState<StudentWithReceipt[]>([]);
   const [loadingBatch, setLoadingBatch] = useState(false);
@@ -172,38 +146,14 @@ export default function CertificateStickersPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("");
 
+  const activeServerBatch = useMemo(
+    () => serverBatches.find((b) => b.id === activeBatchId) || null,
+    [serverBatches, activeBatchId],
+  );
+
   const getStudentReceiptKey = useCallback((s: StudentWithReceipt, idx: number) => {
     return String(s.id || s.serialNumber || s.certificateCode || `${s.studentName}-${idx}`);
   }, []);
-
-  const loadReceiptMap = useCallback((batchKey: string): Record<string, { received: boolean; receivedAt?: string | null }> => {
-    try {
-      const raw = window.localStorage.getItem(`${RECEIPTS_STORAGE_PREFIX}${batchKey}`);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch {
-      return {};
-    }
-  }, []);
-
-  const saveReceiptMap = useCallback((batchKey: string, map: Record<string, { received: boolean; receivedAt?: string | null }>) => {
-    try {
-      window.localStorage.setItem(`${RECEIPTS_STORAGE_PREFIX}${batchKey}`, JSON.stringify(map));
-    } catch {}
-  }, []);
-
-  const applyLocalReceiptMap = useCallback(
-    (batchKey: string, list: StudentWithReceipt[]) => {
-      const map = loadReceiptMap(batchKey);
-      return list.map((s, idx) => {
-        const key = getStudentReceiptKey(s, idx);
-        const rec = map[key];
-        return rec ? { ...s, received: Boolean(rec.received), receivedAt: rec.receivedAt || null } : { ...s, received: Boolean(s.received), receivedAt: s.receivedAt || null };
-      });
-    },
-    [getStudentReceiptKey, loadReceiptMap],
-  );
 
   const applyServerReceipts = useCallback(
     (list: StudentWithReceipt[], receiptsData: any) => {
@@ -211,13 +161,24 @@ export default function CertificateStickersPage() {
       return list.map((s, idx) => {
         const key = getStudentReceiptKey(s, idx);
         const rec = map[key];
-        return rec ? { ...s, received: Boolean(rec.received), receivedAt: rec.receivedAt || null } : { ...s, received: Boolean(s.received), receivedAt: s.receivedAt || null };
+        return rec
+          ? { ...s, received: Boolean(rec.received), receivedAt: rec.receivedAt || null }
+          : { ...s, received: Boolean(s.received), receivedAt: s.receivedAt || null };
       });
     },
     [getStudentReceiptKey],
   );
 
-  const fetchServerBatches = useCallback(async () => {
+  const clearActiveBatch = useCallback(() => {
+    setActiveBatchId(null);
+    setStudents([]);
+    setCustomBatchName("");
+    setUploadedFileName(null);
+    setActiveDriveFileId(null);
+    setSearchQuery("");
+  }, []);
+
+  const fetchServerBatches = useCallback(async (opts?: { autoSelectFirst?: boolean }) => {
     try {
       setLoadingServerBatches(true);
       const res = await fetch("/api/certificates/batches", { cache: "no-store" });
@@ -226,10 +187,23 @@ export default function CertificateStickersPage() {
         console.warn("[certificates] failed to load server batches", data);
         return;
       }
-      setServerBatches(Array.isArray(data.batches) ? data.batches : []);
+      const batches: ServerBatch[] = Array.isArray(data.batches) ? data.batches : [];
+      setServerBatches(batches);
       if (data.dbUnavailable) {
         console.warn("[certificates] db unavailable for batches", data.dbError);
       }
+
+      if (batches.length === 0) {
+        setActiveBatchId((prev) => (prev ? null : prev));
+        setStudents((prev) => (prev.length ? [] : prev));
+        return;
+      }
+
+      const autoSelectFirst = opts?.autoSelectFirst ?? false;
+      setActiveBatchId((prev) => {
+        if (prev && batches.some((b) => b.id === prev)) return prev;
+        return autoSelectFirst ? batches[0].id : prev;
+      });
     } catch (err) {
       console.warn("[certificates] failed to load server batches", err);
     } finally {
@@ -244,7 +218,7 @@ export default function CertificateStickersPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to initialize certificates folder");
       toast.success(locale === "ar" ? "تم تجهيز مجلد الشهادات في Google Drive" : "Certificates folder is ready in Google Drive");
-      await fetchServerBatches();
+      await fetchServerBatches({ autoSelectFirst: false });
     } catch (err: any) {
       toast.error(err?.message || (locale === "ar" ? "فشل تجهيز مجلد الشهادات" : "Failed to initialize certificates folder"));
     } finally {
@@ -252,63 +226,13 @@ export default function CertificateStickersPage() {
     }
   }, [fetchServerBatches, locale]);
 
-  const fetchPresetBatchData = useCallback(
+  const loadServerBatch = useCallback(
     async (batchId: string) => {
-      try {
-        setLoadingBatch(true);
-        const res = await fetch(`/api/certificates/official-batches?batchId=${batchId}`);
-        if (!res.ok) throw new Error("Failed to load batch");
-        const data = await res.json();
-        if (Array.isArray(data.students) && data.students.length > 0) {
-          const withReceipts = applyLocalReceiptMap(batchId, data.students as StudentWithReceipt[]);
-          setStudents(withReceipts);
-          setCustomBatchName(data.batchName || BATCH_PRESETS.find((b) => b.id === batchId)?.name || "");
-          setUploadedFileName(null);
-          setActiveDriveFileId(null);
-        } else {
-          setStudents([]);
-        }
-      } catch {
-        setStudents([]);
-      } finally {
-        setLoadingBatch(false);
-      }
-    },
-    [applyLocalReceiptMap],
-  );
-
-  useEffect(() => {
-    void fetchServerBatches();
-  }, [fetchServerBatches]);
-
-  useEffect(() => {
-    void fetchPresetBatchData("batch-1");
-  }, [fetchPresetBatchData]);
-
-  const activePreset = useMemo(() => BATCH_PRESETS.find((b) => activeBatchKind === "preset" && b.id === activeBatchId), [activeBatchKind, activeBatchId]);
-  const activeServerBatch = useMemo(() => serverBatches.find((b) => activeBatchKind === "server" && b.id === activeBatchId), [activeBatchKind, activeBatchId, serverBatches]);
-
-  const switchToPreset = useCallback(
-    (batchId: string) => {
-      setActiveBatchKind("preset");
-      setActiveBatchId(batchId);
-      const preset = BATCH_PRESETS.find((b) => b.id === batchId);
-      if (preset) {
-        setCustomBatchName(preset.name);
-        void fetchPresetBatchData(batchId);
-      }
-    },
-    [fetchPresetBatchData],
-  );
-
-  const switchToServerBatch = useCallback(
-    async (batchId: string) => {
-      setActiveBatchKind("server");
       setActiveBatchId(batchId);
       setLoadingBatch(true);
       try {
         const res = await fetch(`/api/certificates/batches/${batchId}`, { cache: "no-store" });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Failed to load batch");
         const batch = data.batch as ServerBatch;
         const list = Array.isArray(batch.studentsData) ? (batch.studentsData as StudentWithReceipt[]) : [];
@@ -324,6 +248,17 @@ export default function CertificateStickersPage() {
     },
     [applyServerReceipts, locale],
   );
+
+  useEffect(() => {
+    void fetchServerBatches({ autoSelectFirst: true });
+  }, [fetchServerBatches]);
+
+  useEffect(() => {
+    if (!activeBatchId) return;
+    if (students.length === 0 && !loadingBatch) {
+      void loadServerBatch(activeBatchId);
+    }
+  }, [activeBatchId, students.length, loadingBatch, loadServerBatch]);
 
   const handleFileUpload = useCallback(
     async (file: File) => {
@@ -367,9 +302,9 @@ export default function CertificateStickersPage() {
             : `Saved file to Google Drive and created batch (${parsed.length} students)`,
         );
 
-        await fetchServerBatches();
+        await fetchServerBatches({ autoSelectFirst: false });
         if (batch?.id) {
-          await switchToServerBatch(batch.id);
+          await loadServerBatch(batch.id);
         }
 
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -379,7 +314,7 @@ export default function CertificateStickersPage() {
         setIsUploading(false);
       }
     },
-    [locale, fetchServerBatches, switchToServerBatch],
+    [locale, fetchServerBatches, loadServerBatch],
   );
 
   const handleDrop = useCallback(
@@ -394,40 +329,38 @@ export default function CertificateStickersPage() {
 
   const toggleStudentReceipt = useCallback(
     async (studentIndex: number) => {
+      if (!activeBatchId) return;
       const target = students[studentIndex];
       if (!target) return;
       const nextReceived = !Boolean(target.received);
       const nextReceivedAt = nextReceived ? new Date().toISOString() : null;
 
-      setStudents((prev) => prev.map((s, idx) => (idx === studentIndex ? { ...s, received: nextReceived, receivedAt: nextReceivedAt } : s)));
+      setStudents((prev) =>
+        prev.map((s, idx) => (idx === studentIndex ? { ...s, received: nextReceived, receivedAt: nextReceivedAt } : s)),
+      );
 
-      if (activeBatchKind === "preset") {
-        const map = loadReceiptMap(activeBatchId);
-        const key = getStudentReceiptKey(target, studentIndex);
-        map[key] = { received: nextReceived, receivedAt: nextReceivedAt };
-        saveReceiptMap(activeBatchId, map);
-        return;
-      }
-
-      if (activeBatchKind === "server") {
-        const key = getStudentReceiptKey(target, studentIndex);
-        try {
-          const res = await fetch(`/api/certificates/batches/${activeBatchId}/receipts`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ studentKey: key, received: nextReceived }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || "Failed to save receipt");
-          setServerBatches((prev) => prev.map((b) => (b.id === activeBatchId ? { ...b, receiptsData: data.batch?.receiptsData ?? b.receiptsData } : b)));
-        } catch (err: any) {
-          // rollback on failure
-          setStudents((prev) => prev.map((s, idx) => (idx === studentIndex ? { ...s, received: !nextReceived, receivedAt: !nextReceived ? new Date().toISOString() : null } : s)));
-          toast.error(err?.message || (locale === "ar" ? "فشل حفظ حالة الاستلام" : "Failed to save receipt status"));
-        }
+      const key = getStudentReceiptKey(target, studentIndex);
+      try {
+        const res = await fetch(`/api/certificates/batches/${activeBatchId}/receipts`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentKey: key, received: nextReceived }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Failed to save receipt");
+        setServerBatches((prev) =>
+          prev.map((b) => (b.id === activeBatchId ? { ...b, receiptsData: data.batch?.receiptsData ?? b.receiptsData } : b)),
+        );
+      } catch (err: any) {
+        setStudents((prev) =>
+          prev.map((s, idx) =>
+            idx === studentIndex ? { ...s, received: !nextReceived, receivedAt: !nextReceived ? new Date().toISOString() : null } : s,
+          ),
+        );
+        toast.error(err?.message || (locale === "ar" ? "فشل حفظ حالة الاستلام" : "Failed to save receipt status"));
       }
     },
-    [students, activeBatchKind, activeBatchId, loadReceiptMap, saveReceiptMap, getStudentReceiptKey, locale],
+    [students, activeBatchId, getStudentReceiptKey, locale],
   );
 
   const deleteServerBatch = useCallback(
@@ -436,16 +369,16 @@ export default function CertificateStickersPage() {
         const res = await fetch(`/api/certificates/batches/${batchId}`, { method: "DELETE" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Failed to delete batch");
-        toast.success(locale === "ar" ? "تم حذف الباتش من قاعدة البيانات" : "Batch deleted from database");
-        await fetchServerBatches();
-        if (activeBatchKind === "server" && activeBatchId === batchId) {
-          switchToPreset("batch-1");
+        toast.success(locale === "ar" ? "تم حذف الباتش" : "Batch deleted");
+        if (activeBatchId === batchId) {
+          clearActiveBatch();
         }
+        await fetchServerBatches({ autoSelectFirst: activeBatchId === batchId });
       } catch (err: any) {
         toast.error(err?.message || (locale === "ar" ? "فشل حذف الباتش" : "Failed to delete batch"));
       }
     },
-    [fetchServerBatches, activeBatchKind, activeBatchId, switchToPreset, locale],
+    [fetchServerBatches, activeBatchId, clearActiveBatch, locale],
   );
 
   const filteredStudents = useMemo(() => {
@@ -467,18 +400,20 @@ export default function CertificateStickersPage() {
   const receivedCount = useMemo(() => students.filter((s) => s.received).length, [students]);
 
   const fetchPdfBlob = useCallback(async (): Promise<Blob> => {
-    if (filteredStudents.length === 0) throw new Error(locale === "ar" ? "لا توجد بيانات طلاب للطباعة" : "No student data to print");
+    if (filteredStudents.length === 0) {
+      throw new Error(locale === "ar" ? "لا توجد بيانات طلاب للطباعة" : "No student data to print");
+    }
     const res = await fetch("/api/certificates/generate-pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ students: filteredStudents, batchName: customBatchName || activePreset?.name || activeServerBatch?.name }),
+      body: JSON.stringify({ students: filteredStudents, batchName: customBatchName || activeServerBatch?.name }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || "Failed to generate PDF");
     }
     return await res.blob();
-  }, [filteredStudents, customBatchName, activePreset, activeServerBatch, locale]);
+  }, [filteredStudents, customBatchName, activeServerBatch, locale]);
 
   const handlePreviewPdf = useCallback(async () => {
     try {
@@ -486,14 +421,14 @@ export default function CertificateStickersPage() {
       const blob = await fetchPdfBlob();
       const url = URL.createObjectURL(blob);
       setPdfPreviewBlobUrl(url);
-      setPreviewTitle(`${activePreset?.shortName || activeServerBatch?.shortName || customBatchName} (${filteredStudents.length})`);
+      setPreviewTitle(`${activeServerBatch?.shortName || activeServerBatch?.name || customBatchName} (${filteredStudents.length})`);
       setPreviewOpen(true);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setIsGenerating(false);
     }
-  }, [fetchPdfBlob, activePreset, activeServerBatch, customBatchName, filteredStudents.length]);
+  }, [fetchPdfBlob, activeServerBatch, customBatchName, filteredStudents.length]);
 
   const handleDirectPrint = useCallback(async () => {
     try {
@@ -508,8 +443,16 @@ export default function CertificateStickersPage() {
       document.body.appendChild(iframe);
       iframe.onload = () => {
         setTimeout(() => {
-          try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); } catch { window.open(url, "_blank"); }
-          setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 60_000);
+          try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+          } catch {
+            window.open(url, "_blank");
+          }
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url);
+          }, 60_000);
         }, 500);
       };
     } catch (err: any) {
@@ -526,7 +469,7 @@ export default function CertificateStickersPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `EST_Stickers_${(activePreset?.shortName || activeServerBatch?.shortName || "Batch").replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_")}.pdf`;
+      a.download = `EST_Stickers_${(activeServerBatch?.shortName || activeServerBatch?.name || "Batch").replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_")}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -536,7 +479,7 @@ export default function CertificateStickersPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [fetchPdfBlob, activePreset, activeServerBatch]);
+  }, [fetchPdfBlob, activeServerBatch]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -552,8 +495,8 @@ export default function CertificateStickersPage() {
               </h1>
               <p className="text-xs text-muted">
                 {locale === "ar"
-                  ? "حفظ ملفات Excel وباتشات الشهادات وحالة الاستلام في Google Drive وقاعدة البيانات (يعمل من أي جهاز)."
-                  : "Store Excel files, certificate batches, and receipt status in Google Drive and the database (works from any device)."}
+                  ? "ارفع ملفات Excel من Google Drive/جهازك ليتم حفظها في Drive وقاعدة البيانات مع تتبع الاستلام من أي جهاز."
+                  : "Upload Excel files to be stored in Google Drive and the database, with receipt tracking from any device."}
               </p>
             </div>
           </div>
@@ -562,7 +505,7 @@ export default function CertificateStickersPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={initCertificatesFolder} disabled={initializingDrive} className="cursor-pointer gap-1.5 text-xs h-8 px-3">
             {initializingDrive ? <Loader2 className="size-3.5 animate-spin" /> : <FolderPlus className="size-3.5" />}
-            <span>{locale === "ar" ? "إنشاء مجلد الشهادات" : "Create Certificates Folder"}</span>
+            <span>{locale === "ar" ? "إنشاء/تجهيز مجلد الشهادات" : "Create/Init Certificates Folder"}</span>
           </Button>
           <Button variant="secondary" onClick={() => void fetchServerBatches()} disabled={loadingServerBatches} className="cursor-pointer gap-1.5 text-xs h-8 px-3">
             {loadingServerBatches ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
@@ -576,88 +519,109 @@ export default function CertificateStickersPage() {
           <div className="flex items-center gap-2">
             <Package className="size-4 text-accent" />
             <span className="text-xs font-bold uppercase tracking-wider text-muted">
-              {locale === "ar" ? "الباتشات والملفات المحفوظة" : "Saved Batches & Files"}
+              {locale === "ar" ? "ملفات وباتشات الشهادات (من Google Drive / قاعدة البيانات)" : "Certificate Files & Batches (Google Drive / DB)"}
             </span>
           </div>
           <span className="text-[11px] text-muted">
-            {locale === "ar" ? "الملفات المرفوعة تُحفظ في Google Drive وقاعدة البيانات" : "Uploaded files are saved to Google Drive and database"}
+            {serverBatches.length} {locale === "ar" ? "ملف/باتش" : "items"}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {BATCH_PRESETS.map((batch) => {
-            const isSelected = activeBatchKind === "preset" && activeBatchId === batch.id;
-            return (
-              <div key={batch.id} onClick={() => switchToPreset(batch.id)} className={cn("rounded-xl border p-4 transition-all cursor-pointer", isSelected ? "border-amber-500 bg-amber-500/[0.04] ring-2 ring-amber-500/20" : "border-border bg-surface-soft/40 hover:border-amber-500/50")}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Truck className="size-4 text-amber-600" />
-                  <h3 className="text-sm font-bold text-foreground">{batch.shortName}</h3>
-                  {isSelected && <span className="rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5">{locale === "ar" ? "نشط" : "Active"}</span>}
-                </div>
-                <p className="text-[11px] text-muted line-clamp-1">{batch.name}</p>
-                <div className="mt-2 text-[11px] text-muted">{batch.courier} • {batch.date}</div>
-              </div>
-            );
-          })}
-
-          {serverBatches.map((batch) => {
-            const isSelected = activeBatchKind === "server" && activeBatchId === batch.id;
-            return (
-              <div key={batch.id} onClick={() => void switchToServerBatch(batch.id)} className={cn("rounded-xl border p-4 transition-all cursor-pointer", isSelected ? "border-sky-500 bg-sky-500/[0.04] ring-2 ring-sky-500/20" : "border-border bg-surface-soft/40 hover:border-sky-500/50")}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <FileSpreadsheet className="size-4 text-sky-600" />
-                      <h3 className="text-sm font-bold text-foreground truncate" title={batch.name}>{batch.shortName || batch.name}</h3>
-                      {isSelected && <span className="rounded-full bg-sky-500 text-white text-[10px] font-bold px-1.5 py-0.5">{locale === "ar" ? "نشط" : "Active"}</span>}
+        {loadingServerBatches && serverBatches.length === 0 ? (
+          <div className="flex items-center justify-center py-10 text-sm text-muted">
+            <Loader2 className="size-4 animate-spin me-2" />
+            {locale === "ar" ? "جارٍ تحميل الملفات..." : "Loading files..."}
+          </div>
+        ) : serverBatches.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-surface-soft/40 p-6 text-center text-sm text-muted">
+            {locale === "ar"
+              ? "لا توجد ملفات محفوظة بعد. ارفع ملفات Excel أدناه وسيتم حفظها في Google Drive وقاعدة البيانات."
+              : "No saved files yet. Upload Excel files below and they will be stored in Google Drive and the database."}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {serverBatches.map((batch) => {
+              const isSelected = activeBatchId === batch.id;
+              return (
+                <div
+                  key={batch.id}
+                  onClick={() => void loadServerBatch(batch.id)}
+                  className={cn(
+                    "rounded-xl border p-4 transition-all cursor-pointer",
+                    isSelected
+                      ? "border-sky-500 bg-sky-500/[0.04] ring-2 ring-sky-500/20"
+                      : "border-border bg-surface-soft/40 hover:border-sky-500/50",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <FileSpreadsheet className="size-4 text-sky-600" />
+                        <h3 className="text-sm font-bold text-foreground truncate" title={batch.name}>{batch.shortName || batch.name}</h3>
+                        {isSelected && <span className="rounded-full bg-sky-500 text-white text-[10px] font-bold px-1.5 py-0.5">{locale === "ar" ? "نشط" : "Active"}</span>}
+                      </div>
+                      <p className="text-[11px] text-muted line-clamp-1" title={batch.fileName || batch.name}>{batch.fileName || batch.name}</p>
+                      <div className="mt-2 text-[11px] text-muted flex flex-wrap gap-2">
+                        <span>{batch.studentCount || 0} {locale === "ar" ? "طالب" : "students"}</span>
+                        <span>•</span>
+                        <span>{batch.receivedCount || 0} {locale === "ar" ? "تم الاستلام" : "received"}</span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-muted line-clamp-1" title={batch.fileName || batch.name}>{batch.fileName || batch.name}</p>
-                    <div className="mt-2 text-[11px] text-muted flex flex-wrap gap-2">
-                      <span>{batch.studentCount || 0} {locale === "ar" ? "طالب" : "students"}</span>
-                      <span>•</span>
-                      <span>{batch.receivedCount || 0} {locale === "ar" ? "تم الاستلام" : "received"}</span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void deleteServerBatch(batch.id); }}
+                      className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-500/10"
+                      title={locale === "ar" ? "حذف" : "Delete"}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
                   </div>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); void deleteServerBatch(batch.id); }} className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-500/10" title={locale === "ar" ? "حذف" : "Delete"}>
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </div>
 
-                {batch.driveFileId && (
-                  <div className="mt-3 pt-2 border-t border-border/40 flex items-center gap-2">
-                    <a href={`https://drive.google.com/file/d/${batch.driveFileId}/view`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline">
-                      <ExternalLink className="size-3" /> {locale === "ar" ? "عرض" : "View"}
-                    </a>
-                    <a href={`/api/drive/files/${batch.driveFileId}/content?download=1`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline">
-                      <Download className="size-3" /> {locale === "ar" ? "تحميل" : "Download"}
-                    </a>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {batch.driveFileId && (
+                    <div className="mt-3 pt-2 border-t border-border/40 flex items-center gap-2">
+                      <a href={`https://drive.google.com/file/d/${batch.driveFileId}/view`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline">
+                        <ExternalLink className="size-3" /> {locale === "ar" ? "عرض" : "View"}
+                      </a>
+                      <a href={`/api/drive/files/${batch.driveFileId}/content?download=1`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline">
+                        <Download className="size-3" /> {locale === "ar" ? "تحميل" : "Download"}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={cn("group relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-7 text-center transition-all cursor-pointer", "border-border hover:border-amber-500 hover:bg-amber-500/[0.02]")}
+        className={cn(
+          "group relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-7 text-center transition-all cursor-pointer",
+          "border-border hover:border-amber-500 hover:bg-amber-500/[0.02]",
+        )}
       >
-        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) void handleFileUpload(e.target.files[0]); }} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={(e) => { if (e.target.files && e.target.files.length > 0) void handleFileUpload(e.target.files[0]); }}
+        />
         <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
           {isUploading ? <Loader2 className="size-6 animate-spin" /> : <FileSpreadsheet className="size-6" />}
         </div>
         <h3 className="text-sm font-bold text-foreground">
           {isUploading
             ? (locale === "ar" ? "جارٍ رفع وحفظ الملف في Google Drive..." : "Uploading and saving file to Google Drive...")
-            : (locale === "ar" ? "اسحب ملف Excel هنا أو اضغط للرفع (سيتم حفظه في Drive وقاعدة البيانات)" : "Drop Excel here or click to upload (saved to Drive and database)")}
+            : (locale === "ar" ? "اسحب ملف Excel هنا أو اضغط للرفع (سيُحفظ في Drive وقاعدة البيانات)" : "Drop Excel here or click to upload (saved to Drive and database)")}
         </h3>
         <p className="mt-1 text-xs text-muted max-w-md">
           {locale === "ar"
-            ? "بعد الرفع سيظهر الملف في القائمة أعلاه ويمكن عرضه/تحميله واستخدامه من أي جهاز مع حفظ حالة الاستلام لكل طالب."
-            : "After upload, the file appears in the list above for view/download and can be used from any device with per-student receipt tracking."}
+            ? "الملفات المرفوعة (مثل تقارير Aramex / MoE) ستظهر في القائمة أعلاه ويمكن استخدامها من أي جهاز مع حفظ الاستلام لكل طالب."
+            : "Uploaded files (e.g. Aramex / MoE reports) appear in the list above and can be used from any device with per-student receipt tracking."}
         </p>
       </div>
 
@@ -728,7 +692,9 @@ export default function CertificateStickersPage() {
                           onClick={() => void toggleStudentReceipt(originalIndex >= 0 ? originalIndex : idx)}
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border transition-colors cursor-pointer",
-                            received ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "bg-surface text-foreground border-border hover:border-emerald-500/50 hover:bg-emerald-500/10",
+                            received
+                              ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+                              : "bg-surface text-foreground border-border hover:border-emerald-500/50 hover:bg-emerald-500/10",
                           )}
                         >
                           {locale === "ar" ? (received ? "تم الاستلام" : "استلام") : (received ? "Received" : "Receive")}
@@ -740,6 +706,12 @@ export default function CertificateStickersPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeBatchId && !loadingBatch && students.length === 0 && (
+        <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
+          {locale === "ar" ? "لا توجد بيانات طلاب في هذا الباتش." : "No student data in this batch."}
         </div>
       )}
 
