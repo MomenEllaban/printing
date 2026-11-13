@@ -1639,8 +1639,8 @@ function drawQuarterExamSticker(params: {
     borderWidth: 1.2,
   });
 
-  // Header: Logo & Exam title
-  const logoH = 22;
+  // Header: Enlarged Logo on left, Copy badge on right (Title texts removed per user request)
+  const logoH = 32;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
   const logoX = x + 10;
   const logoY = y + height - 8 - logoH;
@@ -1654,30 +1654,12 @@ function drawQuarterExamSticker(params: {
     });
   }
 
-  const textStartX = logoImg ? logoX + logoW + 8 : x + 10;
-  const examTitle = `${item.examName || "EST I"} — OFFICIAL EXAMINATION`;
-  page.drawText(examTitle, {
-    x: textStartX,
-    y: logoY + 11,
-    size: 9,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  page.drawText("EXAMINATION PAPERS & MATERIALS DOSSIER", {
-    x: textStartX,
-    y: logoY + 2,
-    size: 6.5,
-    font,
-    color: COLOR_MUTED,
-  });
-
   // Copy badge at top right (Solid Black Pill with Crisp White Text)
   const copyText = `COPY ${item.copyIndex} OF ${item.totalCopies}`;
-  const copySize = 7.5;
+  const copySize = 8.5;
   const copyW = font.widthOfTextAtSize(copyText, copySize);
-  const copyBadgeW = copyW + 14;
-  const copyBadgeH = 16;
+  const copyBadgeW = copyW + 16;
+  const copyBadgeH = 18;
   const copyBadgeX = x + width - copyBadgeW - 8;
   const copyBadgeY = logoY + (logoH - copyBadgeH) / 2;
 
@@ -1697,7 +1679,7 @@ function drawQuarterExamSticker(params: {
     color: COLOR_WHITE,
   });
 
-  const headerBottom = logoY - 4;
+  const headerBottom = logoY - 5;
 
   // Single clean divider line under header
   page.drawLine({
@@ -1749,7 +1731,8 @@ function drawQuarterExamSticker(params: {
   const leftX = x + 8;
   const dividerX = leftX + leftW + 8;
   const rightX = dividerX + 14;
-  const rightW = width - 12 - rightX;
+  // Compute rightW relative to the card's right boundary so it is identical for all quadrants (left or right slots)
+  const rightW = (x + width - 10) - rightX;
 
   // Single clean vertical divider line between Room and Details
   page.drawLine({
