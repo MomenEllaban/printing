@@ -175,6 +175,70 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
   return await pdfDoc.save();
 }
 
+function expandSubjectName(codeOrName: string): string {
+  const trimmed = (codeOrName || "").trim();
+  const upper = trimmed.toUpperCase();
+  if (upper === "LIT" || upper === "LITERACY" || upper === "LITERATURE") return "Literacy";
+  if (upper === "MATH" || upper === "MATHEMATICS") return "Mathematics";
+  if (upper === "MATH1" || upper === "MATH 1") return "Math 1";
+  if (upper === "MATH2" || upper === "MATH 2") return "Math 2";
+  if (upper === "ESSAY") return "Essay";
+  if (upper === "BIO" || upper === "BIOLOGY") return "Biology";
+  if (upper === "CHEM" || upper === "CHEMISTRY") return "Chemistry";
+  if (upper === "PHY" || upper === "PHYSICS") return "Physics";
+  return trimmed;
+}
+
+function getVerticalSubjectLines(content: StickerContent, isRoom: boolean): string[] {
+  const lines: string[] = [];
+
+  if (content.subjects && content.subjects.length > 0) {
+    for (const s of content.subjects) {
+      if (s.count > 0 || content.subjects.length <= 3) {
+        const name = expandSubjectName(s.name || s.code);
+        lines.push(`${name}: ${s.count}`);
+      }
+    }
+    if (lines.length > 0) return lines;
+  }
+
+  if (isRoom && (typeof content.litCount === "number" || typeof content.mathCount === "number")) {
+    if (typeof content.litCount === "number") {
+      lines.push(`Literacy: ${content.litCount}`);
+    }
+    if (typeof content.mathCount === "number") {
+      lines.push(`Mathematics: ${content.mathCount}`);
+    }
+    if (content.hasEssay || (typeof content.essayCount === "number" && content.essayCount > 0)) {
+      lines.push(`Essay: ${content.essayCount ?? 0}`);
+    }
+    if (lines.length > 0) return lines;
+  }
+
+  if (content.breakdownText) {
+    const parts = content.breakdownText.split(/[|•,–_]/).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      const m = part.match(/^([a-zA-Z0-9\s]+?)[:\s-]+(\d+)$/);
+      if (m) {
+        const name = expandSubjectName(m[1]);
+        lines.push(`${name}: ${m[2]}`);
+      } else {
+        lines.push(part);
+      }
+    }
+    if (lines.length > 0) return lines;
+  }
+
+  if (!isRoom) {
+    const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+    if (childRoomsCount > 0) {
+      lines.push(`${childRoomsCount} Rooms Included`);
+    }
+  }
+
+  return lines;
+}
+
 /**
  * Draws a full-page A4 Exam Placard:
  * - Features the official EST Logo (JPEG) at the top of every sticker.
@@ -190,6 +254,14 @@ function drawA4PlacardPage(params: {
   orientation: "portrait" | "landscape";
 }) {
   const { pdfDoc, font, logoImg, content, orientation } = params;
+
+  // Determine hierarchy level
+  const isRoom = content.level === "room" && Boolean(content.room);
+  const isFloor = content.level === "floor" && Boolean(content.floor);
+  const isBuilding = content.level === "building" && Boolean(content.building);
+  const isCenter = content.level === "center" && Boolean(content.center);
+  const isGov = content.level === "governorate" && Boolean(content.governorate);
+  const isRoot = content.level === "root";
 
   // A4 dimensions in points: 210mm x 297mm = 595.28 x 841.89 pt
   const isLandscape = orientation === "landscape";
@@ -213,7 +285,7 @@ function drawA4PlacardPage(params: {
   let headerBottomY = pageHeight - margin - 20;
 
   if (logoImg) {
-    const logoHeight = isLandscape ? 66 : 76;
+    const logoHeight = isRoom ? (isLandscape ? 84 : 92) : (isLandscape ? 66 : 76);
     const logoWidth = logoHeight * (logoImg.width / logoImg.height);
     const logoX = (pageWidth - logoWidth) / 2;
     const logoY = pageHeight - margin - 15 - logoHeight;
@@ -227,20 +299,22 @@ function drawA4PlacardPage(params: {
     headerBottomY = logoY - 8;
   }
 
-  // Exam Subtitle Badge
-  const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
-  const examSize = isLandscape ? 13 : 14;
-  const examWidth = font.widthOfTextAtSize(examTitle, examSize);
-  page.drawText(examTitle, {
-    x: (pageWidth - examWidth) / 2,
-    y: headerBottomY - 14,
-    size: examSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
+  // Exam Subtitle Badge - skip for room stickers as requested (cleaner header)
+  if (!isRoom) {
+    const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
+    const examSize = isLandscape ? 13 : 14;
+    const examWidth = font.widthOfTextAtSize(examTitle, examSize);
+    page.drawText(examTitle, {
+      x: (pageWidth - examWidth) / 2,
+      y: headerBottomY - 14,
+      size: examSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+  }
 
   // Divider Line
-  const dividerY = headerBottomY - 24;
+  const dividerY = isRoom ? headerBottomY - 6 : headerBottomY - 24;
   page.drawLine({
     start: { x: margin + 30, y: dividerY },
     end: { x: pageWidth - margin - 30, y: dividerY },
@@ -254,14 +328,6 @@ function drawA4PlacardPage(params: {
   const availBodyHeight = bodyTop - bodyBottom;
   const bodyWidth = pageWidth - margin * 2 - 36;
   const bodyStartX = margin + 18;
-
-  // Determine which level is the hero
-  const isRoom = content.level === "room" && Boolean(content.room);
-  const isFloor = content.level === "floor" && Boolean(content.floor);
-  const isBuilding = content.level === "building" && Boolean(content.building);
-  const isCenter = content.level === "center" && Boolean(content.center);
-  const isGov = content.level === "governorate" && Boolean(content.governorate);
-  const isRoot = content.level === "root";
 
   if (isRoom) {
     // ========================================================
@@ -310,13 +376,7 @@ function drawA4PlacardPage(params: {
       const rightColWidth = (bodyWidth - 16) * 0.60;
       const rightColX = bodyStartX + leftColWidth + 16;
 
-      const examBreakdown =
-        content.breakdownText ||
-        (content.subjects && content.subjects.length > 0
-          ? content.subjects.map((s) => `${s.code}: ${s.count}`).join("  |  ")
-          : typeof content.litCount === "number" || typeof content.mathCount === "number"
-          ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
-          : undefined);
+      const subjectLines = getVerticalSubjectLines(content, true);
 
       renderHeroCard({
         page,
@@ -327,12 +387,7 @@ function drawA4PlacardPage(params: {
         height: bottomAreaHeight,
         badgeText: "ROOM",
         valueText: content.room || "",
-        subText:
-          typeof content.totalStudents === "number" && content.totalStudents > 0
-            ? `${content.totalStudents} STUDENTS TOTAL`
-            : undefined,
-        detailText: examBreakdown,
-        accentColor: COLOR_GOLD,
+        detailLines: subjectLines.length > 0 ? subjectLines : undefined,
       });
 
       renderChecklistBox({
@@ -371,13 +426,7 @@ function drawA4PlacardPage(params: {
       const heroHeight = Math.min(150, remainingHeight * 0.38);
       const checklistHeight = remainingHeight - heroHeight - 12;
 
-      const examBreakdown =
-        content.breakdownText ||
-        (content.subjects && content.subjects.length > 0
-          ? content.subjects.map((s) => `${s.code}: ${s.count}`).join("  |  ")
-          : typeof content.litCount === "number" || typeof content.mathCount === "number"
-          ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
-          : undefined);
+      const subjectLines = getVerticalSubjectLines(content, true);
 
       renderHeroCard({
         page,
@@ -388,12 +437,7 @@ function drawA4PlacardPage(params: {
         height: heroHeight,
         badgeText: "ROOM",
         valueText: content.room || "",
-        subText:
-          typeof content.totalStudents === "number" && content.totalStudents > 0
-            ? `${content.totalStudents} STUDENTS TOTAL`
-            : undefined,
-        detailText: examBreakdown,
-        accentColor: COLOR_GOLD,
+        detailLines: subjectLines.length > 0 ? subjectLines : undefined,
       });
 
       renderChecklistBox({
@@ -811,11 +855,12 @@ function renderHeroCard(params: {
   valueText: string;
   subText?: string;
   detailText?: string;
-  accentColor: any;
+  detailLines?: string[];
+  accentColor?: any;
 }) {
-  const { page, font, x, y, width, height, badgeText, valueText, subText, detailText, accentColor } = params;
+  const { page, font, x, y, width, height, badgeText, valueText, subText, detailText, detailLines, accentColor = COLOR_CHARCOAL } = params;
 
-  // Outer border with accent
+  // Outer border with clean frame (B&W)
   page.drawRectangle({
     x,
     y,
@@ -823,7 +868,7 @@ function renderHeroCard(params: {
     height,
     color: COLOR_WHITE,
     borderColor: COLOR_CHARCOAL,
-    borderWidth: 2,
+    borderWidth: 1.5,
   });
 
   // Top header banner in hero box
@@ -835,14 +880,6 @@ function renderHeroCard(params: {
     width: width - 4,
     height: bannerHeight - 2,
     color: COLOR_CHARCOAL,
-  });
-
-  // Gold accent line under banner
-  page.drawLine({
-    start: { x: x + 2, y: bannerY },
-    end: { x: x + width - 2, y: bannerY },
-    thickness: 2,
-    color: accentColor,
   });
 
   // Header text
@@ -857,9 +894,12 @@ function renderHeroCard(params: {
     color: COLOR_WHITE,
   });
 
-  // Bottom Sub-Text banner (e.g. Included Floors, Rooms, or Candidate counts) if present
-  const hasSub = Boolean(subText || detailText);
-  const subBarHeight = hasSub
+  // Bottom Sub-Text banner (Vertical subjects or single text)
+  const hasDetailLines = Boolean(detailLines && detailLines.length > 0);
+  const hasSub = hasDetailLines || Boolean(subText || detailText);
+  const subBarHeight = hasDetailLines
+    ? Math.max(50, Math.min(95, detailLines!.length * 22 + 14))
+    : hasSub
     ? detailText && subText
       ? Math.max(46, Math.min(58, height * 0.26))
       : Math.max(28, Math.min(36, height * 0.18))
@@ -877,7 +917,30 @@ function renderHeroCard(params: {
       borderWidth: 0.8,
     });
 
-    if (detailText && subText) {
+    if (hasDetailLines) {
+      // Render vertical lines without abbreviations
+      const lineCount = detailLines!.length;
+      const step = (subBarHeight - 12) / lineCount;
+      const startLineY = subBarY + subBarHeight - step * 0.7 - 4;
+      const lineSize = lineCount <= 2 ? 14 : lineCount === 3 ? 12.5 : 11;
+
+      for (let i = 0; i < lineCount; i++) {
+        const text = detailLines![i];
+        let size = lineSize;
+        let tw = font.widthOfTextAtSize(text, size);
+        if (tw > width - 16) {
+          size = Math.max(8.5, ((width - 16) / tw) * size);
+          tw = font.widthOfTextAtSize(text, size);
+        }
+        page.drawText(text, {
+          x: x + (width - tw) / 2,
+          y: startLineY - i * step,
+          size,
+          font,
+          color: COLOR_CHARCOAL,
+        });
+      }
+    } else if (detailText && subText) {
       // Line 1: Main count / label (e.g. "35 STUDENTS TOTAL") - Prominent and Large
       const topSize = Math.max(12, Math.min(15, subBarHeight * 0.28));
       let topW = font.widthOfTextAtSize(subText, topSize);
@@ -1295,11 +1358,11 @@ function drawQuarterPlacard(params: {
     borderWidth: 1.2,
   });
 
-  // Header: Logo & Exam title
-  const logoH = 22;
+  // Header: Logo (Enlarged and centered, without cluttered subtitle headers)
+  const logoH = isRoom ? 34 : 22;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
-  const logoX = x + 10;
-  const logoY = y + height - 8 - logoH;
+  const logoX = isRoom ? x + (width - logoW) / 2 : x + 10;
+  const logoY = y + height - 6 - logoH;
 
   if (logoImg) {
     page.drawImage(logoImg, {
@@ -1308,27 +1371,41 @@ function drawQuarterPlacard(params: {
       width: logoW,
       height: logoH,
     });
+  } else {
+    const estText = "EST";
+    const estSize = isRoom ? 20 : 16;
+    const estW = font.widthOfTextAtSize(estText, estSize);
+    page.drawText(estText, {
+      x: isRoom ? x + (width - estW) / 2 : x + 10,
+      y: logoY + 4,
+      size: estSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
   }
 
-  const textStartX = logoImg ? logoX + logoW + 8 : x + 10;
-  const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
-  page.drawText(examTitle, {
-    x: textStartX,
-    y: logoY + 11,
-    size: 9,
-    font,
-    color: COLOR_CHARCOAL,
-  });
+  // Only draw subtitles if NOT isRoom
+  if (!isRoom) {
+    const textStartX = logoImg ? logoX + logoW + 8 : x + 40;
+    const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
+    page.drawText(examTitle, {
+      x: textStartX,
+      y: logoY + 11,
+      size: 9,
+      font,
+      color: COLOR_CHARCOAL,
+    });
 
-  page.drawText(isRoom ? "ROOM EXAMINATION DOSSIER & ATTENDANCE" : "FLOOR EXAMINATION DOSSIER (SENIOR)", {
-    x: textStartX,
-    y: logoY + 2,
-    size: 6.5,
-    font,
-    color: COLOR_MUTED,
-  });
+    page.drawText("FLOOR EXAMINATION DOSSIER (SENIOR)", {
+      x: textStartX,
+      y: logoY + 2,
+      size: 6.5,
+      font,
+      color: COLOR_MUTED,
+    });
+  }
 
-  const headerBottom = logoY - 4;
+  const headerBottom = logoY - 5;
 
   // Divider 1
   page.drawLine({
@@ -1429,54 +1506,55 @@ function drawQuarterPlacard(params: {
     color: COLOR_BORDER,
   });
 
-  // Calculate student count and breakdown text
-  const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
-  const examBreakdown =
-    content.breakdownText ||
-    (content.subjects && content.subjects.length > 0
-      ? content.subjects.map((s) => `${s.code}: ${s.count}`).join("  |  ")
-      : isRoom && (typeof content.litCount === "number" || typeof content.mathCount === "number")
-      ? `LIT: ${content.litCount ?? 0}  |  MATH: ${content.mathCount ?? 0}  |  ESSAY: ${content.hasEssay ? content.essayCount ?? 0 : 0}`
-      : undefined);
+  if (isRoom) {
+    // Spread the subjects vertically without abbreviations (NO "33 STUDENTS TOTAL")
+    const subjectLines = getVerticalSubjectLines(content, true);
+    if (subjectLines.length > 0) {
+      const availSubjectH = leftDividerY - (bodyBottom + 4);
+      const lineCount = subjectLines.length;
+      const step = Math.min(22, Math.max(16, (availSubjectH - 6) / lineCount));
+      const startSubjectY = leftDividerY - 18;
+      const baseLineSize = lineCount <= 2 ? 13.5 : lineCount === 3 ? 12 : 10.5;
 
-  const totalStudentsText =
-    typeof content.totalStudents === "number" && content.totalStudents > 0
-      ? `${content.totalStudents} STUDENTS TOTAL`
-      : isRoom
-      ? "ROOM DOSSIER"
-      : childRoomsCount > 0
-      ? `${childRoomsCount} ROOMS INCLUDED`
-      : "SENIOR DOSSIER";
-
-  // Large, Bold, Prominent Total Students Count (14.5pt bold)
-  let totalSize = 14.5;
-  let totalW = font.widthOfTextAtSize(totalStudentsText, totalSize);
-  if (totalW > leftW - 8) {
-    totalSize = Math.max(10, ((leftW - 8) / totalW) * totalSize);
-    totalW = font.widthOfTextAtSize(totalStudentsText, totalSize);
-  }
-  const totalY = leftDividerY - 20;
-  page.drawText(totalStudentsText, {
-    x: leftX + (leftW - totalW) / 2,
-    y: totalY,
-    size: totalSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Large, Bold Breakdown Text (10.5pt bold)
-  if (examBreakdown) {
-    let btmSize = 10.5;
-    let btmW = font.widthOfTextAtSize(examBreakdown, btmSize);
-    if (btmW > leftW - 6) {
-      btmSize = Math.max(7.5, ((leftW - 6) / btmW) * btmSize);
-      btmW = font.widthOfTextAtSize(examBreakdown, btmSize);
+      for (let sIdx = 0; sIdx < lineCount; sIdx++) {
+        const lineText = subjectLines[sIdx];
+        let lineSize = baseLineSize;
+        let lineW = font.widthOfTextAtSize(lineText, lineSize);
+        if (lineW > leftW - 8) {
+          lineSize = Math.max(8.5, ((leftW - 8) / lineW) * lineSize);
+          lineW = font.widthOfTextAtSize(lineText, lineSize);
+        }
+        const lineY = startSubjectY - sIdx * step;
+        page.drawText(lineText, {
+          x: leftX + (leftW - lineW) / 2,
+          y: lineY,
+          size: lineSize,
+          font,
+          color: COLOR_CHARCOAL,
+        });
+      }
     }
-    const btmY = totalY - 22;
-    page.drawText(examBreakdown, {
-      x: leftX + (leftW - btmW) / 2,
-      y: btmY,
-      size: btmSize,
+  } else {
+    // Floor level
+    const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+    const floorSubText =
+      typeof content.totalStudents === "number" && content.totalStudents > 0
+        ? `${content.totalStudents} STUDENTS TOTAL`
+        : childRoomsCount > 0
+        ? `${childRoomsCount} ROOMS INCLUDED`
+        : "SENIOR DOSSIER";
+
+    let totalSize = 13.5;
+    let totalW = font.widthOfTextAtSize(floorSubText, totalSize);
+    if (totalW > leftW - 8) {
+      totalSize = Math.max(9.5, ((leftW - 8) / totalW) * totalSize);
+      totalW = font.widthOfTextAtSize(floorSubText, totalSize);
+    }
+    const totalY = leftDividerY - 20;
+    page.drawText(floorSubText, {
+      x: leftX + (leftW - totalW) / 2,
+      y: totalY,
+      size: totalSize,
       font,
       color: COLOR_CHARCOAL,
     });
