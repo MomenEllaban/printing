@@ -218,6 +218,7 @@ export async function POST(request: Request) {
 
       const pdfBytes = await generateBatchExamStickersPdf({
         rooms: targetRooms,
+        orientation,
       });
 
       const safeFilename = `EST-Exam-Stickers-Batch-${targetRooms.length}-Rooms.pdf`;

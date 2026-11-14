@@ -67,6 +67,7 @@ export default function CertificateStickersPage() {
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("");
+  const [previewOrientation, setPreviewOrientation] = useState<"portrait" | "landscape">("portrait");
 
   const activeServerBatch = useMemo(
     () => serverBatches.find((b) => b.id === activeBatchId) || null,
@@ -309,87 +310,114 @@ export default function CertificateStickersPage() {
   const totalSheetsA4 = Math.ceil(filteredStudents.length / 4);
   const receivedCount = useMemo(() => students.filter((s) => s.received).length, [students]);
 
-  const fetchPdfBlob = useCallback(async (): Promise<Blob> => {
-    if (filteredStudents.length === 0) {
-      throw new Error(locale === "ar" ? "لا توجد بيانات طلاب للطباعة" : "No student data to print");
-    }
-    const res = await fetch("/api/certificates/generate-pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ students: filteredStudents, batchName: customBatchName || activeServerBatch?.name }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to generate PDF");
-    }
-    return await res.blob();
-  }, [filteredStudents, customBatchName, activeServerBatch, locale]);
+  const fetchPdfBlob = useCallback(
+    async (orientation: "portrait" | "landscape" = "portrait"): Promise<Blob> => {
+      if (filteredStudents.length === 0) {
+        throw new Error(locale === "ar" ? "لا توجد بيانات طلاب للطباعة" : "No student data to print");
+      }
+      const res = await fetch("/api/certificates/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          students: filteredStudents,
+          batchName: customBatchName || activeServerBatch?.name,
+          orientation,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to generate PDF");
+      }
+      return await res.blob();
+    },
+    [filteredStudents, customBatchName, activeServerBatch, locale],
+  );
 
-  const handlePreviewPdf = useCallback(async () => {
-    try {
-      setIsGenerating(true);
-      const blob = await fetchPdfBlob();
-      const url = URL.createObjectURL(blob);
-      setPdfPreviewBlobUrl(url);
-      setPreviewTitle(`${activeServerBatch?.shortName || activeServerBatch?.name || customBatchName} (${filteredStudents.length})`);
-      setPreviewOpen(true);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [fetchPdfBlob, activeServerBatch, customBatchName, filteredStudents.length]);
+  const handlePreviewPdf = useCallback(
+    async (orientation: "portrait" | "landscape" = "portrait") => {
+      try {
+        setIsGenerating(true);
+        setPreviewOrientation(orientation);
+        const blob = await fetchPdfBlob(orientation);
+        const url = URL.createObjectURL(blob);
+        setPdfPreviewBlobUrl(url);
+        const orientLabel =
+          locale === "ar"
+            ? orientation === "portrait"
+              ? "طولي (Portrait)"
+              : "عرضي (Landscape)"
+            : orientation === "portrait"
+            ? "Portrait"
+            : "Landscape";
+        setPreviewTitle(
+          `${activeServerBatch?.shortName || activeServerBatch?.name || customBatchName} (${filteredStudents.length}) - ${orientLabel}`,
+        );
+        setPreviewOpen(true);
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [fetchPdfBlob, activeServerBatch, customBatchName, filteredStudents.length, locale],
+  );
 
-  const handleDirectPrint = useCallback(async () => {
-    try {
-      setIsGenerating(true);
-      const blob = await fetchPdfBlob();
-      const url = URL.createObjectURL(blob);
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.top = "-9999px";
-      iframe.style.left = "-9999px";
-      iframe.src = url;
-      document.body.appendChild(iframe);
-      iframe.onload = () => {
-        setTimeout(() => {
-          try {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-          } catch {
-            window.open(url, "_blank");
-          }
+  const handleDirectPrint = useCallback(
+    async (orientation: "portrait" | "landscape" = "portrait") => {
+      try {
+        setIsGenerating(true);
+        const blob = await fetchPdfBlob(orientation);
+        const url = URL.createObjectURL(blob);
+        const iframe = document.createElement("iframe");
+        iframe.style.position = "fixed";
+        iframe.style.top = "-9999px";
+        iframe.style.left = "-9999px";
+        iframe.src = url;
+        document.body.appendChild(iframe);
+        iframe.onload = () => {
           setTimeout(() => {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(url);
-          }, 60_000);
-        }, 500);
-      };
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [fetchPdfBlob]);
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              window.open(url, "_blank");
+            }
+            setTimeout(() => {
+              document.body.removeChild(iframe);
+              URL.revokeObjectURL(url);
+            }, 60_000);
+          }, 500);
+        };
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [fetchPdfBlob],
+  );
 
-  const handleDownloadPdf = useCallback(async () => {
-    try {
-      setIsGenerating(true);
-      const blob = await fetchPdfBlob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `EST_Stickers_${(activeServerBatch?.shortName || activeServerBatch?.name || "Batch").replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_")}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [fetchPdfBlob, activeServerBatch]);
+  const handleDownloadPdf = useCallback(
+    async (orientation: "portrait" | "landscape" = "portrait") => {
+      try {
+        setIsGenerating(true);
+        const blob = await fetchPdfBlob(orientation);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `EST_Stickers_${(activeServerBatch?.shortName || activeServerBatch?.name || "Batch").replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_")}_${orientation}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [fetchPdfBlob, activeServerBatch],
+  );
 
   return (
     <div className="space-y-6 pb-12">
@@ -561,14 +589,72 @@ export default function CertificateStickersPage() {
                 <a href={`/api/drive/files/${activeDriveFileId}/content?download=1`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-surface-soft"><Download className="size-3.5" />{locale === "ar" ? "تحميل Excel" : "Download Excel"}</a>
               </>
             )}
-            <Button variant="secondary" onClick={handlePreviewPdf} disabled={isGenerating || filteredStudents.length === 0} className="cursor-pointer gap-1.5 text-xs font-semibold h-8 px-3">
-              {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-accent" />}<span>{locale === "ar" ? "معاينة PDF" : "Preview PDF"}</span>
+            <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-1 gap-1">
+              <Button
+                variant="ghost"
+                onClick={() => handlePreviewPdf("portrait")}
+                disabled={isGenerating || filteredStudents.length === 0}
+                className="cursor-pointer gap-1.5 text-xs font-semibold h-7 px-2.5 hover:bg-surface"
+                title={locale === "ar" ? "معاينة استيكرات الشهادات بالطول (Portrait)" : "Preview Portrait stickers"}
+              >
+                {isGenerating && previewOrientation === "portrait" ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-amber-600" />}
+                <span>{locale === "ar" ? "معاينة بالطول" : "Preview Portrait"}</span>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => handlePreviewPdf("landscape")}
+                disabled={isGenerating || filteredStudents.length === 0}
+                className="cursor-pointer gap-1.5 text-xs font-semibold h-7 px-2.5 hover:bg-surface"
+                title={locale === "ar" ? "معاينة استيكرات الشهادات بالعرض (Landscape)" : "Preview Landscape stickers"}
+              >
+                {isGenerating && previewOrientation === "landscape" ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-indigo-600" />}
+                <span>{locale === "ar" ? "معاينة بالعرض" : "Preview Landscape"}</span>
+              </Button>
+            </div>
+
+            <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-1 gap-1">
+              <Button
+                variant="ghost"
+                onClick={() => handleDownloadPdf("portrait")}
+                disabled={isGenerating || filteredStudents.length === 0}
+                className="cursor-pointer gap-1.5 text-xs font-medium h-7 px-2 hover:bg-surface"
+                title={locale === "ar" ? "تنزيل PDF بالطول" : "Download Portrait PDF"}
+              >
+                <Download className="size-3" />
+                <span>{locale === "ar" ? "تنزيل بالطول" : "Download Portrait"}</span>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => handleDownloadPdf("landscape")}
+                disabled={isGenerating || filteredStudents.length === 0}
+                className="cursor-pointer gap-1.5 text-xs font-medium h-7 px-2 hover:bg-surface"
+                title={locale === "ar" ? "تنزيل PDF بالعرض" : "Download Landscape PDF"}
+              >
+                <Download className="size-3" />
+                <span>{locale === "ar" ? "تنزيل بالعرض" : "Download Landscape"}</span>
+              </Button>
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={() => handleDirectPrint("portrait")}
+              disabled={isGenerating || filteredStudents.length === 0}
+              className="cursor-pointer gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white h-8 px-3.5 shadow-sm"
+              title={locale === "ar" ? "طباعة الاستيكرات بالطول (Portrait - ربع A4)" : "Print stickers in Portrait orientation"}
+            >
+              {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+              <span>{locale === "ar" ? "طباعة بالطول (Portrait)" : "Print Portrait"}</span>
             </Button>
-            <Button variant="secondary" onClick={handleDownloadPdf} disabled={isGenerating || filteredStudents.length === 0} className="cursor-pointer gap-1.5 text-xs font-semibold h-8 px-3">
-              <Download className="size-3.5" /><span>{locale === "ar" ? "تنزيل PDF" : "Download PDF"}</span>
-            </Button>
-            <Button variant="primary" onClick={handleDirectPrint} disabled={isGenerating || filteredStudents.length === 0} className="cursor-pointer gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white h-8 px-3">
-              {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}<span>{locale === "ar" ? "طباعة" : "Print"}</span>
+
+            <Button
+              variant="primary"
+              onClick={() => handleDirectPrint("landscape")}
+              disabled={isGenerating || filteredStudents.length === 0}
+              className="cursor-pointer gap-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white h-8 px-3.5 shadow-sm"
+              title={locale === "ar" ? "طباعة الاستيكرات بالعرض (Landscape - ربع A4)" : "Print stickers in Landscape orientation"}
+            >
+              {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+              <span>{locale === "ar" ? "طباعة بالعرض (Landscape)" : "Print Landscape"}</span>
             </Button>
           </div>
         </div>
@@ -640,9 +726,13 @@ export default function CertificateStickersPage() {
           onClose={() => { setPreviewOpen(false); if (pdfPreviewBlobUrl) { URL.revokeObjectURL(pdfPreviewBlobUrl); setPdfPreviewBlobUrl(null); } }}
           pdfUrl={pdfPreviewBlobUrl}
           title={previewTitle}
-          onPrint={handleDirectPrint}
+          onPrint={() => handleDirectPrint(previewOrientation)}
           customTitle={previewTitle}
-          customDescription={locale === "ar" ? "معاينة استيكرات الشهادات (ربع A4)" : "Certificate stickers preview (Quarter A4)"}
+          customDescription={
+            locale === "ar"
+              ? `معاينة استيكرات الشهادات (${previewOrientation === "portrait" ? "طولي Portrait" : "عرضي Landscape"} - ربع A4)`
+              : `Certificate stickers preview (${previewOrientation} - Quarter A4)`
+          }
         />
       )}
     </div>

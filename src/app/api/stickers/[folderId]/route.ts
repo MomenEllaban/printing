@@ -41,7 +41,7 @@ export async function GET(request: Request, context: Context) {
       Math.min(200, Number(url.searchParams.get("height")) || settings.printing.stickerHeightMm || 50),
     );
     const paperMode = (url.searchParams.get("paper") as "custom" | "a4") || settings.printing.stickerPaperMode || "a4";
-    const orientation = (url.searchParams.get("orientation") as "portrait" | "landscape") || settings.printing.stickerOrientation || "landscape";
+    const orientation = (url.searchParams.get("orientation") as "portrait" | "landscape") || settings.printing.stickerOrientation || "portrait";
 
     let breadcrumbs: Array<{ id?: string; name?: string | null }> = [];
     let driveSubfolderInfo: StickerSubfolderInfo | undefined;
@@ -225,6 +225,7 @@ export async function GET(request: Request, context: Context) {
           mathCount: roomCounts?.mathCount,
           essayCount: roomCounts?.essayCount,
           subjects: roomCounts?.subjects ?? stickerContent.subjects,
+          orientation,
         });
         safeFilename = `Exam-Stickers-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
       }

@@ -969,6 +969,7 @@ export function FileBrowser({
       e: React.MouseEvent | null,
       target: { id: string; name?: string | null },
       action: "show" | "print",
+      orientation: "portrait" | "landscape" = "portrait",
     ) => {
       if (e) e.stopPropagation();
       if (!target.id || busyStickerId) return;
@@ -981,8 +982,8 @@ export function FileBrowser({
             ? `جاري تجهيز معاينة استيكر "${target.name || "EST"}"...`
             : `Loading sticker preview for "${target.name || "EST"}"...`)
           : (locale === "ar"
-            ? `جاري تجهيز استيكر "${target.name || "EST"}" للطباعة...`
-            : `Preparing sticker for "${target.name || "EST"}" for printing...`),
+            ? `جاري تجهيز استيكر "${target.name || "EST"}" للطباعة (${orientation === "portrait" ? "طولي" : "عرضي"})...`
+            : `Preparing sticker for "${target.name || "EST"}" for printing (${orientation})...`),
       );
 
       try {
@@ -990,7 +991,8 @@ export function FileBrowser({
           .filter((i) => !i.isFolder)
           .map((i) => i.name);
         const queryParam = knownChildFiles.length > 0 ? `?knownFiles=${encodeURIComponent(JSON.stringify(knownChildFiles))}` : "";
-        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}${queryParam}`);
+        const sep = queryParam ? "&" : "?";
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}${queryParam}${sep}orientation=${orientation}`);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(
@@ -1054,7 +1056,7 @@ export function FileBrowser({
         setStickerAction(null);
       }
     },
-    [busyStickerId, locale],
+    [busyStickerId, locale, folderChildren, currentFolder, items],
   );
 
   const handleShowSticker = useCallback(
@@ -1064,8 +1066,11 @@ export function FileBrowser({
   );
 
   const handlePrintSticker = useCallback(
-    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
-      handleStickerAction(e, target, "print"),
+    (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      orientation: "portrait" | "landscape" = "portrait",
+    ) => handleStickerAction(e, target, "print", orientation),
     [handleStickerAction],
   );
 
@@ -1074,6 +1079,7 @@ export function FileBrowser({
       e: React.MouseEvent | null,
       target: { id: string; name?: string | null },
       action: "show" | "print",
+      orientation: "portrait" | "landscape" = "portrait",
     ) => {
       if (e) e.stopPropagation();
       if (!target.id || busyExamStickerId) return;
@@ -1093,10 +1099,10 @@ export function FileBrowser({
           : (locale === "ar"
             ? isFloor
               ? `جاري تجهيز ملصقات كيسة امتحانات الدور "${target.name || "Floor"}" للطباعة (A4)...`
-              : `جاري تجهيز استيكرات الامتحانات للقاعة "${target.name || "EST"}" للطباعة...`
+              : `جاري تجهيز استيكرات الامتحانات للقاعة "${target.name || "EST"}" للطباعة (${orientation === "portrait" ? "طولي" : "عرضي"})...`
             : isFloor
             ? `Preparing floor exam bag placards for "${target.name || "Floor"}" for printing (A4)...`
-            : `Preparing exam stickers for "${target.name || "EST"}" for printing...`),
+            : `Preparing exam stickers for "${target.name || "EST"}" for printing (${orientation})...`),
       );
 
       try {
@@ -1104,7 +1110,7 @@ export function FileBrowser({
           .filter((i) => !i.isFolder)
           .map((i) => i.name);
         const queryParam = knownChildFiles.length > 0 ? `&knownFiles=${encodeURIComponent(JSON.stringify(knownChildFiles))}` : "";
-        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=exam${queryParam}`);
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=exam${queryParam}&orientation=${orientation}`);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(
@@ -1189,7 +1195,7 @@ export function FileBrowser({
         setExamStickerAction(null);
       }
     },
-    [busyExamStickerId, locale],
+    [busyExamStickerId, locale, folderChildren, currentFolder, items],
   );
 
   const handleShowExamStickers = useCallback(
@@ -1199,8 +1205,11 @@ export function FileBrowser({
   );
 
   const handlePrintExamStickers = useCallback(
-    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
-      handleExamStickerAction(e, target, "print"),
+    (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      orientation: "portrait" | "landscape" = "portrait",
+    ) => handleExamStickerAction(e, target, "print", orientation),
     [handleExamStickerAction],
   );
 
@@ -2520,17 +2529,26 @@ export function FileBrowser({
               </button>
               <button
                 type="button"
-                onClick={(e) => handlePrintSticker(e, currentFolder)}
+                onClick={(e) => handlePrintSticker(e, currentFolder, "portrait")}
                 disabled={busyStickerId === currentFolder.id}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer transition-all"
-                title={locale === "ar" ? `طباعة استيكر "${currentFolder.name}" مباشرة` : `Print sticker for "${currentFolder.name}" directly`}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer transition-all border-s border-indigo-500/20"
+                title={locale === "ar" ? `طباعة استيكر "${currentFolder.name}" بالطول (Portrait)` : `Print sticker for "${currentFolder.name}" in Portrait`}
               >
                 {busyStickerId === currentFolder.id && stickerAction === "print" ? (
                   <Loader2 className="size-3.5 animate-spin text-indigo-600" />
                 ) : (
                   <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
                 )}
-                <span>{locale === "ar" ? "طباعة" : "Print"}</span>
+                <span>{locale === "ar" ? "طباعة بالطول" : "Portrait"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintSticker(e, currentFolder, "landscape")}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer transition-all border-s border-indigo-500/20"
+                title={locale === "ar" ? `طباعة استيكر "${currentFolder.name}" بالعرض (Landscape)` : `Print sticker for "${currentFolder.name}" in Landscape`}
+              >
+                <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
               </button>
             </div>
           )}
@@ -2572,17 +2590,17 @@ export function FileBrowser({
               </button>
               <button
                 type="button"
-                onClick={(e) => handlePrintExamStickers(e, currentFolder)}
+                onClick={(e) => handlePrintExamStickers(e, currentFolder, "portrait")}
                 disabled={busyExamStickerId === currentFolder.id}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all border-s border-amber-500/25"
                 title={
                   locale === "ar"
                     ? isCurrentFolderFloor
                       ? `طباعة ملصقات كيسة امتحانات الدور "${currentFolder.name}" مباشرة (مقاس A4)`
-                      : `طباعة استيكرات الامتحانات لقاعة "${currentFolder.name}" مباشرة (Print)`
+                      : `طباعة استيكرات الامتحانات لقاعة "${currentFolder.name}" بالطول (Portrait)`
                     : isCurrentFolderFloor
                     ? `Print floor exam bag placards for "${currentFolder.name}" directly (A4)`
-                    : `Print exam stickers for "${currentFolder.name}" directly`
+                    : `Print exam stickers for "${currentFolder.name}" in Portrait`
                 }
               >
                 {busyExamStickerId === currentFolder.id && examStickerAction === "print" ? (
@@ -2590,7 +2608,20 @@ export function FileBrowser({
                 ) : (
                   <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
                 )}
-                <span>{locale === "ar" ? "طباعة" : "Print"}</span>
+                <span>{locale === "ar" ? "طباعة بالطول" : "Portrait"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintExamStickers(e, currentFolder, "landscape")}
+                disabled={busyExamStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 cursor-pointer transition-all border-s border-amber-500/25"
+                title={
+                  locale === "ar"
+                    ? `طباعة استيكرات الامتحانات لقاعة "${currentFolder.name}" بالعرض (Landscape)`
+                    : `Print exam stickers for "${currentFolder.name}" in Landscape`
+                }
+              >
+                <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
               </button>
             </div>
           )}

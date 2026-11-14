@@ -2007,9 +2007,9 @@ export async function generateCleanSkinSubjectStickersPdf(
         { code: "ESSAY", title: `${examPrefix} – Essay` },
       ];
 
-  // A4 Landscape: 841.89 x 595.28 pt
-  const a4Width = 841.89;
-  const a4Height = 595.28;
+  // Standard A4 Portrait in points: 595.28 x 841.89 pt
+  const a4Width = 595.28;
+  const a4Height = 841.89;
   const midX = a4Width / 2;
   const midY = a4Height / 2;
 
@@ -2083,38 +2083,19 @@ function drawQuarterCleanSkinSticker(params: {
 }) {
   const { page, font, logoImg, options, item, slotX, slotY, slotWidth, slotHeight } = params;
 
-  const margin = 8;
+  const margin = 12;
   const x = slotX + margin;
   const y = slotY + margin;
   const width = slotWidth - margin * 2;
   const height = slotHeight - margin * 2;
 
-  // Outer framing card with Emergency Red
-  page.drawRectangle({
-    x,
-    y,
-    width,
-    height,
-    color: COLOR_WHITE,
-    borderColor: COLOR_EMERGENCY_RED,
-    borderWidth: 1.6,
-  });
-
-  // Inner gold border
-  page.drawRectangle({
-    x: x + 2.5,
-    y: y + 2.5,
-    width: width - 5,
-    height: height - 5,
-    borderColor: COLOR_GOLD,
-    borderWidth: 0.75,
-  });
+  // NO OUTER BORDER BOX around sticker (per user request)
 
   // Header: Logo & Clean Skin tag
-  const logoH = 22;
+  const logoH = 26;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
-  const logoX = x + 10;
-  const logoY = y + height - 8 - logoH;
+  const logoX = x + 4;
+  const logoY = y + height - 4 - logoH;
 
   if (logoImg) {
     page.drawImage(logoImg, {
@@ -2125,18 +2106,18 @@ function drawQuarterCleanSkinSticker(params: {
     });
   }
 
-  const textStartX = logoImg ? logoX + logoW + 8 : x + 10;
+  const textStartX = logoImg ? logoX + logoW + 8 : x + 4;
   page.drawText("EMERGENCY RESERVE / CLEAN SKIN", {
     x: textStartX,
-    y: logoY + 11,
+    y: logoY + 13,
     size: 8.5,
     font,
     color: COLOR_EMERGENCY_RED,
   });
 
-  page.drawText("EMERGENCY & RESERVE EXAM PAPERS — FOR REPLACEMENT IN ROOMS", {
+  page.drawText("RESERVE EXAM PAPERS — FOR REPLACEMENT IN ROOMS", {
     x: textStartX,
-    y: logoY + 2,
+    y: logoY + 3,
     size: 6.5,
     font,
     color: COLOR_MUTED,
@@ -2144,11 +2125,11 @@ function drawQuarterCleanSkinSticker(params: {
 
   // Copy badge
   const copyText = `PACKET ${item.copyIndex}`;
-  const copySize = 6.8;
+  const copySize = 7.5;
   const copyW = font.widthOfTextAtSize(copyText, copySize);
-  const copyBadgeW = copyW + 10;
-  const copyBadgeH = 14;
-  const copyBadgeX = x + width - copyBadgeW - 8;
+  const copyBadgeW = copyW + 12;
+  const copyBadgeH = 16;
+  const copyBadgeX = x + width - copyBadgeW - 4;
   const copyBadgeY = logoY + (logoH - copyBadgeH) / 2;
 
   page.drawRectangle({
@@ -2162,30 +2143,30 @@ function drawQuarterCleanSkinSticker(params: {
   });
 
   page.drawText(copyText, {
-    x: copyBadgeX + 5,
-    y: copyBadgeY + 3.5,
+    x: copyBadgeX + (copyBadgeW - copyW) / 2,
+    y: copyBadgeY + 4,
     size: copySize,
     font,
     color: COLOR_EMERGENCY_RED,
   });
 
-  const headerBottom = logoY - 4;
+  const headerBottom = logoY - 6;
 
-  // Gold divider
+  // Divider line
   page.drawLine({
-    start: { x: x + 6, y: headerBottom },
-    end: { x: x + width - 6, y: headerBottom },
+    start: { x: x + 4, y: headerBottom },
+    end: { x: x + width - 4, y: headerBottom },
     thickness: 1,
     color: COLOR_GOLD,
   });
 
   // Location ribbon
-  const ribbonH = 14;
-  const ribbonY = headerBottom - 3 - ribbonH;
+  const ribbonH = 16;
+  const ribbonY = headerBottom - 6 - ribbonH;
   page.drawRectangle({
-    x: x + 6,
+    x: x + 4,
     y: ribbonY,
-    width: width - 12,
+    width: width - 8,
     height: ribbonH,
     color: COLOR_LIGHT_BG,
     borderColor: COLOR_BORDER,
@@ -2198,10 +2179,10 @@ function drawQuarterCleanSkinSticker(params: {
     options.building,
   ].filter(Boolean);
   const locText = locItems.join("  •  ");
-  let locSize = 7.2;
+  let locSize = 7.5;
   let locWidth = font.widthOfTextAtSize(locText, locSize);
-  if (locWidth > width - 24) {
-    locSize = Math.max(6, ((width - 24) / locWidth) * locSize);
+  if (locWidth > width - 20) {
+    locSize = Math.max(6, ((width - 20) / locWidth) * locSize);
     locWidth = font.widthOfTextAtSize(locText, locSize);
   }
   page.drawText(locText, {
@@ -2212,173 +2193,106 @@ function drawQuarterCleanSkinSticker(params: {
     color: COLOR_CHARCOAL,
   });
 
-  // Body Layout
-  const bodyTop = ribbonY - 5;
-  const bodyBottom = y + 6;
-  const bodyH = bodyTop - bodyBottom;
-  const bodyW = width - 12;
+  // Body Layout in Portrait
+  const bodyTop = ribbonY - 10;
 
-  const leftW = Math.round(bodyW * 0.36);
-  const gap = 6;
-  const rightW = bodyW - leftW - gap;
-  const leftX = x + 6;
-  const rightX = leftX + leftW + gap;
-
-  const bannerH = 19;
-  const bannerY = bodyBottom + bodyH - bannerH;
-
-  // 1. LEFT HERO: CONTROL POOL / RESERVE
-  page.drawRectangle({
-    x: leftX,
-    y: bodyBottom,
-    width: leftW,
-    height: bodyH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.2,
-  });
-
-  page.drawRectangle({
-    x: leftX + 1,
-    y: bannerY,
-    width: leftW - 2,
-    height: bannerH - 1,
-    color: COLOR_CHARCOAL,
-  });
-
-  const badgeText = "CONTROL POOL";
-  const badgeSize = 7.5;
-  const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
-  page.drawText(badgeText, {
-    x: leftX + (leftW - badgeW) / 2,
-    y: bannerY + (bannerH - badgeSize) / 2,
-    size: badgeSize,
+  // 1. CONTROL POOL / RESERVE HERO SECTION
+  const poolBadgeText = "CONTROL POOL — RESERVE COPIES";
+  const poolBadgeSize = 8;
+  const poolBadgeW = font.widthOfTextAtSize(poolBadgeText, poolBadgeSize);
+  page.drawText(poolBadgeText, {
+    x: x + (width - poolBadgeW) / 2,
+    y: bodyTop - 8,
+    size: poolBadgeSize,
     font,
-    color: COLOR_GOLD,
+    color: COLOR_MUTED,
   });
 
-  const subH = 17;
-  const subY = bodyBottom + 2;
-  page.drawRectangle({
-    x: leftX + 2,
-    y: subY,
-    width: leftW - 4,
-    height: subH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_BORDER,
-    borderWidth: 0.5,
-  });
-
-  const subText = "RESERVE COPIES";
-  const subSize = 6.2;
-  const subW = font.widthOfTextAtSize(subText, subSize);
-  page.drawText(subText, {
-    x: leftX + (leftW - subW) / 2,
-    y: subY + (subH - subSize) / 2 + 1,
-    size: subSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
-
-  // Hero Text
-  const heroValue = "SPARE";
-  const heroSize = 24;
+  const heroValue = "SPARE PACKET";
+  const heroSize = 22;
   const heroW = font.widthOfTextAtSize(heroValue, heroSize);
+  const heroY = bodyTop - 34;
   page.drawText(heroValue, {
-    x: leftX + (leftW - heroW) / 2,
-    y: subY + subH + (bannerY - (subY + subH) - heroSize) / 2 + 2,
+    x: x + (width - heroW) / 2,
+    y: heroY,
     size: heroSize,
     font,
     color: COLOR_EMERGENCY_RED,
   });
 
-  // 2. RIGHT DETAILS: SUBJECT & MANUAL QUANTITY
-  page.drawRectangle({
-    x: rightX,
-    y: bodyBottom,
-    width: rightW,
-    height: bodyH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.2,
+  const heroDividerY = heroY - 10;
+  page.drawLine({
+    start: { x: x + 4, y: heroDividerY },
+    end: { x: x + width - 4, y: heroDividerY },
+    thickness: 0.8,
+    color: COLOR_BORDER,
   });
 
-  page.drawRectangle({
-    x: rightX + 1,
-    y: bannerY,
-    width: rightW - 2,
-    height: bannerH - 1,
-    color: COLOR_CHARCOAL,
-  });
-
-  const bannerTitle = "EMERGENCY EXAM SUBJECT";
-  const bannerTitleSize = 7.5;
+  // 2. EMERGENCY EXAM SUBJECT SECTION
+  const subjSectionY = heroDividerY - 14;
+  const bannerTitle = "EMERGENCY EXAM SUBJECT:";
+  const bannerTitleSize = 8.5;
   const bannerTitleW = font.widthOfTextAtSize(bannerTitle, bannerTitleSize);
   page.drawText(bannerTitle, {
-    x: rightX + (rightW - bannerTitleW) / 2,
-    y: bannerY + (bannerH - bannerTitleSize) / 2,
+    x: x + (width - bannerTitleW) / 2,
+    y: subjSectionY,
     size: bannerTitleSize,
     font,
-    color: COLOR_GOLD,
-  });
-
-  // Subject Box
-  const subjectBoxH = 32;
-  const subjectBoxY = bannerY - subjectBoxH - 5;
-  page.drawRectangle({
-    x: rightX + 6,
-    y: subjectBoxY,
-    width: rightW - 12,
-    height: subjectBoxH,
-    color: COLOR_LIGHT_BG,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1,
+    color: COLOR_MUTED,
   });
 
   const subjText = item.subject.toUpperCase();
-  let subjSize = 12.5;
+  let subjSize = 18;
   let subjW = font.widthOfTextAtSize(subjText, subjSize);
-  if (subjW > rightW - 20) {
-    subjSize = Math.max(9, ((rightW - 20) / subjW) * subjSize);
+  if (subjW > width - 16) {
+    subjSize = Math.max(12, ((width - 16) / subjW) * subjSize);
     subjW = font.widthOfTextAtSize(subjText, subjSize);
   }
+  const subjY = subjSectionY - 8 - subjSize;
   page.drawText(subjText, {
-    x: rightX + 6 + (rightW - 12 - subjW) / 2,
-    y: subjectBoxY + (subjectBoxH - subjSize) / 2 + 1,
+    x: x + (width - subjW) / 2,
+    y: subjY,
     size: subjSize,
     font,
     color: COLOR_CHARCOAL,
   });
 
-  // Quantity Box (Spacious & centered for manual pen writing)
-  const countBoxY = bodyBottom + 8;
-  const countBoxH = subjectBoxY - countBoxY - 8;
+  const subjDividerY = subjY - 14;
+  page.drawLine({
+    start: { x: x + 4, y: subjDividerY },
+    end: { x: x + width - 4, y: subjDividerY },
+    thickness: 0.8,
+    color: COLOR_BORDER,
+  });
+
+  // 3. MANUAL QUANTITY ENTRY BOX
+  const countBoxY = y + 14;
+  const countBoxH = subjDividerY - countBoxY - 12;
 
   page.drawRectangle({
-    x: rightX + 6,
+    x: x + 4,
     y: countBoxY,
-    width: rightW - 12,
+    width: width - 8,
     height: countBoxH,
     color: COLOR_WHITE,
     borderColor: COLOR_GOLD,
-    borderWidth: 1.4,
+    borderWidth: 1.2,
   });
 
   page.drawText("PACKET QUANTITY (WRITE BY HAND):", {
-    x: rightX + 14,
+    x: x + 12,
     y: countBoxY + countBoxH - 16,
-    size: 7,
+    size: 7.5,
     font,
     color: COLOR_MUTED,
   });
 
-  // Underlined area for writing count
   const manualCountText = "COUNT: [  ____________  ]  COPIES";
-  const manualW = font.widthOfTextAtSize(manualCountText, 13);
+  const manualW = font.widthOfTextAtSize(manualCountText, 12.5);
   page.drawText(manualCountText, {
-    x: rightX + 6 + (rightW - 12 - manualW) / 2,
+    x: x + 4 + (width - 8 - manualW) / 2,
     y: countBoxY + (countBoxH - 24) / 2 + 2,
-    size: 13,
+    size: 12.5,
     font,
     color: COLOR_CHARCOAL,
   });

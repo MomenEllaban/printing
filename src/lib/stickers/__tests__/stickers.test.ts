@@ -733,7 +733,7 @@ describe("generateStickerPdf", () => {
     const floor1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy", "2nd Floor"]);
     const building1 = buildStickerContent(["EST 1", "Alexandria", "Abu Qir", "Pharmacy"]);
 
-    it("Prints 4 room stickers on exactly 1 single A4 Landscape page", async () => {
+    it("Prints 4 room stickers on exactly 1 single A4 Portrait page", async () => {
       const pdfBytes = await generateBatchStickerPdf({
         contents: [room1, room2, room3, room4],
         paperMode: "a4",
@@ -744,8 +744,8 @@ describe("generateStickerPdf", () => {
 
       const page = pdfDoc.getPage(0);
       const size = page.getSize();
-      expect(size.width).toBeCloseTo(841.89, 0);
-      expect(size.height).toBeCloseTo(595.28, 0);
+      expect(size.width).toBeCloseTo(595.28, 0);
+      expect(size.height).toBeCloseTo(841.89, 0);
     });
 
     it("Packs Floor stickers and Room stickers together in the 4-quarter A4 grid", async () => {
@@ -789,8 +789,8 @@ describe("generateStickerPdf", () => {
       const pdfDoc = await PDFDocument.load(pdfBytes);
       expect(pdfDoc.getPageCount()).toBe(1);
       const size = pdfDoc.getPage(0).getSize();
-      expect(size.width).toBeCloseTo(841.89, 0);
-      expect(size.height).toBeCloseTo(595.28, 0);
+      expect(size.width).toBeCloseTo(595.28, 0);
+      expect(size.height).toBeCloseTo(841.89, 0);
     });
 
     it("Prints a single building sticker as a large full A4 page", async () => {
@@ -1003,11 +1003,11 @@ describe("generateStickerPdf", () => {
           content,
         });
         const pdfDoc = await PDFDocument.load(pdfBytes);
-        // 4 stickers fit on exactly 1 4-up A4 Landscape page
+        // 4 stickers fit on exactly 1 4-up A4 Portrait page
         expect(pdfDoc.getPageCount()).toBe(1);
         const size = pdfDoc.getPage(0).getSize();
-        expect(size.width).toBeCloseTo(841.89, 0);
-        expect(size.height).toBeCloseTo(595.28, 0);
+        expect(size.width).toBeCloseTo(595.28, 0);
+        expect(size.height).toBeCloseTo(841.89, 0);
       });
 
       it("generates exactly 6 stickers (2 A4 pages, 2 Lit + 2 Math + 2 Essay) when room HAS Essay", async () => {
