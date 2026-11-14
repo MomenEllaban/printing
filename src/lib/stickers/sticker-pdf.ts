@@ -1133,24 +1133,7 @@ function renderChecklistBox(params: {
     }
   }
 
-  // Footer: Verification & Signature
-  const footerY = y + 2;
-  page.drawLine({
-    start: { x: x + 12, y: footerY + footerHeight },
-    end: { x: x + width - 12, y: footerY + footerHeight },
-    thickness: 1,
-    color: COLOR_GOLD,
-  });
-
-  const signText = "Signature: _______________________    Date: _____ / _____ / 2026";
-  const signSize = Math.max(8.5, Math.min(10, footerHeight * 0.32));
-  page.drawText(signText, {
-    x: x + 14,
-    y: footerY + (footerHeight - signSize) / 2 + 1,
-    size: signSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
+  // Footer area - clean without signature requirement
 }
 
 /**
@@ -1464,8 +1447,7 @@ function drawQuarterPlacard(params: {
       : ["1. Proctor Register", "2. Senior Report", "3. Numbers & Mobile Collection Files", "4. Proctor Misconduct Forms", "5. Draft papers, pens, and IDs"];
 
     const itemsStartY = bodyTop - 22;
-    const footerH = 16;
-    const availItemsH = itemsStartY - (bodyBottom + footerH + 8);
+    const availItemsH = itemsStartY - (bodyBottom + 8);
     const rowH = availItemsH / 5;
     for (let i = 0; i < items.length; i++) {
       const itemY = itemsStartY - (i + 1) * rowH;
@@ -1475,10 +1457,6 @@ function drawQuarterPlacard(params: {
       page.drawRectangle({ x: boxX, y: boxY, width: boxSize, height: boxSize, color: COLOR_WHITE, borderColor: COLOR_CHARCOAL, borderWidth: 1 });
       page.drawText(items[i], { x: boxX + boxSize + 6, y: boxY + 1.5, size: 7.5, font, color: COLOR_CHARCOAL });
     }
-
-    page.drawLine({ start: { x: rightX, y: bodyBottom + footerH + 4 }, end: { x: rightX + rightW, y: bodyBottom + footerH + 4 }, thickness: 0.5, color: COLOR_BORDER });
-    const sigText = isRoom ? "Signature: __________________   Date: ___/___" : "Senior Sig: __________________   Date: ___/___";
-    page.drawText(sigText, { x: rightX, y: bodyBottom + 2, size: 6.8, font, color: COLOR_CHARCOAL });
     return;
   }
 
@@ -1741,26 +1719,6 @@ function drawQuarterPlacard(params: {
       color: COLOR_CHARCOAL,
     });
   }
-
-  // 4. Signature Footer
-  const sigY = y + 8;
-  page.drawLine({
-    start: { x: x + 6, y: sigY + 12 },
-    end: { x: x + width - 6, y: sigY + 12 },
-    thickness: 0.5,
-    color: COLOR_BORDER,
-  });
-
-  const sigText = isRoom
-    ? "Signature: __________________   Date: ___/___"
-    : "Senior Sig: __________________   Date: ___/___";
-  page.drawText(sigText, {
-    x: x + 6,
-    y: sigY,
-    size: 7,
-    font,
-    color: COLOR_CHARCOAL,
-  });
 }
 
 // ---------------------------------------------------------------------------

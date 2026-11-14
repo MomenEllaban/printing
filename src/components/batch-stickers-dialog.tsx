@@ -33,7 +33,7 @@ export function BatchStickersDialog({
   const { locale } = useI18n();
   const [stickerType, setStickerType] = useState<"regular" | "exam">(initialType);
   const [includeChildren, setIncludeChildren] = useState(false);
-  const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
+  const [orientation, setOrientation] = useState<"landscape" | "portrait">("portrait");
   const [activeAction, setActiveAction] = useState<"show" | "print" | null>(null);
 
   useEffect(() => {
@@ -241,38 +241,36 @@ export function BatchStickersDialog({
         </div>
 
         {/* Orientation Selector */}
-        {stickerType === "regular" && (
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-foreground block">
-              {locale === "ar" ? "اتجاه ورقة الاستيكر (مقاس A4):" : "Sticker Orientation (A4):"}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-foreground block">
+            {locale === "ar" ? "اتجاه ورقة الاستيكر (مقاس A4):" : "Sticker Orientation (A4):"}
+          </label>
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="radio"
+                name="sticker-orientation"
+                value="portrait"
+                checked={orientation === "portrait"}
+                onChange={() => setOrientation("portrait")}
+                className="size-4 accent-indigo-600 cursor-pointer"
+              />
+              <span>{locale === "ar" ? "رأسي (Portrait) — الافتراضي بدون بوردر" : "Portrait (Default without borders)"}</span>
             </label>
-            <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
-                <input
-                  type="radio"
-                  name="sticker-orientation"
-                  value="landscape"
-                  checked={orientation === "landscape"}
-                  onChange={() => setOrientation("landscape")}
-                  className="size-4 accent-indigo-600 cursor-pointer"
-                />
-                <span>{locale === "ar" ? "أفقي (Landscape) — موصى به للأبواب والقاعات" : "Landscape (Recommended)"}</span>
-              </label>
 
-              <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
-                <input
-                  type="radio"
-                  name="sticker-orientation"
-                  value="portrait"
-                  checked={orientation === "portrait"}
-                  onChange={() => setOrientation("portrait")}
-                  className="size-4 accent-indigo-600 cursor-pointer"
-                />
-                <span>{locale === "ar" ? "رأسي (Portrait)" : "Portrait"}</span>
-              </label>
-            </div>
+            <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="radio"
+                name="sticker-orientation"
+                value="landscape"
+                checked={orientation === "landscape"}
+                onChange={() => setOrientation("landscape")}
+                className="size-4 accent-indigo-600 cursor-pointer"
+              />
+              <span>{locale === "ar" ? "أفقي (Landscape)" : "Landscape"}</span>
+            </label>
           </div>
-        )}
+        </div>
 
         {/* Selected Items preview */}
         <div className="space-y-1.5">

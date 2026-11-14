@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const settings = await getSettings();
 
     const paperMode = body.paperMode ?? settings.printing.stickerPaperMode ?? "a4";
-    const orientation = body.orientation ?? settings.printing.stickerOrientation ?? "landscape";
+    const orientation = body.orientation ?? settings.printing.stickerOrientation ?? "portrait";
     const widthMm = body.widthMm ?? settings.printing.stickerWidthMm ?? 100;
     const heightMm = body.heightMm ?? settings.printing.stickerHeightMm ?? 50;
 

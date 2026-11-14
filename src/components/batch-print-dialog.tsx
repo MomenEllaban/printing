@@ -13,17 +13,26 @@ interface BatchPrintDialogProps {
   selectedItems: DriveItem[];
   isLoading?: boolean;
   onOpenStickers?: () => void;
+  initialOrientation?: "portrait" | "landscape";
 }
 
-export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = false, onOpenStickers }: BatchPrintDialogProps) {
+export function BatchPrintDialog({
+  open,
+  onClose,
+  selectedItems,
+  isLoading = false,
+  onOpenStickers,
+  initialOrientation = "portrait",
+}: BatchPrintDialogProps) {
   const { t, locale } = useI18n();
   const [opening, setOpening] = useState(false);
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">(initialOrientation);
 
   const printFiles = selectedItems.filter((i) => !i.isFolder);
 
   const handleOpenUnified = () => {
     const ids = printFiles.map((i) => i.id).join(",");
-    window.open(`/print/batch?files=${ids}`, "_blank");
+    window.open(`/print/batch?files=${ids}&orientation=${orientation}`, "_blank");
     onClose();
   };
 
@@ -31,7 +40,7 @@ export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = fal
     setOpening(true);
     printFiles.forEach((item, index) => {
       setTimeout(() => {
-        window.open(`/print/${item.id}`, "_blank");
+        window.open(`/print/${item.id}?orientation=${orientation}`, "_blank");
       }, index * 200);
     });
     setOpening(false);
@@ -88,6 +97,37 @@ export function BatchPrintDialog({ open, onClose, selectedItems, isLoading = fal
             </Button>
           </div>
         )}
+
+        {/* Orientation Selector */}
+        <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-surface-soft">
+          <span className="text-xs font-bold text-foreground">
+            {locale === "ar" ? "اتجاه الطباعة:" : "Print Orientation:"}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOrientation("portrait")}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                orientation === "portrait"
+                  ? "bg-accent text-white border-accent shadow-xs"
+                  : "bg-surface border-border text-foreground hover:bg-surface-soft"
+              }`}
+            >
+              {locale === "ar" ? "طولي (Portrait)" : "Portrait"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrientation("landscape")}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                orientation === "landscape"
+                  ? "bg-accent text-white border-accent shadow-xs"
+                  : "bg-surface border-border text-foreground hover:bg-surface-soft"
+              }`}
+            >
+              {locale === "ar" ? "عرضي (Landscape)" : "Landscape"}
+            </button>
+          </div>
+        </div>
 
         {/* Print Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

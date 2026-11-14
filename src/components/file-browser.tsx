@@ -429,6 +429,7 @@ export function FileBrowser({
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchPrintOpen, setBatchPrintOpen] = useState(false);
+  const [batchPrintOrientation, setBatchPrintOrientation] = useState<"portrait" | "landscape">("portrait");
 
   // Expandable folder tree in list view
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
@@ -2069,7 +2070,8 @@ export function FileBrowser({
     [selectedItems, currentFolder, locale],
   );
 
-  const handleBatchPrint = async () => {
+  const handleBatchPrint = async (orientation: "portrait" | "landscape" = "portrait") => {
+    setBatchPrintOrientation(orientation);
     if (selectedItems.length === 0) return;
     let printable = selectedItems.filter((i) => !i.isFolder);
     const selectedFolders = selectedItems.filter((i) => i.isFolder);
@@ -2134,7 +2136,7 @@ export function FileBrowser({
     }
 
     if (printable.length === 1) {
-      window.open(`/print/${printable[0].id}`, "_blank");
+      window.open(`/print/${printable[0].id}?orientation=${orientation}`, "_blank");
       return;
     }
 
@@ -3250,9 +3252,9 @@ export function FileBrowser({
                           onReorderItem={handleReorderItem}
                           onTogglePrint={() => void togglePrintStatus(item)}
                           onShowSticker={(folder) => handleShowSticker(null, folder)}
-                          onPrintSticker={(folder) => handlePrintSticker(null, folder)}
+                          onPrintSticker={(folder, orientation) => handlePrintSticker(null, folder, orientation)}
                           onShowExamStickers={(folder) => handleShowExamStickers(null, folder)}
-                          onPrintExamStickers={(folder) => handlePrintExamStickers(null, folder)}
+                          onPrintExamStickers={(folder, orientation) => handlePrintExamStickers(null, folder, orientation)}
                           onOpenProctorDialog={handleOpenProctorDialog}
                           onShowProctorFile={handleShowProctorFile}
                           onPrintProctorFile={handlePrintProctorFile}
@@ -3330,6 +3332,29 @@ export function FileBrowser({
                   <button type="button" onClick={() => openItem(item)} className="chip hover:bg-border cursor-pointer">
                     {item.isFolder ? t("common.open") : t("common.preview")}
                   </button>
+                  {!item.isFolder && (
+                    <div className="inline-flex items-center rounded-lg border border-border/70 bg-surface-soft p-0.5 text-xs">
+                      <a
+                        href={`/print/${item.id}?orientation=portrait`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-semibold hover:bg-surface rounded text-foreground cursor-pointer"
+                        title={locale === "ar" ? "طباعة الملف بالطول (Portrait)" : "Print Portrait"}
+                      >
+                        <Printer className="size-3 text-muted" />
+                        <span className="text-[10px]">{locale === "ar" ? "طولي" : "Port"}</span>
+                      </a>
+                      <a
+                        href={`/print/${item.id}?orientation=landscape`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-semibold hover:bg-surface rounded text-foreground cursor-pointer border-s border-border/50"
+                        title={locale === "ar" ? "طباعة الملف بالعرض (Landscape)" : "Print Landscape"}
+                      >
+                        <span className="text-[10px]">{locale === "ar" ? "عرضي" : "Land"}</span>
+                      </a>
+                    </div>
+                  )}
                   {item.isFolder && (
                     <>
                       <div className="inline-flex items-center rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-0.5 text-xs">
@@ -3352,16 +3377,26 @@ export function FileBrowser({
                         </button>
                         <button
                           type="button"
-                          onClick={(e) => handlePrintSticker(e, item)}
+                          onClick={(e) => handlePrintSticker(e, item, "portrait")}
                           disabled={busyStickerId === item.id}
-                          className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer"
-                          title={locale === "ar" ? `طباعة استيكر "${item.name}" مباشرة` : `Print sticker for "${item.name}" directly`}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer border-s border-indigo-500/20"
+                          title={locale === "ar" ? `طباعة استيكر "${item.name}" بالطول (Portrait)` : `Print sticker for "${item.name}" in Portrait`}
                         >
                           {busyStickerId === item.id && stickerAction === "print" ? (
                             <Loader2 className="size-3 animate-spin text-indigo-600" />
                           ) : (
                             <Printer className="size-3 text-indigo-600 dark:text-indigo-400" />
                           )}
+                          <span className="text-[10px]">{locale === "ar" ? "طولي" : "Port"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handlePrintSticker(e, item, "landscape")}
+                          disabled={busyStickerId === item.id}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer border-s border-indigo-500/20"
+                          title={locale === "ar" ? `طباعة استيكر "${item.name}" بالعرض (Landscape)` : `Print sticker for "${item.name}" in Landscape`}
+                        >
+                          <span className="text-[10px]">{locale === "ar" ? "عرضي" : "Land"}</span>
                         </button>
                       </div>
 
@@ -3833,21 +3868,37 @@ export function FileBrowser({
 
               <button
                 type="button"
-                onClick={() => handleBatchStickersAction({ action: "print", type: "regular" })}
+                onClick={() => handleBatchStickersAction({ action: "print", type: "regular", orientation: "portrait" })}
                 disabled={busyBatchStickers}
-                className="inline-flex items-center justify-center size-7 rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer border-s border-indigo-500/25"
                 title={
                   locale === "ar"
-                    ? "طباعة استيكرات العناصر المحددة مباشرة (Print)"
-                    : "Print unified stickers directly"
+                    ? "طباعة استيكرات العناصر المحددة بالطول (Portrait)"
+                    : "Print unified stickers in Portrait"
                 }
-                aria-label="Print Stickers"
+                aria-label="Print Stickers Portrait"
               >
                 {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "regular" ? (
                   <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
                 ) : (
                   <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
                 )}
+                <span>{locale === "ar" ? "طولي" : "Port"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleBatchStickersAction({ action: "print", type: "regular", orientation: "landscape" })}
+                disabled={busyBatchStickers}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer border-s border-indigo-500/25"
+                title={
+                  locale === "ar"
+                    ? "طباعة استيكرات العناصر المحددة بالعرض (Landscape)"
+                    : "Print unified stickers in Landscape"
+                }
+                aria-label="Print Stickers Landscape"
+              >
+                <span>{locale === "ar" ? "عرضي" : "Land"}</span>
               </button>
             </div>
 
@@ -3896,33 +3947,61 @@ export function FileBrowser({
 
                 <button
                   type="button"
-                  onClick={() => handleBatchStickersAction({ action: "print", type: "exam", includeChildren: true })}
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "exam", includeChildren: true, orientation: "portrait" })}
                   disabled={busyBatchStickers}
-                  className="inline-flex items-center justify-center size-7 rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer border-s border-amber-500/25"
                   title={
                     locale === "ar"
-                      ? "طباعة استيكرات الامتحانات للمجلدات أو القاعة مباشرة (Print)"
-                      : "Print exam stickers for folders or room directly"
+                      ? "طباعة استيكرات الامتحانات للمجلدات أو القاعة بالطول (Portrait)"
+                      : "Print exam stickers in Portrait"
                   }
-                  aria-label="Print Exam Stickers"
+                  aria-label="Print Exam Stickers Portrait"
                 >
                   {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "exam" ? (
                     <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
                   ) : (
                     <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
                   )}
+                  <span>{locale === "ar" ? "طولي" : "Port"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "exam", includeChildren: true, orientation: "landscape" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 transition-all cursor-pointer border-s border-amber-500/25"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الامتحانات للمجلدات أو القاعة بالعرض (Landscape)"
+                      : "Print exam stickers in Landscape"
+                  }
+                  aria-label="Print Exam Stickers Landscape"
+                >
+                  <span>{locale === "ar" ? "عرضي" : "Land"}</span>
                 </button>
               </div>
             )}
 
-            <Button
-              variant="primary"
-              onClick={handleBatchPrint}
-              className="text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1 shadow-sm"
-            >
-              <Printer className="size-3.5 sm:size-4" />
-              <span>{t("batch.printSelected")}</span>
-            </Button>
+            <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-0.5 shadow-sm">
+              <Button
+                variant="primary"
+                onClick={() => handleBatchPrint("portrait")}
+                className="text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1 shadow-sm rounded-lg"
+                title={locale === "ar" ? "طباعة الملفات المحددة بالطول (Portrait)" : "Print selected files in Portrait"}
+              >
+                <Printer className="size-3.5 sm:size-4" />
+                <span>{locale === "ar" ? "طباعة (طولي)" : "Print (Portrait)"}</span>
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => handleBatchPrint("landscape")}
+                className="text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1 rounded-lg ms-1"
+                title={locale === "ar" ? "طباعة الملفات المحددة بالعرض (Landscape)" : "Print selected files in Landscape"}
+              >
+                <Printer className="size-3.5 sm:size-4" />
+                <span>{locale === "ar" ? "عرضي" : "Landscape"}</span>
+              </Button>
+            </div>
 
             <Button
               variant="secondary"
@@ -3983,6 +4062,7 @@ export function FileBrowser({
         selectedItems={selectedItems}
         isLoading={loadingDescendantIds.size > 0}
         onOpenStickers={() => setBatchStickersOpen(true)}
+        initialOrientation={batchPrintOrientation}
       />
 
       {/* Batch Stickers Dialog */}
@@ -4079,9 +4159,9 @@ function ItemMenu({
   isPrinted?: boolean;
   onTogglePrint?: () => void;
   onShowSticker?: (folder: DriveItem) => void;
-  onPrintSticker?: (folder: DriveItem) => void;
+  onPrintSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (folder: DriveItem) => void;
-  onPrintExamStickers?: (folder: DriveItem) => void;
+  onPrintExamStickers?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
@@ -4267,18 +4347,32 @@ function ItemMenu({
               </button>
             )}
             {item.isFolder && onPrintSticker && (
-              <button
-                type="button"
-                role="menuitem"
-                className="menu-item cursor-pointer text-indigo-600 dark:text-indigo-400 font-semibold"
-                onClick={() => {
-                  onPrintSticker(item);
-                  onClose();
-                }}
-              >
-                <Printer className="size-4" />
-                <span>{locale === "ar" ? "طباعة استيكر الغرفة (عادي)" : "Print Room Sticker (Regular)"}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-indigo-600 dark:text-indigo-400 font-semibold"
+                  onClick={() => {
+                    onPrintSticker(item, "portrait");
+                    onClose();
+                  }}
+                >
+                  <Printer className="size-4" />
+                  <span>{locale === "ar" ? "طباعة الاستيكر (طولي Portrait)" : "Print Sticker (Portrait)"}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item cursor-pointer text-indigo-600 dark:text-indigo-400 font-semibold"
+                  onClick={() => {
+                    onPrintSticker(item, "landscape");
+                    onClose();
+                  }}
+                >
+                  <Printer className="size-4" />
+                  <span>{locale === "ar" ? "طباعة الاستيكر (عرضي Landscape)" : "Print Sticker (Landscape)"}</span>
+                </button>
+              </>
             )}
             {item.isFolder && onShowExamStickers && (() => {
               const regCat = registerCategory ?? getFolderRegisterCategory({
@@ -4312,26 +4406,48 @@ function ItemMenu({
                     </span>
                   </button>
                   {onPrintExamStickers && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="menu-item cursor-pointer text-amber-700 dark:text-amber-400 font-semibold"
-                      onClick={() => {
-                        onPrintExamStickers(item);
-                        onClose();
-                      }}
-                    >
-                      <Printer className="size-4" />
-                      <span>
-                        {isFloor
-                          ? locale === "ar"
-                            ? "طباعة استيكرات كيسة امتحانات الدور (A4)"
-                            : "Print Floor Exam Bag Placards (A4)"
-                          : locale === "ar"
-                          ? "طباعة استيكرات الامتحانات"
-                          : "Print Exam Stickers"}
-                      </span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="menu-item cursor-pointer text-amber-700 dark:text-amber-400 font-semibold"
+                        onClick={() => {
+                          onPrintExamStickers(item, "portrait");
+                          onClose();
+                        }}
+                      >
+                        <Printer className="size-4" />
+                        <span>
+                          {isFloor
+                            ? locale === "ar"
+                              ? "طباعة استيكرات كيسة امتحانات الدور (طولي)"
+                              : "Print Floor Exam Bag Placards (Portrait)"
+                            : locale === "ar"
+                            ? "طباعة استيكرات الامتحانات (طولي Portrait)"
+                            : "Print Exam Stickers (Portrait)"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="menu-item cursor-pointer text-amber-700 dark:text-amber-400 font-semibold"
+                        onClick={() => {
+                          onPrintExamStickers(item, "landscape");
+                          onClose();
+                        }}
+                      >
+                        <Printer className="size-4" />
+                        <span>
+                          {isFloor
+                            ? locale === "ar"
+                              ? "طباعة استيكرات كيسة امتحانات الدور (عرضي)"
+                              : "Print Floor Exam Bag Placards (Landscape)"
+                            : locale === "ar"
+                            ? "طباعة استيكرات الامتحانات (عرضي Landscape)"
+                            : "Print Exam Stickers (Landscape)"}
+                        </span>
+                      </button>
+                    </>
                   )}
                 </>
               );
@@ -4532,16 +4648,28 @@ function ItemMenu({
               </a>
             )}
             {!item.isFolder && (
-              <Link
-                role="menuitem"
-                className="menu-item"
-                href={`/print/${item.id}`}
-                target="_blank"
-                onClick={onClose}
-              >
-                <Printer className="size-4 text-accent" />
-                <span>{t("common.print")}</span>
-              </Link>
+              <>
+                <Link
+                  role="menuitem"
+                  className="menu-item"
+                  href={`/print/${item.id}?orientation=portrait`}
+                  target="_blank"
+                  onClick={onClose}
+                >
+                  <Printer className="size-4 text-accent" />
+                  <span>{locale === "ar" ? "طباعة الملف (طولي Portrait)" : "Print (Portrait)"}</span>
+                </Link>
+                <Link
+                  role="menuitem"
+                  className="menu-item"
+                  href={`/print/${item.id}?orientation=landscape`}
+                  target="_blank"
+                  onClick={onClose}
+                >
+                  <Printer className="size-4 text-accent" />
+                  <span>{locale === "ar" ? "طباعة الملف (عرضي Landscape)" : "Print (Landscape)"}</span>
+                </Link>
+              </>
             )}
             {item.webViewLink && (
               <a
@@ -4608,9 +4736,9 @@ interface TreeRowProps {
   onNewSubFolder: (folder: DriveItem) => void;
   onUploadToFolder: (folder: DriveItem) => void;
   onShowSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
-  onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
-  onPrintExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onPrintExamStickers?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
@@ -4927,23 +5055,36 @@ function TreeRow({
 
                         <button
                           type="button"
-                          onClick={(e) => onPrintSticker(e, item)}
+                          onClick={(e) => onPrintSticker(e, item, "portrait")}
                           disabled={busyStickerId === item.id}
-                          className="inline-flex items-center justify-center size-6 rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer"
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer border-s border-indigo-500/20"
                           title={
                             locale === "ar"
                               ? isRoomFolder
-                                ? `طباعة استيكر الغرفة "${item.name}" مباشرة`
-                                : `طباعة استيكر "${item.name}" مباشرة`
-                              : `Print sticker for "${item.name}" directly`
+                                ? `طباعة استيكر الغرفة "${item.name}" بالطول (Portrait)`
+                                : `طباعة استيكر "${item.name}" بالطول (Portrait)`
+                              : `Print sticker for "${item.name}" in Portrait`
                           }
-                          aria-label="Print Sticker"
+                          aria-label="Print Sticker Portrait"
                         >
-                          {busyStickerId === item.id && stickerAction === "print" ? (
-                            <Loader2 className="size-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
-                          ) : (
-                            <Printer className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-                          )}
+                          <Printer className="size-3 text-indigo-600 dark:text-indigo-400" />
+                          <span className="text-[10px] font-bold">{locale === "ar" ? "طولي" : "Port"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => onPrintSticker(e, item, "landscape")}
+                          disabled={busyStickerId === item.id}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer border-s border-indigo-500/20"
+                          title={
+                            locale === "ar"
+                              ? isRoomFolder
+                                ? `طباعة استيكر الغرفة "${item.name}" بالعرض (Landscape)`
+                                : `طباعة استيكر "${item.name}" بالعرض (Landscape)`
+                              : `Print sticker for "${item.name}" in Landscape`
+                          }
+                          aria-label="Print Sticker Landscape"
+                        >
+                          <span className="text-[10px] font-bold">{locale === "ar" ? "عرضي" : "Land"}</span>
                         </button>
                       </div>
 
@@ -4988,25 +5129,37 @@ function TreeRow({
 
                           <button
                             type="button"
-                            onClick={(e) => onPrintExamStickers(e, item)}
+                            onClick={(e) => onPrintExamStickers(e, item, "portrait")}
                             disabled={busyExamStickerId === item.id}
-                            className="inline-flex items-center justify-center size-6 rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer border-s border-amber-500/25"
                             title={
                               locale === "ar"
                                 ? isFloorFolder
-                                  ? `طباعة ملصقات كيسة امتحانات الدور "${item.name}" مباشرة (مقاس A4)`
-                                  : `طباعة استيكرات الامتحانات للقاعة "${item.name}" مباشرة (Print)`
-                                : isFloorFolder
-                                ? `Print floor exam bag placards for "${item.name}" directly (A4)`
-                                : `Print exam stickers for "${item.name}" directly`
+                                  ? `طباعة ملصقات كيسة امتحانات الدور "${item.name}" بالطول (A4 Portrait)`
+                                  : `طباعة استيكرات الامتحانات للقاعة "${item.name}" بالطول (Portrait)`
+                                : `Print exam stickers for "${item.name}" in Portrait`
                             }
-                            aria-label="Print Exam Stickers"
+                            aria-label="Print Exam Stickers Portrait"
                           >
-                            {busyExamStickerId === item.id && examStickerAction === "print" ? (
-                              <Loader2 className="size-3.5 animate-spin text-amber-600 dark:text-amber-400" />
-                            ) : (
-                              <Printer className="size-3.5 text-amber-600 dark:text-amber-400" />
-                            )}
+                            <Printer className="size-3 text-amber-600 dark:text-amber-400" />
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "طولي" : "Port"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintExamStickers(e, item, "landscape")}
+                            disabled={busyExamStickerId === item.id}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-amber-500/20 text-amber-800 dark:text-amber-200 transition-all cursor-pointer border-s border-amber-500/25"
+                            title={
+                              locale === "ar"
+                                ? isFloorFolder
+                                  ? `طباعة ملصقات كيسة امتحانات الدور "${item.name}" بالعرض (A4 Landscape)`
+                                  : `طباعة استيكرات الامتحانات لقاعة "${item.name}" بالعرض (Landscape)`
+                                : `Print exam stickers for "${item.name}" in Landscape`
+                            }
+                            aria-label="Print Exam Stickers Landscape"
+                          >
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "عرضي" : "Land"}</span>
                           </button>
                         </div>
                       )}
@@ -5140,15 +5293,27 @@ function TreeRow({
               <Pin className={cn("size-3.5", isPinned && "fill-current")} />
             </button>
             {!item.isFolder && (
-              <a
-                href={`/print/${item.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="icon-btn size-7 cursor-pointer"
-                title={t("common.print")}
-              >
-                <Printer className="size-3.5" />
-              </a>
+              <div className="inline-flex items-center rounded-lg border border-border/70 bg-surface-soft p-0.5 shadow-2xs">
+                <a
+                  href={`/print/${item.id}?orientation=portrait`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-semibold hover:bg-surface rounded text-foreground cursor-pointer transition-colors"
+                  title={locale === "ar" ? "طباعة الملف بالطول (Portrait)" : "Print Portrait"}
+                >
+                  <Printer className="size-3 text-muted" />
+                  <span className="text-[10px] font-bold">{locale === "ar" ? "طولي" : "Port"}</span>
+                </a>
+                <a
+                  href={`/print/${item.id}?orientation=landscape`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-semibold hover:bg-surface rounded text-foreground cursor-pointer transition-colors border-s border-border/50"
+                  title={locale === "ar" ? "طباعة الملف بالعرض (Landscape)" : "Print Landscape"}
+                >
+                  <span className="text-[10px] font-bold">{locale === "ar" ? "عرضي" : "Land"}</span>
+                </a>
+              </div>
             )}
             {!item.isFolder && (
               <a
@@ -5178,9 +5343,9 @@ function TreeRow({
                   onReorderItem={onReorderItem}
                   onTogglePrint={() => onTogglePrintStatus(item)}
                   onShowSticker={(folder) => onShowSticker(null, folder)}
-                  onPrintSticker={(folder) => onPrintSticker(null, folder)}
+                  onPrintSticker={(folder, orientation) => onPrintSticker(null, folder, orientation)}
                   onShowExamStickers={(folder) => onShowExamStickers?.(null, folder)}
-                  onPrintExamStickers={(folder) => onPrintExamStickers?.(null, folder)}
+                  onPrintExamStickers={(folder, orientation) => onPrintExamStickers?.(null, folder, orientation)}
                   onOpenProctorDialog={onOpenProctorDialog}
                   onShowProctorFile={onShowProctorFile}
                   onPrintProctorFile={onPrintProctorFile}

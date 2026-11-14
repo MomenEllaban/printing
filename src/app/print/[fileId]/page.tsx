@@ -13,7 +13,10 @@ import type { DriveItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ fileId: string }> };
+type Props = {
+  params: Promise<{ fileId: string }>;
+  searchParams?: Promise<{ orientation?: "portrait" | "landscape" }>;
+};
 
 async function loadItem(fileId: string): Promise<DriveItem | null> {
   const connection = await getConnection();
@@ -34,8 +37,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: item ? `${item.name} — Print` : "Print" };
 }
 
-export default async function PrintPage({ params }: Props) {
+export default async function PrintPage({ params, searchParams }: Props) {
   const { fileId } = await params;
+  const search = searchParams ? await searchParams : undefined;
   const [item, settings, locale] = await Promise.all([loadItem(fileId), getSettings(), getLocale()]);
 
   if (!item || item.isFolder) {
@@ -49,13 +53,18 @@ export default async function PrintPage({ params }: Props) {
     );
   }
 
+  const requestedOrientation =
+    search?.orientation === "portrait" || search?.orientation === "landscape"
+      ? search.orientation
+      : undefined;
+
   return (
     <PrintDocument
       item={item}
       kind={previewKind(item.mimeType, item.name)}
       settings={{
         paperSize: settings.printing.paperSize,
-        orientation: settings.printing.orientation,
+        orientation: requestedOrientation || settings.printing.orientation,
         scale: settings.printing.scale,
         margins: settings.printing.margins,
       }}

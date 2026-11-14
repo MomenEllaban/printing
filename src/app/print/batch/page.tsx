@@ -12,7 +12,7 @@ import type { DriveItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ files?: string }> };
+type Props = { searchParams: Promise<{ files?: string; orientation?: "portrait" | "landscape" }> };
 
 async function loadItems(rawIds: string[]): Promise<DriveItem[]> {
   const connection = await getConnection();
@@ -87,12 +87,17 @@ export default async function BatchPrintPage({ searchParams }: Props) {
     );
   }
 
+  const requestedOrientation =
+    params.orientation === "portrait" || params.orientation === "landscape"
+      ? params.orientation
+      : undefined;
+
   return (
     <BatchPrintDocument
       items={items}
       settings={{
         paperSize: settings.printing.paperSize,
-        orientation: settings.printing.orientation,
+        orientation: requestedOrientation || settings.printing.orientation,
         scale: settings.printing.scale,
         margins: settings.printing.margins,
       }}
