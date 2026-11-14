@@ -35,30 +35,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
       try {
         let arabicMap: { byId: Map<string, string>; byEmail: Map<string, string>; byName: Map<string, string> } | null = null;
 
-        // 1. Try local files in process.cwd()
-        const candidateFiles = [
-          batch.fileName ? path.join(process.cwd(), batch.fileName) : null,
-          path.join(process.cwd(), `${batch.name}.xlsx`),
-          path.join(process.cwd(), "Data for MoE - Nov Batch 2 11.11.2026.xlsx"),
-          path.join(process.cwd(), "Aramex-Official_Report-Batch 1 Online - 07.11.2026.xlsx"),
-        ].filter(Boolean) as string[];
-
-        for (const fp of candidateFiles) {
-          if (fs.existsSync(fp)) {
-            try {
-              const buf = fs.readFileSync(fp);
-              const wb = XLSX.read(buf, { type: "buffer" });
-              const m = buildCrossSheetArabicMap(wb);
-              if (m.byId.size > 0 || m.byEmail.size > 0 || m.byName.size > 0) {
-                arabicMap = m;
-                break;
-              }
-            } catch {}
-          }
-        }
-
-        // 2. If not found locally, try Google Drive if driveFileId exists
-        if (!arabicMap && batch.driveFileId) {
+        // 1. Try Google Drive first (works in production on Vercel and local)
+        if (batch.driveFileId) {
           try {
             const { drive } = await getDriveContextWithRoot();
             const driveRes = await drive.files.get(
@@ -70,6 +48,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
               arabicMap = buildCrossSheetArabicMap(wb);
             }
           } catch {}
+        }
+
+        // 2. Fallback to local files in development
+        if (!arabicMap && process.env.NODE_ENV !== "production") {
+          const candidateNames = [
+            batch.fileName,
+            `${batch.name}.xlsx`,
+            "Data for MoE - Nov Batch 2 11.11.2026.xlsx",
+            "Aramex-Official_Report-Batch 1 Online - 07.11.2026.xlsx",
+          ].filter(Boolean) as string[];
+
+          for (const name of candidateNames) {
+            try {
+              const fp = path.join(/*turbopackIgnore: true*/ process.cwd(), name);
+              if (fs.existsSync(/*turbopackIgnore: true*/ fp)) {
+                const buf = fs.readFileSync(/*turbopackIgnore: true*/ fp);
+                const wb = XLSX.read(buf, { type: "buffer" });
+                const m = buildCrossSheetArabicMap(wb);
+                if (m.byId.size > 0 || m.byEmail.size > 0 || m.byName.size > 0) {
+                  arabicMap = m;
+                  break;
+                }
+              }
+            } catch {}
+          }
         }
 
         if (arabicMap && (arabicMap.byId.size > 0 || arabicMap.byEmail.size > 0 || arabicMap.byName.size > 0)) {

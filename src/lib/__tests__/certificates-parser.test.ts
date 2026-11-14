@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
+import fs from "fs";
 import path from "path";
-import { parseLocalCertificateFile } from "../certificates-parser";
+import * as XLSX from "xlsx";
+import { parseCertificateWorkbook } from "../certificates-parser";
+
+function parseLocalCertificateFile(filePath: string) {
+  if (!fs.existsSync(filePath)) return [];
+  const buffer = fs.readFileSync(filePath);
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  const baseName = path.basename(filePath, path.extname(filePath));
+  return parseCertificateWorkbook(wb, baseName);
+}
 
 describe("certificates-parser", () => {
   it("extracts Arabic names from MoE multi-sheet Excel file", () => {

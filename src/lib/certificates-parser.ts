@@ -1,6 +1,4 @@
 import * as XLSX from "xlsx";
-import fs from "fs";
-import path from "path";
 import type { CertificateStudentData } from "./stickers/certificate-stickers-pdf";
 
 export type StudentWithReceipt = CertificateStudentData & {
@@ -288,21 +286,5 @@ export function parseCertificateWorkbook(
   }
 
   return results;
-}
-
-/**
- * Attempts to parse an Excel file on disk if available.
- */
-export function parseLocalCertificateFile(filePath: string): StudentWithReceipt[] {
-  try {
-    if (!fs.existsSync(filePath)) return [];
-    const buffer = fs.readFileSync(filePath);
-    const wb = XLSX.read(buffer, { type: "buffer" });
-    const baseName = path.basename(filePath, path.extname(filePath));
-    return parseCertificateWorkbook(wb, baseName);
-  } catch (err) {
-    console.warn("[certificates-parser] Error reading local file", filePath, err);
-    return [];
-  }
 }
 
