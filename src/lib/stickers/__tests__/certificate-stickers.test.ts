@@ -94,4 +94,22 @@ describe("Certificate & Score Report Stickers PDF Generator", () => {
     const doc = await PDFDocument.load(pdfBytes);
     expect(doc.getPageCount()).toBe(1);
   });
+
+  it("should render both English and Arabic student names when present", async () => {
+    const dualNameStudent: CertificateStudentData = {
+      serialNumber: "128",
+      studentName: "Abanoub Emad Adly Abdou",
+      studentNameAr: "ابانوب عماد عدلى عبده",
+      totalReports: 2,
+      reportsList: "March 2026 - EST I; July 2026 - EST II",
+    };
+
+    const pdfBytes = await generateCertificateStickersPdf({
+      students: [dualNameStudent],
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const doc = await PDFDocument.load(pdfBytes);
+    expect(doc.getPageCount()).toBe(1);
+  });
 });

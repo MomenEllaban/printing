@@ -8,6 +8,7 @@ export interface CertificateStudentData {
   id?: string;
   serialNumber?: string | number; // e.g. "128"
   studentName: string; // e.g. "Abdelaziz Sameh Mahmoud Aly Aboueyana"
+  studentNameAr?: string; // Arabic candidate name e.g. "ابانوب عماد عدلى عبده"
   seatNumber?: string;
   nationalId?: string;
   schoolName?: string;
@@ -151,6 +152,24 @@ export async function generateCertificateStickersPdf(
     const page = pdfDoc.addPage([a4W, a4H]);
     const pageStudents = students.slice(p * stickersPerPage, (p + 1) * stickersPerPage);
 
+    // Subtle center cutting guide lines across the A4 sheet
+    const midX = a4W / 2;
+    const midY = a4H / 2;
+    page.drawLine({
+      start: { x: midX, y: margin },
+      end: { x: midX, y: a4H - margin },
+      thickness: 0.5,
+      color: COLOR_LIGHT_GRAY,
+      dashArray: [4, 4],
+    });
+    page.drawLine({
+      start: { x: margin, y: midY },
+      end: { x: a4W - margin, y: midY },
+      thickness: 0.5,
+      color: COLOR_LIGHT_GRAY,
+      dashArray: [4, 4],
+    });
+
     for (let i = 0; i < pageStudents.length; i++) {
       const col = i % 2;
       const row = Math.floor(i / 2); // 0 = top row, 1 = bottom row
@@ -196,20 +215,9 @@ function drawSimpleBwCertificateSticker(params: {
   const rawReportsList = (student.reportsList || "Official EST Score Report").trim();
   const reportsParts = parseReportsList(rawReportsList);
 
-  // 1. Single Outer Border (Clean 1.2pt Black Frame for precise cutting)
-  page.drawRectangle({
-    x,
-    y,
-    width,
-    height,
-    color: COLOR_WHITE,
-    borderColor: COLOR_BLACK,
-    borderWidth: 1.2,
-  });
-
-  // 2. Top Header: Official EST Logo (Centered, clean, no clutter, no subtitles)
-  const logoH = 28;
-  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 48;
+  // 1. Top Header: Enlarged Official EST Logo (Centered, clean, no outer border box)
+  const logoH = 38;
+  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 62;
   const logoX = x + (width - logoW) / 2;
   const logoY = y + height - 8 - logoH;
 
@@ -222,7 +230,7 @@ function drawSimpleBwCertificateSticker(params: {
     });
   } else {
     const estText = "EST";
-    const estSize = 20;
+    const estSize = 24;
     const estW = font.widthOfTextAtSize(estText, estSize);
     page.drawText(estText, {
       x: x + (width - estW) / 2,
@@ -242,7 +250,7 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  // 3. Serial Number & Student Name (English: STUDENT NAME:)
+  // 2. Serial Number & Student Name (English and/or Arabic name from Excel)
   const serialStr = String(serial).startsWith("(") ? String(serial) : `(${serial})`;
   const serialFontSize = serialStr.length > 6 ? 20 : serialStr.length > 4 ? 23 : 26;
   const serialW = font.widthOfTextAtSize(serialStr, serialFontSize);
@@ -251,40 +259,93 @@ function drawSimpleBwCertificateSticker(params: {
   const nameStartX = Math.max(serialX + serialW + 16, x + 72);
   const maxNameWidth = width - (nameStartX - x) - 14;
 
+  const hasArabic = Boolean(student.studentNameAr && student.studentNameAr.trim());
+  const hasEnglish = Boolean(studentName && studentName.trim() && studentName !== student.studentNameAr);
+
   const studentLabelY = headerDividerY - 14;
-  page.drawText("STUDENT NAME:", {
+  const labelText = hasArabic && hasEnglish ? "STUDENT NAME / اسم الطالب:" : "STUDENT NAME:";
+  page.drawText(labelText, {
     x: nameStartX,
     y: studentLabelY,
-    size: 9.5,
+    size: 9,
     font,
     color: COLOR_DARK_GRAY,
   });
 
-  let nameSize = 21;
-  while (nameSize > 11 && font.widthOfTextAtSize(studentName, nameSize) > maxNameWidth) {
-    nameSize -= 0.5;
+  let studentSectionBottomY = studentLabelY - 24;
+
+  if (hasEnglish && hasArabic) {
+    // Both English and Arabic names displayed cleanly stacked
+    const primaryName = studentName;
+    const arabicName = student.studentNameAr!.trim();
+
+    let enSize = 17.5;
+    while (enSize > 10 && font.widthOfTextAtSize(primaryName, enSize) > maxNameWidth) {
+      enSize -= 0.5;
+    }
+    const enY = studentLabelY - 18;
+    page.drawText(primaryName, {
+      x: nameStartX,
+      y: enY,
+      size: enSize,
+      font,
+      color: COLOR_BLACK,
+    });
+
+    let arSize = 17;
+    while (arSize > 10 && font.widthOfTextAtSize(arabicName, arSize) > maxNameWidth) {
+      arSize -= 0.5;
+    }
+    const arY = enY - 20;
+    page.drawText(arabicName, {
+      x: nameStartX,
+      y: arY,
+      size: arSize,
+      font,
+      color: COLOR_BLACK,
+    });
+
+    studentSectionBottomY = arY;
+
+    // Serial number vertically centered beside both name lines
+    const serialCenterY = (enY + arY) / 2 - 2;
+    page.drawText(serialStr, {
+      x: serialX,
+      y: serialCenterY,
+      size: serialFontSize,
+      font,
+      color: COLOR_BLACK,
+    });
+  } else {
+    // Single name (either English or Arabic)
+    const displayName = studentName || student.studentNameAr || "Student Candidate";
+    let nameSize = 21;
+    while (nameSize > 11 && font.widthOfTextAtSize(displayName, nameSize) > maxNameWidth) {
+      nameSize -= 0.5;
+    }
+
+    const nameBaselineY = studentLabelY - 20;
+    page.drawText(displayName, {
+      x: nameStartX,
+      y: nameBaselineY,
+      size: nameSize,
+      font,
+      color: COLOR_BLACK,
+    });
+
+    studentSectionBottomY = nameBaselineY;
+
+    page.drawText(serialStr, {
+      x: serialX,
+      y: nameBaselineY,
+      size: serialFontSize,
+      font,
+      color: COLOR_BLACK,
+    });
   }
 
-  const nameBaselineY = studentLabelY - 21;
-  page.drawText(studentName, {
-    x: nameStartX,
-    y: nameBaselineY,
-    size: nameSize,
-    font,
-    color: COLOR_BLACK,
-  });
-
-  // Serial Number aligned with Student Name baseline
-  page.drawText(serialStr, {
-    x: serialX,
-    y: nameBaselineY,
-    size: serialFontSize,
-    font,
-    color: COLOR_BLACK,
-  });
-
   // Divider Line below Student Section
-  const studentDividerY = nameBaselineY - 10;
+  const studentDividerY = studentSectionBottomY - 10;
   page.drawLine({
     start: { x: x + 8, y: studentDividerY },
     end: { x: x + width - 8, y: studentDividerY },

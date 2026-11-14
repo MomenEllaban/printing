@@ -90,8 +90,31 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): StudentWit
       if (h === "sn" || h === "serial" || h === "no" || (colIdx === 0 && !isNaN(Number(v)))) {
         if (!serial) serial = v;
       }
-      if (h.includes("namear")) nameAr = v;
-      else if ((h.includes("nameen") || h.includes("name") || h.includes("student")) && !nameEn) nameEn = v;
+      if (
+        h.includes("namear") ||
+        h.includes("arabic") ||
+        h.includes("عربي") ||
+        h.includes("بالعربي") ||
+        h.includes("الاسمبالعربي") ||
+        h.includes("اسمالطالببالعربي")
+      ) {
+        nameAr = v;
+      } else if (
+        h.includes("nameen") ||
+        h.includes("english") ||
+        h.includes("انجليزي") ||
+        h.includes("إنجليزي") ||
+        h.includes("بالانجليزي") ||
+        h.includes("بالإنجليزي")
+      ) {
+        nameEn = v;
+      } else if (h.includes("name") || h.includes("student") || h.includes("طالب") || h.includes("اسم")) {
+        if (/[\u0600-\u06FF]/.test(v)) {
+          if (!nameAr) nameAr = v;
+        } else {
+          if (!nameEn) nameEn = v;
+        }
+      }
       if (h.includes("national")) nationalId = v;
       if (h.includes("totalreport") || h.includes("nbofreport")) totalReports = v;
       if (h.includes("reportlist") || h.includes("reports")) reportList = v;
@@ -109,6 +132,7 @@ function parseSmartSheet(rawRows: any[][], defaultBatchName: string): StudentWit
       id: `row-${r}`,
       serialNumber: finalSerial,
       studentName,
+      studentNameAr: nameAr || undefined,
       seatNumber: "",
       nationalId,
       schoolName: school,
@@ -391,6 +415,7 @@ export default function CertificateStickersPage() {
         (s) =>
           (s.serialNumber && String(s.serialNumber).toLowerCase().includes(q)) ||
           s.studentName.toLowerCase().includes(q) ||
+          (s.studentNameAr && s.studentNameAr.includes(searchQuery.trim())) ||
           (s.reportsList && s.reportsList.toLowerCase().includes(q)) ||
           (s.certificateCode && s.certificateCode.toLowerCase().includes(q)),
       );
@@ -689,7 +714,12 @@ export default function CertificateStickersPage() {
                     <tr key={s.id || idx} className={cn("hover:bg-surface-soft/40 transition-colors", received && "bg-emerald-500/5")}>
                       <td className="px-4 py-2.5 font-mono text-muted">{idx + 1}</td>
                       <td className="px-4 py-2.5"><span className="rounded bg-slate-900 text-amber-400 px-2 py-0.5 font-mono font-bold text-xs">({s.serialNumber || idx + 1})</span></td>
-                      <td className="px-4 py-2.5 font-bold text-foreground text-sm">{s.studentName}</td>
+                      <td className="px-4 py-2.5 font-bold text-foreground text-sm">
+                        <div>{s.studentName}</div>
+                        {s.studentNameAr && s.studentNameAr !== s.studentName && (
+                          <div className="text-xs font-semibold text-muted mt-0.5">{s.studentNameAr}</div>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5"><span className="rounded bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold px-2 py-0.5 text-xs">{s.totalReports || 1}</span></td>
                       <td className="px-4 py-2.5 text-foreground max-w-xs">{s.reportsList || "-"}</td>
                       <td className="px-4 py-2.5">
