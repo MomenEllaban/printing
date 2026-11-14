@@ -264,7 +264,7 @@ function drawSimpleBwCertificateSticker(params: {
   const hasEnglish = Boolean(studentName && studentName.trim() && studentName !== student.studentNameAr);
 
   const studentLabelY = headerDividerY - 14;
-  const labelText = hasArabic && hasEnglish ? "STUDENT NAME / اسم الطالب:" : "STUDENT NAME:";
+  const labelText = "STUDENT NAME:";
   page.drawText(labelText, {
     x: nameStartX,
     y: studentLabelY,

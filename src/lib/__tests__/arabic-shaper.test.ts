@@ -17,12 +17,12 @@ describe("arabic-shaper", () => {
     expect(shaped.charCodeAt(0)).toBe(0xfefb); // لا isolated
   });
 
-  it("formats for PDF by reversing shaped characters", () => {
+  it("formats for PDF with properly shaped connected characters in natural reading order", () => {
     const res = formatArabicForPdf("عماد");
-    expect(res.charCodeAt(0)).toBe(0xfea9); // د
-    expect(res.charCodeAt(1)).toBe(0xfe8e); // ا
-    expect(res.charCodeAt(2)).toBe(0xfee4); // م
-    expect(res.charCodeAt(3)).toBe(0xfecb); // ع
+    expect(res.charCodeAt(0)).toBe(0xfecb); // ع initial
+    expect(res.charCodeAt(1)).toBe(0xfee4); // م medial
+    expect(res.charCodeAt(2)).toBe(0xfe8e); // ا final
+    expect(res.charCodeAt(3)).toBe(0xfea9); // د isolated
   });
 });
 

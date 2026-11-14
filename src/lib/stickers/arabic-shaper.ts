@@ -136,8 +136,9 @@ export function shapeArabicText(text: string): string {
 }
 
 /**
- * Shapes Arabic text and reverses it for Left-To-Right rendering engines like PDF-lib.
- * Handles mixed text (Arabic words are shaped and reversed; English/numbers stay LTR).
+ * Shapes Arabic text for PDF-lib with proper Unicode Presentation Forms-B
+ * so that connected letters (initial, medial, final, isolated) and Lam-Alef ligatures
+ * render joined and beautifully in natural reading order without broken/reversed characters.
  */
 export function formatArabicForPdf(text: string): string {
   if (!text) return "";
@@ -149,13 +150,6 @@ export function formatArabicForPdf(text: string): string {
     return trimmed;
   }
 
-  const shaped = shapeArabicText(trimmed);
-
-  // Split into tokens: Arabic runs vs non-Arabic runs
-  // For standard Arabic names (e.g. "يارا رمضان يوسف"), simply reverse the shaped characters
-  // so that PDF-lib's LTR cursor draws them from right to left properly.
-  const chars = Array.from(shaped);
-  chars.reverse();
-  return chars.join("");
+  return shapeArabicText(trimmed);
 }
 
