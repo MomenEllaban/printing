@@ -86,6 +86,7 @@ import {
   getRegisterTheme,
   type RegisterCategory,
 } from "@/lib/stickers/register-utils";
+import { isOfficialSchoolName, stripGovernorateFromName } from "@/lib/stickers/est-reference-data";
 
 function RegisterIcon({ category, className }: { category: RegisterCategory; className?: string }) {
   if (category === "building_excel") return <FileSpreadsheet className={className} />;
@@ -948,9 +949,31 @@ export function FileBrowser({
 
       const examName = relevant[0] || "EST 1";
       const governorate = relevant[1];
-      const center = relevant[2];
-      const building = relevant[3] || (!/floor|دور/i.test(target.name) ? target.name : undefined);
-      const floor = relevant[4] || (/floor|دور/i.test(target.name) ? target.name : undefined);
+      let center: string | undefined;
+      let building: string | undefined;
+      let floor: string | undefined;
+
+      const secondLevel = relevant[2];
+      const thirdLevel = relevant[3];
+      const fourthLevel = relevant[4];
+
+      const isSchool =
+        Boolean(secondLevel) &&
+        (isOfficialSchoolName(secondLevel) ||
+          (thirdLevel ? isFloorFolderName(thirdLevel) : false) ||
+          /school|college|division|academy|مدرسة/i.test(secondLevel || ""));
+
+      if (isSchool) {
+        // School is both center and building
+        const cleanName = stripGovernorateFromName(secondLevel);
+        center = cleanName;
+        building = cleanName;
+        floor = thirdLevel || (isFloorFolderName(target.name) ? target.name : undefined);
+      } else {
+        center = secondLevel;
+        building = thirdLevel || (!isFloorFolderName(target.name) ? target.name : undefined);
+        floor = fourthLevel || (isFloorFolderName(target.name) ? target.name : undefined);
+      }
 
       const children = folderChildren[target.id] || [];
       const rooms = children
@@ -2837,11 +2860,11 @@ export function FileBrowser({
         </nav>
       )}
 
-      {/* Quick EST Schools Seed Banner if inside EST 1 / EST 2 and Schools folder is missing */}
+      {/* Quick EST Governorates & Schools Seed Banner if inside EST 1 / EST 2 and Governorate folders are missing */}
       {!demoActive &&
         currentFolder &&
         /^EST\s*[12]$/i.test(currentFolder.name.trim()) &&
-        !items.some((i) => i.isFolder && /^schools$/i.test(i.name.trim())) && (
+        !items.some((i) => i.isFolder && /alexandria|cairo|giza|qalyubia|dakahlia|menofia|suez|minya|damietta/i.test(i.name.trim())) && (
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-sm text-indigo-950 dark:text-indigo-200">
             <div className="flex items-center gap-3">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
@@ -2850,13 +2873,13 @@ export function FileBrowser({
               <div>
                 <p className="font-bold text-foreground">
                   {locale === "ar"
-                    ? "مجلد المدارس (Schools) غير موجود هنا بعد"
-                    : "Schools folder is not created here yet"}
+                    ? "هيكل المحافظات والمدارس غير موجود هنا بعد"
+                    : "Governorates & Schools tree is not created here yet"}
                 </p>
                 <p className="text-xs text-muted">
                   {locale === "ar"
-                    ? "اضغط هنا لإنشاء فولدر Schools بالـ 18 مدرسة وأدوارها وقاعاتها وتفريغ المحافظات فوراً"
-                    : "Click here to create Schools folder with all 18 schools, floors, rooms, and clear governorate folders"}
+                    ? "اضغط هنا لإنشاء هيكل المحافظات ووضع كل مدرسة وسنتر داخل مدينتها (18 مدرسة والسناتر الجامعية) فوراً"
+                    : "Click here to create governorates with all 18 official schools and university centers inside each governorate"}
                 </p>
               </div>
             </div>
@@ -2870,7 +2893,7 @@ export function FileBrowser({
               ) : (
                 <Sparkles className="size-4" />
               )}
-              <span>{locale === "ar" ? "إنشاء مجلد Schools الآن" : "Create Schools Folder Now"}</span>
+              <span>{locale === "ar" ? "إنشاء هيكل EST الآن" : "Create EST Tree Now"}</span>
             </Button>
           </div>
         )}
@@ -3789,11 +3812,11 @@ export function FileBrowser({
         open={seedConfirmOpen}
         onClose={() => setSeedConfirmOpen(false)}
         onConfirm={() => void handleSeedEst()}
-        title={locale === "ar" ? "إنشاء هيكل مجلدات المدارس لاختبارات EST" : "Create EST Schools Folder Structure"}
+        title={locale === "ar" ? "إنشاء وتحديث هيكل المحافظات والمدارس لاختبارات EST" : "Create EST Governorates & Schools Structure"}
         description={
           locale === "ar"
-            ? "سيتم إنشاء وتحديث مجلد المدارس الرسمي (فولدر Schools يحتوي على 18 مدرسة، جميع الأدوار، والقاعات) مع المحافظات الفارغة داخل Google Drive مباشرة. هل تريد المتابعة؟"
-            : "This will automatically create/update the official Schools folder (Schools folder with 18 schools, all floors, and rooms) and empty governorates in Google Drive. Continue?"
+            ? "سيتم إنشاء وتحديث هيكل المحافظات ووضع كل مدرسة وسنتر داخل مدينتها ومحافظتها التابعة لها (18 مدرسة رسمية والسناتر الجامعية بأدوارها وقاعاتها) مع دعم كامل لـ EST 1 و EST 2. هل تريد المتابعة؟"
+            : "This will automatically create/update the Governorates tree with each school and center placed inside its corresponding governorate (18 official schools and university centers with all floors & rooms) for EST 1 & EST 2. Continue?"
         }
         confirmLabel={locale === "ar" ? "بدء الإنشاء" : "Create Structure"}
         loading={seedingEst}

@@ -2,7 +2,11 @@ import { config } from "dotenv";
 config();
 
 import { getDriveContextWithRoot, getConnection } from "../src/lib/auth";
-import { OFFICIAL_EST_SCHOOLS } from "../src/lib/stickers/est-reference-data";
+import {
+  OFFICIAL_EST_SCHOOLS,
+  OFFICIAL_EST_CENTERS,
+} from "../src/lib/stickers/est-reference-data";
+import { OFFICIAL_GOVERNORATES } from "../src/app/api/est/seed/route";
 import { createFolder } from "../src/lib/drive";
 import type { drive_v3 } from "googleapis";
 
@@ -40,29 +44,60 @@ async function getOrCreateChildFolder(
   return folderId;
 }
 
-async function seedExamSchools(
+async function seedExamGovernoratesAndSchools(
   drive: drive_v3.Drive,
   examFolderId: string,
   examName: string,
   cache: Map<string, string>,
 ) {
   console.log(`\n========================================`);
-  console.log(`Seeding Schools for ${examName}...`);
+  console.log(`Seeding Governorates, Schools & Centers for ${examName}...`);
   console.log(`========================================`);
 
-  const schoolsFolderId = await getOrCreateChildFolder(drive, examFolderId, "Schools", cache);
+  for (const gov of OFFICIAL_GOVERNORATES) {
+    console.log(`\n--- Governorate: ${gov} ---`);
+    const govFolderId = await getOrCreateChildFolder(drive, examFolderId, gov, cache);
 
-  for (let s = 0; s < OFFICIAL_EST_SCHOOLS.length; s++) {
-    const school = OFFICIAL_EST_SCHOOLS[s];
-    console.log(`\n[${s + 1}/${OFFICIAL_EST_SCHOOLS.length}] School: ${school.fullFolderName}`);
-    const schoolId = await getOrCreateChildFolder(drive, schoolsFolderId, school.fullFolderName, cache);
+    // 1. Seed schools in this governorate
+    const schoolsInGov = OFFICIAL_EST_SCHOOLS.filter(
+      (s) => s.governorate.toLowerCase() === gov.toLowerCase(),
+    );
 
-    for (const fl of school.floors) {
-      console.log(`  -> Floor: ${fl.floorName} (${fl.rooms.length} rooms)`);
-      const floorId = await getOrCreateChildFolder(drive, schoolId, fl.floorName, cache);
+    for (const school of schoolsInGov) {
+      console.log(`  [School] ${school.schoolName}`);
+      const schoolId = await getOrCreateChildFolder(drive, govFolderId, school.schoolName, cache);
 
-      for (const room of fl.rooms) {
-        await getOrCreateChildFolder(drive, floorId, room, cache);
+      for (const fl of school.floors) {
+        console.log(`    -> Floor: ${fl.floorName} (${fl.rooms.length} rooms)`);
+        const floorId = await getOrCreateChildFolder(drive, schoolId, fl.floorName, cache);
+
+        for (const room of fl.rooms) {
+          await getOrCreateChildFolder(drive, floorId, room, cache);
+        }
+      }
+    }
+
+    // 2. Seed university campuses / multi-building centers in this governorate
+    const centersInGov = OFFICIAL_EST_CENTERS.filter(
+      (c) => c.governorate.toLowerCase() === gov.toLowerCase(),
+    );
+
+    for (const center of centersInGov) {
+      console.log(`  [Center] ${center.centerName}`);
+      const centerId = await getOrCreateChildFolder(drive, govFolderId, center.centerName, cache);
+
+      for (const bld of center.buildings) {
+        console.log(`    -> Building: ${bld.buildingName}`);
+        const bldId = await getOrCreateChildFolder(drive, centerId, bld.buildingName, cache);
+
+        for (const fl of bld.floors) {
+          console.log(`      -> Floor: ${fl.floorName} (${fl.rooms.length} rooms)`);
+          const floorId = await getOrCreateChildFolder(drive, bldId, fl.floorName, cache);
+
+          for (const room of fl.rooms) {
+            await getOrCreateChildFolder(drive, floorId, room, cache);
+          }
+        }
       }
     }
   }
@@ -93,12 +128,12 @@ async function main() {
     // EST 1
     console.log(`Ensuring 'EST 1' under '${cycleName}'...`);
     const est1Id = await getOrCreateChildFolder(drive, cycleFolderId, "EST 1", cache);
-    await seedExamSchools(drive, est1Id, `EST 1 (${cycleName})`, cache);
+    await seedExamGovernoratesAndSchools(drive, est1Id, `EST 1 (${cycleName})`, cache);
 
     // EST 2
     console.log(`Ensuring 'EST 2' under '${cycleName}'...`);
     const est2Id = await getOrCreateChildFolder(drive, cycleFolderId, "EST 2", cache);
-    await seedExamSchools(drive, est2Id, `EST 2 (${cycleName})`, cache);
+    await seedExamGovernoratesAndSchools(drive, est2Id, `EST 2 (${cycleName})`, cache);
   }
 
   console.log(`\n🎉 Successfully completed! Verified/created official EST schools structure for [${cycles.join(", ")}] across ${cache.size} total folders in Google Drive!`);

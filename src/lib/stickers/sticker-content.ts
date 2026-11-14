@@ -1,4 +1,10 @@
-import { getReferenceSubfolderInfo, parseSchoolFolderName } from "./est-reference-data";
+import {
+  getReferenceSubfolderInfo,
+  parseSchoolFolderName,
+  isOfficialSchoolName,
+  stripGovernorateFromName,
+} from "./est-reference-data";
+import { isFloorFolderName } from "./register-utils";
 import { getRoomExamCounts, type RoomSubjectCount } from "./est-room-data";
 
 export type StickerLevel = "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom";
@@ -151,28 +157,60 @@ export function buildStickerContent(
   } else if (locationChain.length === 1) {
     level = "governorate";
     governorate = locationChain[0];
-  } else if (locationChain.length === 2) {
-    level = "center";
+  } else {
+    // locationChain has at least 2 items: [Governorate, SecondLevel, ...]
     governorate = locationChain[0];
-    center = locationChain[1];
-  } else if (locationChain.length === 3) {
-    level = "building";
-    governorate = locationChain[0];
-    center = locationChain[1];
-    building = locationChain[2];
-  } else if (locationChain.length === 4) {
-    level = "floor";
-    governorate = locationChain[0];
-    center = locationChain[1];
-    building = locationChain[2];
-    floor = locationChain[3];
-  } else if (locationChain.length >= 5) {
-    level = "room";
-    governorate = locationChain[0];
-    center = locationChain[1];
-    building = locationChain[2];
-    floor = locationChain[3];
-    room = locationChain[4];
+    const secondLevel = locationChain[1];
+    const thirdLevel = locationChain[2];
+    const fourthLevel = locationChain[3];
+    const fifthLevel = locationChain[4];
+
+    // Check if secondLevel is a school (or if thirdLevel is a Floor, meaning secondLevel is the Building/School)
+    const isSchool =
+      isOfficialSchoolName(secondLevel) ||
+      (thirdLevel ? isFloorFolderName(thirdLevel) : false) ||
+      /school|college|division|academy|مدرسة/i.test(secondLevel);
+
+    if (isSchool) {
+      // School name is both the test center and the building
+      const parsed = parseSchoolFolderName(secondLevel);
+      const cleanSchoolName = parsed.schoolName || stripGovernorateFromName(secondLevel);
+      center = cleanSchoolName;
+      building = cleanSchoolName;
+      if (!governorate && parsed.governorate) {
+        governorate = parsed.governorate;
+      }
+
+      if (locationChain.length === 2) {
+        level = "building";
+      } else if (locationChain.length === 3) {
+        level = "floor";
+        floor = thirdLevel;
+      } else if (locationChain.length >= 4) {
+        level = "room";
+        floor = thirdLevel;
+        room = fourthLevel;
+      }
+    } else {
+      // University / Multi-building center (Governorate -> Center -> Building -> Floor -> Room)
+      center = secondLevel;
+
+      if (locationChain.length === 2) {
+        level = "center";
+      } else if (locationChain.length === 3) {
+        level = "building";
+        building = thirdLevel;
+      } else if (locationChain.length === 4) {
+        level = "floor";
+        building = thirdLevel;
+        floor = fourthLevel;
+      } else if (locationChain.length >= 5) {
+        level = "room";
+        building = thirdLevel;
+        floor = fourthLevel;
+        room = fifthLevel;
+      }
+    }
   }
 
   const fields: StickerFieldItem[] = [];

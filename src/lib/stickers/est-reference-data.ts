@@ -9,6 +9,18 @@ export interface EstReferenceRow {
   studentsWithEssay: number;
 }
 
+export const OFFICIAL_GOVERNORATES = [
+  "Alexandria",
+  "Cairo",
+  "Giza",
+  "Qalyubia",
+  "Dakahlia",
+  "Menofia",
+  "Suez",
+  "Minya",
+  "Damietta",
+];
+
 export interface EstSchoolDefinition {
   schoolName: string;
   governorate: string;
@@ -18,6 +30,143 @@ export interface EstSchoolDefinition {
     rooms: string[];
   }>;
 }
+
+export interface EstCenterDefinition {
+  centerName: string;
+  governorate: string;
+  buildings: Array<{
+    buildingName: string;
+    floors: Array<{
+      floorName: string;
+      rooms: string[];
+    }>;
+  }>;
+}
+
+/**
+ * Official university campuses and multi-building test centers from previous reference data.
+ */
+export const OFFICIAL_EST_CENTERS: EstCenterDefinition[] = [
+  {
+    centerName: "Abu Qir",
+    governorate: "Alexandria",
+    buildings: [
+      {
+        buildingName: "Pharmacy",
+        floors: [
+          { floorName: "2nd Floor", rooms: ["204", "205", "219"] },
+          { floorName: "3rd Floor", rooms: ["304", "305", "319"] },
+          { floorName: "4th Floor", rooms: ["404", "405", "424"] },
+          { floorName: "5th Floor", rooms: ["504", "505", "507", "513"] },
+        ],
+      },
+    ],
+  },
+  {
+    centerName: "Sheraton",
+    governorate: "Cairo",
+    buildings: [
+      {
+        buildingName: "Transport & Logistics",
+        floors: [
+          { floorName: "2nd Floor", rooms: ["201A", "202A", "203A", "204A", "205A"] },
+          { floorName: "3rd Floor", rooms: ["302A", "303A", "304A", "305A"] },
+          { floorName: "4th Floor", rooms: ["401A", "402A", "403A", "404A", "405A"] },
+          { floorName: "5th Floor", rooms: ["502A", "503A", "504A"] },
+        ],
+      },
+      {
+        buildingName: "Management & Technology",
+        floors: [
+          { floorName: "Ground", rooms: ["2", "3", "4", "11", "12", "13", "14"] },
+          { floorName: "1st Floor", rooms: ["101", "103", "104", "105"] },
+          { floorName: "2nd Floor", rooms: ["201"] },
+          { floorName: "3rd Floor", rooms: ["302"] },
+          { floorName: "4th Floor", rooms: ["401", "402", "403", "404"] },
+          { floorName: "5th Floor", rooms: ["501", "502", "503", "504", "505"] },
+        ],
+      },
+    ],
+  },
+  {
+    centerName: "Future University",
+    governorate: "Cairo",
+    buildings: [
+      {
+        buildingName: "Business",
+        floors: [
+          { floorName: "Basement", rooms: ["C1.3", "C1.7 lecture hall", "C1.8 lecture hall", "C1.10"] },
+          { floorName: "1st Floor", rooms: ["C3.2 lecture hall", "C3.3 lecture hall", "C3.4 lecture hall"] },
+          { floorName: "2nd Floor", rooms: ["C4.1", "C4.2", "C4.3", "C4.4"] },
+          { floorName: "3rd Floor", rooms: ["C5.3", "C5.4 lecture hall", "C5.6", "C5.7", "C5.8", "C5.9", "C5.10"] },
+        ],
+      },
+      {
+        buildingName: "Political Sc",
+        floors: [
+          { floorName: "Basement", rooms: ["F1.2 lecture hall"] },
+          { floorName: "Ground", rooms: ["F2.2 lecture hall"] },
+          { floorName: "1st Floor", rooms: ["F3.1", "F3.2 lecture hall", "F3.5", "F3.6"] },
+          { floorName: "2nd Floor", rooms: ["F4.2 lecture hall", "F4.3", "F4.4", "F4.5", "F4.6"] },
+        ],
+      },
+    ],
+  },
+  {
+    centerName: "Horus University",
+    governorate: "Damietta",
+    buildings: [
+      {
+        buildingName: "Engineering",
+        floors: [
+          { floorName: "2nd Floor", rooms: ["E205", "E211", "E212", "E213"] },
+          { floorName: "3rd Floor", rooms: ["E310", "E316", "E317", "E318", "E319"] },
+          { floorName: "4th Floor", rooms: ["E414", "E418", "E419", "E420", "E421", "E422", "E423"] },
+        ],
+      },
+    ],
+  },
+  {
+    centerName: "Smart Village",
+    governorate: "Giza",
+    buildings: [
+      {
+        buildingName: "Building A",
+        floors: [
+          { floorName: "1st Floor", rooms: ["A106", "A108", "A110", "A112", "A114", "A116"] },
+          { floorName: "3rd Floor", rooms: ["A302", "A303", "A304", "A305", "A306", "A307", "A308", "A309", "A310", "A311", "A312", "A313"] },
+          { floorName: "4th Floor", rooms: ["A402", "A404", "A405", "A407", "A408", "A409", "A410", "A411", "A412", "A413", "A414", "A415", "A416"] },
+        ],
+      },
+    ],
+  },
+  {
+    centerName: "Al Ryada University",
+    governorate: "Menofia",
+    buildings: [
+      {
+        buildingName: "Science And Technology",
+        floors: [
+          { floorName: "1st Floor", rooms: ["P 024", "P 117", "D 028", "D 120"] },
+        ],
+      },
+    ],
+  },
+  {
+    centerName: "Deraya University",
+    governorate: "Minya",
+    buildings: [
+      {
+        buildingName: "Dentistry",
+        floors: [
+          { floorName: "Ground", rooms: ["Hall 1", "Hall 2", "Hall 3"] },
+          { floorName: "1st Floor", rooms: ["Hall 4", "Hall 5", "Hall 6", "Class 1", "Class 2", "Class 3"] },
+          { floorName: "2nd Floor", rooms: ["Hall 7", "Hall 8", "Class 4", "Class 5", "Class 6"] },
+        ],
+      },
+    ],
+  },
+];
 
 /**
  * Official schools, floors, and rooms structure for EST 1 & EST 2.
@@ -396,11 +545,30 @@ export function stripGovernorateFromName(name?: string | null): string {
 }
 
 /**
- * Set of all official room names across all schools (lowercase).
+ * Checks whether a given string corresponds to one of the 18 official EST schools.
  */
-export const OFFICIAL_ROOMS_SET = new Set<string>(
-  OFFICIAL_EST_SCHOOLS.flatMap((s) => s.floors.flatMap((fl) => fl.rooms.map((r) => r.toLowerCase()))),
-);
+export function isOfficialSchoolName(name?: string | null): boolean {
+  if (!name) return false;
+  const clean = name.trim().toLowerCase();
+  const stripped = stripGovernorateFromName(name).toLowerCase();
+  return OFFICIAL_EST_SCHOOLS.some(
+    (s) =>
+      s.schoolName.toLowerCase() === clean ||
+      s.schoolName.toLowerCase() === stripped ||
+      s.fullFolderName.toLowerCase() === clean ||
+      s.fullFolderName.toLowerCase() === stripped,
+  );
+}
+
+/**
+ * Set of all official room names across all schools and university centers (lowercase).
+ */
+export const OFFICIAL_ROOMS_SET = new Set<string>([
+  ...OFFICIAL_EST_SCHOOLS.flatMap((s) => s.floors.flatMap((fl) => fl.rooms.map((r) => r.toLowerCase()))),
+  ...OFFICIAL_EST_CENTERS.flatMap((c) =>
+    c.buildings.flatMap((b) => b.floors.flatMap((fl) => fl.rooms.map((r) => r.toLowerCase()))),
+  ),
+]);
 
 /**
  * Logical sorting weight for floor names to guarantee standard building floor order:
@@ -420,16 +588,17 @@ export function getFloorSortWeight(floorName?: string | null): number {
 }
 
 /**
- * Builds standard EST reference rows for all official schools.
- * Supports lookups by either clean school name or full folder name with governorate.
+ * Builds standard EST reference rows for all official schools and centers.
+ * Supports lookups by clean school name, full folder name with governorate, or center/building name.
  */
 function buildOfficialReferenceRows(): EstReferenceRow[] {
   const rows: EstReferenceRow[] = [];
 
+  // 1. Official Schools (school name is both test center and building)
   for (const school of OFFICIAL_EST_SCHOOLS) {
     for (const fl of school.floors) {
       for (const room of fl.rooms) {
-        // Index each room once with full folder name and clean test center name
+        // Full folder name entry
         rows.push({
           governorate: school.governorate,
           testCenter: school.schoolName,
@@ -440,6 +609,37 @@ function buildOfficialReferenceRows(): EstReferenceRow[] {
           studentsWithoutEssay: 25,
           studentsWithEssay: 0,
         });
+        // Clean school name entry (when folder is just schoolName inside governorate)
+        rows.push({
+          governorate: school.governorate,
+          testCenter: school.schoolName,
+          building: school.schoolName,
+          floor: fl.floorName,
+          room,
+          studentsEst1: 25,
+          studentsWithoutEssay: 25,
+          studentsWithEssay: 0,
+        });
+      }
+    }
+  }
+
+  // 2. University campuses and multi-building centers
+  for (const center of OFFICIAL_EST_CENTERS) {
+    for (const bld of center.buildings) {
+      for (const fl of bld.floors) {
+        for (const room of fl.rooms) {
+          rows.push({
+            governorate: center.governorate,
+            testCenter: center.centerName,
+            building: bld.buildingName,
+            floor: fl.floorName,
+            room,
+            studentsEst1: 25,
+            studentsWithoutEssay: 25,
+            studentsWithEssay: 0,
+          });
+        }
       }
     }
   }
@@ -449,17 +649,6 @@ function buildOfficialReferenceRows(): EstReferenceRow[] {
     { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "204", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
     { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "205", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
     { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "2nd Floor", room: "219", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "304", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "305", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "3rd Floor", room: "319", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "404", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "405", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "4th Floor", room: "424", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "504", studentsEst1: 24, studentsWithoutEssay: 24, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "505", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "507", studentsEst1: 30, studentsWithoutEssay: 30, studentsWithEssay: 0 },
-    { governorate: "Alexandria", testCenter: "Abu Qir", building: "Pharmacy", floor: "5th Floor", room: "513", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
-    { governorate: "Cairo", testCenter: "Sheraton", building: "Transport & Logistics", floor: "2nd Floor", room: "201A", studentsEst1: 27, studentsWithoutEssay: 27, studentsWithEssay: 0 },
     { governorate: "Cairo", testCenter: "Sheraton", building: "Management & Technology", floor: "2nd Floor", room: "201", studentsEst1: 25, studentsWithoutEssay: 25, studentsWithEssay: 0 },
   );
 

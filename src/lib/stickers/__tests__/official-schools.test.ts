@@ -102,5 +102,71 @@ describe("Official EST 1 & EST 2 Schools Architecture", () => {
     expect(content.childNames).toEqual(["3rd Floor"]);
     expect(content.totalRooms).toBe(12);
   });
+
+  it("builds sticker content correctly for schools located directly inside their governorate", () => {
+    // School Room level: Governorate -> School -> Floor -> Room (School is center & building)
+    const roomChain = [
+      "December 2026",
+      "EST 1",
+      "Cairo",
+      "Al-Andalus International School",
+      "1st Floor",
+      "10B",
+    ];
+
+    const roomContent = buildStickerContent(roomChain);
+    expect(roomContent.level).toBe("room");
+    expect(roomContent.room).toBe("10B");
+    expect(roomContent.floor).toBe("1st Floor");
+    expect(roomContent.building).toBe("Al-Andalus International School");
+    expect(roomContent.center).toBe("Al-Andalus International School");
+    expect(roomContent.governorate).toBe("Cairo");
+
+    // School Floor level: Governorate -> School -> Floor
+    const floorChain = [
+      "EST 1",
+      "Alexandria",
+      "Future International School",
+      "3rd Floor",
+    ];
+
+    const floorContent = buildStickerContent(floorChain);
+    expect(floorContent.level).toBe("floor");
+    expect(floorContent.floor).toBe("3rd Floor");
+    expect(floorContent.building).toBe("Future International School");
+    expect(floorContent.center).toBe("Future International School");
+    expect(floorContent.governorate).toBe("Alexandria");
+
+    // School Building level: Governorate -> School
+    const schoolChain = [
+      "EST 2",
+      "Qalyubia",
+      "Al Alamiya Modern School - International",
+    ];
+
+    const schoolContent = buildStickerContent(schoolChain);
+    expect(schoolContent.level).toBe("building");
+    expect(schoolContent.building).toBe("Al Alamiya Modern School - International");
+    expect(schoolContent.center).toBe("Al Alamiya Modern School - International");
+    expect(schoolContent.governorate).toBe("Qalyubia");
+
+    // Multi-building University Center level: Governorate -> Center -> Building -> Floor -> Room
+    const uniChain = [
+      "EST 1",
+      "Alexandria",
+      "Abu Qir",
+      "Pharmacy",
+      "2nd Floor",
+      "204",
+    ];
+
+    const uniContent = buildStickerContent(uniChain);
+    expect(uniContent.level).toBe("room");
+    expect(uniContent.room).toBe("204");
+    expect(uniContent.floor).toBe("2nd Floor");
+    expect(uniContent.building).toBe("Pharmacy");
+    expect(uniContent.center).toBe("Abu Qir");
+    expect(uniContent.governorate).toBe("Alexandria");
+  });
 });
 

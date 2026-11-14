@@ -1,6 +1,11 @@
 import type { Breadcrumb, DriveItem, DriveStats, FileCategory } from "./types";
 import { MIME, categoryFor, extensionOf } from "./file-utils";
-import { EST_REFERENCE_DATA, OFFICIAL_EST_SCHOOLS } from "./stickers/est-reference-data";
+import {
+  EST_REFERENCE_DATA,
+  OFFICIAL_EST_SCHOOLS,
+  OFFICIAL_EST_CENTERS,
+  OFFICIAL_GOVERNORATES,
+} from "./stickers/est-reference-data";
 import { formatEst1FileName, formatEst2FileName } from "./stickers/est-room-data";
 
 interface DemoRecord {
@@ -196,88 +201,172 @@ function buildEstDemoRecords(): DemoRecord[] {
   const makeId = (prefix: string, str: string) =>
     `${prefix}-${str.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-")}`;
 
-  // Populate both EST 1 and EST 2 with the identical official schools hierarchy
+  // Populate both EST 1 and EST 2 with governorates, schools, and university centers
   const examRoots = [
-    { exam: "EST 1", parentId: "demo-folder-est-1-schools", idPrefix: "est1" },
-    { exam: "EST 2", parentId: "demo-folder-est-2-schools", idPrefix: "est2" },
-    { exam: "EST 1", parentId: "demo-folder-jan-est-1-schools", idPrefix: "jan-est1" },
-    { exam: "EST 2", parentId: "demo-folder-jan-est-2-schools", idPrefix: "jan-est2" },
-    { exam: "EST 1", parentId: "demo-folder-mar-est-1-schools", idPrefix: "mar-est1" },
-    { exam: "EST 2", parentId: "demo-folder-mar-est-2-schools", idPrefix: "mar-est2" },
+    { exam: "EST 1", parentId: "demo-folder-est-1", idPrefix: "est1" },
+    { exam: "EST 2", parentId: "demo-folder-est-2", idPrefix: "est2" },
+    { exam: "EST 1", parentId: "demo-folder-jan-est-1", idPrefix: "jan-est1" },
+    { exam: "EST 2", parentId: "demo-folder-jan-est-2", idPrefix: "jan-est2" },
+    { exam: "EST 1", parentId: "demo-folder-mar-est-1", idPrefix: "mar-est1" },
+    { exam: "EST 2", parentId: "demo-folder-mar-est-2", idPrefix: "mar-est2" },
   ];
 
   for (const root of examRoots) {
-    for (const school of OFFICIAL_EST_SCHOOLS) {
-      // School Folder: e.g. "Al Alamiya Modern School - International (Qalyubia)"
-      const schoolId = makeId(`demo-${root.idPrefix}`, school.fullFolderName);
-      if (!addedIds.has(schoolId)) {
-        addedIds.add(schoolId);
+    for (const gov of OFFICIAL_GOVERNORATES) {
+      const govId = makeId(`demo-${root.idPrefix}`, gov);
+      if (!addedIds.has(govId)) {
+        addedIds.add(govId);
         records.push({
-          id: schoolId,
-          name: school.fullFolderName,
+          id: govId,
+          name: gov,
           mimeType: MIME.folder,
           size: 0,
           parentId: root.parentId,
           modifiedOffsetDays: 2,
         });
-
-        // Sample Building Excel Master Register inside each school
-        const excelId = `${schoolId}-building-excel`;
-        records.push({
-          id: excelId,
-          name: `${school.schoolName} _ Master_Register.xlsx`,
-          mimeType: MIME.xlsx,
-          size: 245_000,
-          parentId: schoolId,
-          modifiedOffsetDays: 2,
-          content: "xlsx",
-        });
       }
 
-      // Floors
-      for (const fl of school.floors) {
-        const flrId = makeId(schoolId, fl.floorName);
-        if (!addedIds.has(flrId)) {
-          addedIds.add(flrId);
+      // Schools in this governorate (school is both center and building)
+      const schoolsInGov = OFFICIAL_EST_SCHOOLS.filter(
+        (s) => s.governorate.toLowerCase() === gov.toLowerCase(),
+      );
+
+      for (const school of schoolsInGov) {
+        const schoolId = makeId(govId, school.schoolName);
+        if (!addedIds.has(schoolId)) {
+          addedIds.add(schoolId);
           records.push({
-            id: flrId,
-            name: fl.floorName,
+            id: schoolId,
+            name: school.schoolName,
             mimeType: MIME.folder,
             size: 0,
+            parentId: govId,
+            modifiedOffsetDays: 2,
+          });
+
+          // Sample Building Excel Master Register inside each school
+          const excelId = `${schoolId}-building-excel`;
+          records.push({
+            id: excelId,
+            name: `${school.schoolName} _ Master_Register.xlsx`,
+            mimeType: MIME.xlsx,
+            size: 245_000,
             parentId: schoolId,
+            modifiedOffsetDays: 2,
+            content: "xlsx",
+          });
+        }
+
+        // Floors
+        for (const fl of school.floors) {
+          const flrId = makeId(schoolId, fl.floorName);
+          if (!addedIds.has(flrId)) {
+            addedIds.add(flrId);
+            records.push({
+              id: flrId,
+              name: fl.floorName,
+              mimeType: MIME.folder,
+              size: 0,
+              parentId: schoolId,
+              modifiedOffsetDays: 2,
+            });
+          }
+
+          // Rooms
+          for (const room of fl.rooms) {
+            const rmId = makeId(flrId, room);
+            if (!addedIds.has(rmId)) {
+              addedIds.add(rmId);
+              records.push({
+                id: rmId,
+                name: room,
+                mimeType: MIME.folder,
+                size: 0,
+                parentId: flrId,
+                modifiedOffsetDays: 2,
+              });
+
+              // Sample exam PDF inside each room
+              const examFileName =
+                root.exam === "EST 1"
+                  ? formatEst1FileName(room, 25, 25, 0)
+                  : formatEst2FileName(room, { MATH1: 25, MATH2: 25, BIO: 25, CHEM: 20 });
+
+              records.push({
+                id: `${rmId}-student-register`,
+                name: examFileName,
+                mimeType: MIME.pdf,
+                size: 154_200,
+                parentId: rmId,
+                modifiedOffsetDays: 1,
+                content: "pdf",
+              });
+            }
+          }
+        }
+      }
+
+      // Centers in this governorate
+      const centersInGov = OFFICIAL_EST_CENTERS.filter(
+        (c) => c.governorate.toLowerCase() === gov.toLowerCase(),
+      );
+
+      for (const center of centersInGov) {
+        const centerId = makeId(govId, center.centerName);
+        if (!addedIds.has(centerId)) {
+          addedIds.add(centerId);
+          records.push({
+            id: centerId,
+            name: center.centerName,
+            mimeType: MIME.folder,
+            size: 0,
+            parentId: govId,
             modifiedOffsetDays: 2,
           });
         }
 
-        // Rooms
-        for (const room of fl.rooms) {
-          const rmId = makeId(flrId, room);
-          if (!addedIds.has(rmId)) {
-            addedIds.add(rmId);
+        for (const bld of center.buildings) {
+          const bldId = makeId(centerId, bld.buildingName);
+          if (!addedIds.has(bldId)) {
+            addedIds.add(bldId);
             records.push({
-              id: rmId,
-              name: room,
+              id: bldId,
+              name: bld.buildingName,
               mimeType: MIME.folder,
               size: 0,
-              parentId: flrId,
+              parentId: centerId,
               modifiedOffsetDays: 2,
             });
+          }
 
-            // Sample exam PDF inside each room
-            const examFileName =
-              root.exam === "EST 1"
-                ? formatEst1FileName(room, 25, 25, 0)
-                : formatEst2FileName(room, { MATH1: 25, MATH2: 25, BIO: 25, CHEM: 20 });
+          for (const fl of bld.floors) {
+            const flrId = makeId(bldId, fl.floorName);
+            if (!addedIds.has(flrId)) {
+              addedIds.add(flrId);
+              records.push({
+                id: flrId,
+                name: fl.floorName,
+                mimeType: MIME.folder,
+                size: 0,
+                parentId: bldId,
+                modifiedOffsetDays: 2,
+              });
+            }
 
-            records.push({
-              id: `${rmId}-student-register`,
-              name: examFileName,
-              mimeType: MIME.pdf,
-              size: 154_200,
-              parentId: rmId,
-              modifiedOffsetDays: 1,
-              content: "pdf",
-            });
+            for (const room of fl.rooms) {
+              const rmId = makeId(flrId, room);
+              if (!addedIds.has(rmId)) {
+                addedIds.add(rmId);
+                records.push({
+                  id: rmId,
+                  name: room,
+                  mimeType: MIME.folder,
+                  size: 0,
+                  parentId: flrId,
+                  modifiedOffsetDays: 2,
+                });
+              }
+            }
           }
         }
       }

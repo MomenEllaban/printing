@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireSession, enforceRateLimit, jsonError } from "@/lib/api-utils";
 import { getConnection, getDriveContextWithRoot } from "@/lib/auth";
-import { OFFICIAL_EST_SCHOOLS } from "@/lib/stickers/est-reference-data";
+import {
+  OFFICIAL_EST_SCHOOLS,
+  OFFICIAL_EST_CENTERS,
+  OFFICIAL_GOVERNORATES,
+} from "@/lib/stickers/est-reference-data";
 import { createFolder } from "@/lib/drive";
 import { AppError } from "@/lib/errors";
 import type { drive_v3 } from "googleapis";
@@ -9,17 +13,7 @@ import type { drive_v3 } from "googleapis";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export const OFFICIAL_GOVERNORATES = [
-  "Alexandria",
-  "Cairo",
-  "Giza",
-  "Qalyubia",
-  "Dakahlia",
-  "Menofia",
-  "Suez",
-  "Minya",
-  "Damietta",
-];
+export { OFFICIAL_GOVERNORATES };
 
 export const OFFICIAL_CYCLES = [
   "December 2026",
@@ -80,7 +74,147 @@ async function getOrCreateSubFolderFast(
 }
 
 /**
- * Highly optimized seeding of the 18 official schools, floors and rooms inside a given Schools folder
+ * Seeding of official schools, floors, and rooms inside a specific Governorate folder
+ */
+async function seedGovernorateSchoolsAndCenters(
+  drive: drive_v3.Drive,
+  govFolderId: string,
+  govName: string,
+): Promise<{ schoolsCreated: number; roomsCreated: number }> {
+  const govChildrenMap = await getExistingChildFoldersMap(drive, govFolderId);
+  let schoolsCreated = 0;
+  let roomsCreated = 0;
+
+  // 1. Seed official schools in this governorate (school is both center and building)
+  const schoolsInGov = OFFICIAL_EST_SCHOOLS.filter(
+    (s) => s.governorate.toLowerCase() === govName.toLowerCase(),
+  );
+
+  for (const school of schoolsInGov) {
+    const cleanKey = school.schoolName.trim().toLowerCase();
+    const fullKey = school.fullFolderName.trim().toLowerCase();
+    let schoolFolderId = govChildrenMap.get(cleanKey) || govChildrenMap.get(fullKey);
+
+    if (!schoolFolderId) {
+      const created = await createFolder(drive, school.schoolName, govFolderId);
+      schoolFolderId = created.id!;
+      govChildrenMap.set(cleanKey, schoolFolderId);
+    }
+    schoolsCreated++;
+
+    const existingFloorsMap = await getExistingChildFoldersMap(drive, schoolFolderId);
+
+    for (const fl of school.floors) {
+      const floorFolderId = await getOrCreateSubFolderFast(
+        drive,
+        schoolFolderId,
+        fl.floorName,
+        existingFloorsMap,
+      );
+
+      const existingRoomsMap = await getExistingChildFoldersMap(drive, floorFolderId);
+
+      for (const rm of fl.rooms) {
+        await getOrCreateSubFolderFast(
+          drive,
+          floorFolderId,
+          rm,
+          existingRoomsMap,
+        );
+        roomsCreated++;
+      }
+    }
+  }
+
+  // 2. Seed university campuses / multi-building centers in this governorate
+  const centersInGov = OFFICIAL_EST_CENTERS.filter(
+    (c) => c.governorate.toLowerCase() === govName.toLowerCase(),
+  );
+
+  for (const center of centersInGov) {
+    const centerFolderId = await getOrCreateSubFolderFast(
+      drive,
+      govFolderId,
+      center.centerName,
+      govChildrenMap,
+    );
+
+    const existingBldMap = await getExistingChildFoldersMap(drive, centerFolderId);
+
+    for (const bld of center.buildings) {
+      const bldFolderId = await getOrCreateSubFolderFast(
+        drive,
+        centerFolderId,
+        bld.buildingName,
+        existingBldMap,
+      );
+
+      const existingFloorsMap = await getExistingChildFoldersMap(drive, bldFolderId);
+
+      for (const fl of bld.floors) {
+        const floorFolderId = await getOrCreateSubFolderFast(
+          drive,
+          bldFolderId,
+          fl.floorName,
+          existingFloorsMap,
+        );
+
+        const existingRoomsMap = await getExistingChildFoldersMap(drive, floorFolderId);
+
+        for (const rm of fl.rooms) {
+          await getOrCreateSubFolderFast(
+            drive,
+            floorFolderId,
+            rm,
+            existingRoomsMap,
+          );
+          roomsCreated++;
+        }
+      }
+    }
+  }
+
+  return { schoolsCreated, roomsCreated };
+}
+
+/**
+ * Highly optimized Seeding of Governorates, Schools, Floors, and Rooms directly under an Exam folder (EST 1 or EST 2)
+ * Structure: Exam -> Governorate -> School/Center -> Floor -> Room
+ */
+async function seedGovernoratesAndSchoolsHierarchyFast(
+  drive: drive_v3.Drive,
+  examFolderId: string,
+): Promise<{ governoratesCount: number; schoolsCreated: number; roomsCreated: number }> {
+  const examChildrenMap = await getExistingChildFoldersMap(drive, examFolderId);
+  let totalSchools = 0;
+  let totalRooms = 0;
+
+  for (const gov of OFFICIAL_GOVERNORATES) {
+    const govFolderId = await getOrCreateSubFolderFast(
+      drive,
+      examFolderId,
+      gov,
+      examChildrenMap,
+    );
+
+    const { schoolsCreated, roomsCreated } = await seedGovernorateSchoolsAndCenters(
+      drive,
+      govFolderId,
+      gov,
+    );
+    totalSchools += schoolsCreated;
+    totalRooms += roomsCreated;
+  }
+
+  return {
+    governoratesCount: OFFICIAL_GOVERNORATES.length,
+    schoolsCreated: totalSchools,
+    roomsCreated: totalRooms,
+  };
+}
+
+/**
+ * Backwards compatibility helper for standalone Schools folder
  */
 async function seedSchoolsInsideFolder(
   drive: drive_v3.Drive,
@@ -89,7 +223,6 @@ async function seedSchoolsInsideFolder(
   const existingSchoolsMap = await getExistingChildFoldersMap(drive, schoolsFolderId);
   let roomsCreated = 0;
 
-  // Process schools in controlled parallel batches of 6 for speed
   const batchSize = 6;
   for (let i = 0; i < OFFICIAL_EST_SCHOOLS.length; i += batchSize) {
     const chunk = OFFICIAL_EST_SCHOOLS.slice(i, i + batchSize);
@@ -98,7 +231,7 @@ async function seedSchoolsInsideFolder(
         const schoolFolderId = await getOrCreateSubFolderFast(
           drive,
           schoolsFolderId,
-          school.fullFolderName,
+          school.schoolName,
           existingSchoolsMap,
         );
 
@@ -130,35 +263,6 @@ async function seedSchoolsInsideFolder(
   return { schoolsCreated: OFFICIAL_EST_SCHOOLS.length, roomsCreated };
 }
 
-/**
- * Highly optimized Seeding of the official Schools / Floors / Rooms hierarchy
- */
-async function seedSchoolsHierarchyFast(
-  drive: drive_v3.Drive,
-  examFolderId: string,
-): Promise<{ schoolsCreated: number; roomsCreated: number }> {
-  // 1. Get existing folders under the exam folder (Schools, Menofia, Minya, etc.)
-  const examChildrenMap = await getExistingChildFoldersMap(drive, examFolderId);
-
-  // 2. Ensure "Schools" folder exists
-  const schoolsFolderId = await getOrCreateSubFolderFast(
-    drive,
-    examFolderId,
-    "Schools",
-    examChildrenMap,
-  );
-
-  // 3. Populate schools inside the Schools folder
-  const res = await seedSchoolsInsideFolder(drive, schoolsFolderId);
-
-  // 4. Ensure all governorate folders exist directly under exam folder
-  for (const gov of OFFICIAL_GOVERNORATES) {
-    await getOrCreateSubFolderFast(drive, examFolderId, gov, examChildrenMap);
-  }
-
-  return res;
-}
-
 export async function POST(request: Request) {
   try {
     await requireSession(request);
@@ -181,7 +285,7 @@ export async function POST(request: Request) {
         ? body.targetFolderId.trim()
         : null;
 
-    // Check if targetFolderId points to Schools, an Exam, or a Cycle
+    // Check if targetFolderId points to a Governorate, Exam, or Cycle
     if (targetFolderId) {
       try {
         const meta = await drive.files.get({
@@ -190,7 +294,21 @@ export async function POST(request: Request) {
         });
         const targetName = (meta.data.name || "").trim();
 
-        // CASE 1: User is inside the "Schools" folder itself
+        // CASE 1: User is inside a specific Governorate folder (e.g. Alexandria, Cairo, etc.)
+        const matchingGov = OFFICIAL_GOVERNORATES.find(
+          (g) => g.toLowerCase() === targetName.toLowerCase(),
+        );
+        if (matchingGov) {
+          const result = await seedGovernorateSchoolsAndCenters(drive, targetFolderId, matchingGov);
+          return NextResponse.json({
+            success: true,
+            message: `Successfully seeded schools and centers inside ${matchingGov}`,
+            totalSchools: result.schoolsCreated,
+            totalRooms: result.roomsCreated,
+          });
+        }
+
+        // CASE 2: User is inside a legacy "Schools" folder itself
         if (targetName.toLowerCase() === "schools") {
           const result = await seedSchoolsInsideFolder(drive, targetFolderId);
           return NextResponse.json({
@@ -201,27 +319,28 @@ export async function POST(request: Request) {
           });
         }
 
-        // CASE 2: User is directly inside EST 1 or EST 2 (e.g. December 2026 / EST 1)
+        // CASE 3: User is directly inside EST 1 or EST 2 (e.g. December 2026 / EST 1)
         if (/^EST\s*[-_]?\s*[12]\b/i.test(targetName)) {
-          const result = await seedSchoolsHierarchyFast(drive, targetFolderId);
+          const result = await seedGovernoratesAndSchoolsHierarchyFast(drive, targetFolderId);
           return NextResponse.json({
             success: true,
-            message: `Successfully created Schools folder (18 schools, floors & rooms) inside ${targetName}`,
+            message: `Successfully created Governorates, Schools & Centers hierarchy inside ${targetName}`,
+            totalGovernorates: result.governoratesCount,
             totalSchools: result.schoolsCreated,
             totalRooms: result.roomsCreated,
           });
         }
 
-        // CASE 3: User is inside a cycle folder (e.g. December 2026)
+        // CASE 4: User is inside a cycle folder (e.g. December 2026)
         if (/^(december|january|march|cycle|session)\b/i.test(targetName)) {
           const cycleChildrenMap = await getExistingChildFoldersMap(drive, targetFolderId);
           const est1Id = await getOrCreateSubFolderFast(drive, targetFolderId, "EST 1", cycleChildrenMap);
           const est2Id = await getOrCreateSubFolderFast(drive, targetFolderId, "EST 2", cycleChildrenMap);
-          const res1 = await seedSchoolsHierarchyFast(drive, est1Id);
-          const res2 = await seedSchoolsHierarchyFast(drive, est2Id);
+          const res1 = await seedGovernoratesAndSchoolsHierarchyFast(drive, est1Id);
+          const res2 = await seedGovernoratesAndSchoolsHierarchyFast(drive, est2Id);
           return NextResponse.json({
             success: true,
-            message: `Successfully seeded Schools & Governorates inside ${targetName} for EST 1 & EST 2`,
+            message: `Successfully seeded Governorates & Schools inside ${targetName} for EST 1 & EST 2`,
             totalSchools: res1.schoolsCreated + res2.schoolsCreated,
             totalRooms: res1.roomsCreated + res2.roomsCreated,
           });
@@ -231,14 +350,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // CASE 4: Seed Cycle folders (default to single active cycle "December 2026" to prevent timeout)
+    // CASE 5: Seed Cycle folders under Root (default: active cycle "December 2026")
     const rootChildrenMap = await getExistingChildFoldersMap(drive, rootFolderId);
 
     let cyclesToSeed: string[] = ["December 2026"];
     if (typeof body.cycle === "string" && body.cycle.trim()) {
       cyclesToSeed = [body.cycle.trim()];
     } else if (Array.isArray(body.cycles) && body.cycles.length > 0) {
-      // Pick first requested cycle to avoid gateway timeout
       cyclesToSeed = [String(body.cycles[0]).trim()];
     } else if (typeof body.scheduleName === "string" && body.scheduleName.trim()) {
       cyclesToSeed = [body.scheduleName.trim()];
@@ -280,7 +398,7 @@ export async function POST(request: Request) {
 
       const examResults = [];
       for (const exam of examTargets) {
-        const { roomsCreated } = await seedSchoolsHierarchyFast(drive, exam.id);
+        const { roomsCreated } = await seedGovernoratesAndSchoolsHierarchyFast(drive, exam.id);
         examResults.push({ examName: exam.name, examFolderId: exam.id, roomsCreated });
       }
 
@@ -293,7 +411,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully seeded Schools & Governorates for ${cyclesToSeed.join(", ")}`,
+      message: `Successfully seeded Governorates & Schools for ${cyclesToSeed.join(", ")}`,
       seededCycles,
     });
   } catch (err) {
