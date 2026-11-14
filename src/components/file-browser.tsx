@@ -3978,6 +3978,13 @@ export function FileBrowser({
         description={`${deleteTarget?.name ?? ""} — ${t("common.deleteConfirm")}`}
         confirmLabel={t("common.delete")}
         loading={deleting}
+        requireConfirmationText={deleteTarget?.name ?? "delete"}
+        copyableText={deleteTarget?.name}
+        instructionMessage={
+          locale === "ar"
+            ? `لتأكيد حذف "${deleteTarget?.name}"، يرجى كتابة اسم الملف أو كلمة delete أدناه:`
+            : `To confirm deleting "${deleteTarget?.name}", please type the item name or "delete" below:`
+        }
       />
 
       <ConfirmDialog
@@ -4248,6 +4255,14 @@ export function FileBrowser({
         description={t("batch.deleteConfirmDesc", { count: selectedIds.size })}
         confirmLabel={t("common.delete")}
         loading={batchDeleting}
+        requireConfirmationText="delete"
+        confirmationMatchTexts={["delete", "DELETE", "حذف"]}
+        copyableText="delete"
+        instructionMessage={
+          locale === "ar"
+            ? `لحذف ${selectedIds.size} عنصر محدد نهائياً، يرجى كتابة كلمة delete أدناه للتأكيد:`
+            : `To permanently delete ${selectedIds.size} selected items, please type "delete" below to confirm:`
+        }
       />
 
       {/* Batch Print Dialog */}

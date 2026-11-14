@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Button, Input } from "@/components/ui";
+import { Button, ConfirmDialog, Input } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
 import { cn } from "@/lib/cn";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
@@ -68,6 +68,9 @@ export default function CertificateStickersPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTitle, setPreviewTitle] = useState("");
   const [previewOrientation, setPreviewOrientation] = useState<"portrait" | "landscape">("portrait");
+
+  const [batchToDelete, setBatchToDelete] = useState<ServerBatch | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState(false);
 
   const activeServerBatch = useMemo(
     () => serverBatches.find((b) => b.id === activeBatchId) || null,
@@ -507,9 +510,12 @@ export default function CertificateStickersPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); void deleteServerBatch(batch.id); }}
-                      className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-500/10"
-                      title={locale === "ar" ? "حذف" : "Delete"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBatchToDelete(batch);
+                      }}
+                      className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                      title={locale === "ar" ? "حذف هذا الملف" : "Delete this batch"}
                     >
                       <Trash2 className="size-3.5" />
                     </button>
@@ -735,6 +741,37 @@ export default function CertificateStickersPage() {
           }
         />
       )}
+
+      {/* Delete Batch Confirmation Dialog */}
+      <ConfirmDialog
+        open={Boolean(batchToDelete)}
+        onClose={() => setBatchToDelete(null)}
+        onConfirm={async () => {
+          if (!batchToDelete) return;
+          setDeletingBatch(true);
+          try {
+            await deleteServerBatch(batchToDelete.id);
+            setBatchToDelete(null);
+          } finally {
+            setDeletingBatch(false);
+          }
+        }}
+        title={locale === "ar" ? "تأكيد حذف ملف الشهادات" : "Confirm Batch Deletion"}
+        description={
+          locale === "ar"
+            ? `سيتم حذف ملف الشهادات "${batchToDelete?.fileName || batchToDelete?.name}" وسجل استلامات الطلاب التابع له نهائياً.`
+            : `Batch "${batchToDelete?.fileName || batchToDelete?.name}" and all associated student receipts will be permanently deleted.`
+        }
+        confirmLabel={locale === "ar" ? "حذف الملف" : "Delete Batch"}
+        loading={deletingBatch}
+        requireConfirmationText={batchToDelete?.fileName || batchToDelete?.name || "delete"}
+        copyableText={batchToDelete?.fileName || batchToDelete?.name || undefined}
+        instructionMessage={
+          locale === "ar"
+            ? `لتأكيد حذف "${batchToDelete?.fileName || batchToDelete?.name}"، يرجى كتابة اسم الملف أو كلمة delete للتأكيد:`
+            : `To confirm deleting "${batchToDelete?.fileName || batchToDelete?.name}", please type the file name or "delete" below:`
+        }
+      />
     </div>
   );
 }

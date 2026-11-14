@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
@@ -172,6 +172,14 @@ export function ExcelViewer({
 
   const handleDeleteRow = (rowIdx: number, sheetIdx?: number) => {
     if (!registerMode || sheets.length === 0) return;
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        locale === "ar"
+          ? "هل أنت متأكد من رغبتك في حذف هذا المراقب من الجدول؟"
+          : "Are you sure you want to delete this proctor row?",
+      );
+      if (!ok) return;
+    }
     const targetIdx = sheetIdx !== undefined ? sheetIdx : activeTabIdx;
     setSheets((prev) => {
       const copy = [...prev];
@@ -216,6 +224,14 @@ export function ExcelViewer({
     if (parsed.dataRows.length === 0) {
       toast.error(locale === "ar" ? "لا يوجد مراقبين لحذفهم" : "No proctors to delete");
       return;
+    }
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        locale === "ar"
+          ? "هل أنت متأكد من رغبتك في حذف آخر مراقب تمت إضافته؟"
+          : "Are you sure you want to delete the last added proctor row?",
+      );
+      if (!ok) return;
     }
     const lastRow = parsed.dataRows[parsed.dataRows.length - 1];
     handleDeleteRow(lastRow.rawRowIdx, targetIdx);
