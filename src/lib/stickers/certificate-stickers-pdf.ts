@@ -101,6 +101,48 @@ function normalizeReportItem(item: string): string {
   return res.replace(/\s+/g, " ").trim();
 }
 
+function wrapTextToLines(
+  text: string,
+  font: any,
+  targetSize: number,
+  maxWidth: number,
+): { lines: string[]; fontSize: number } {
+  const trimmed = text.trim();
+  if (!trimmed) return { lines: [], fontSize: targetSize };
+
+  // 1. Try single line scaling down to 10.5pt
+  let size = targetSize;
+  while (size >= 10.5 && font.widthOfTextAtSize(trimmed, size) > maxWidth) {
+    size -= 0.5;
+  }
+  if (font.widthOfTextAtSize(trimmed, size) <= maxWidth) {
+    return { lines: [trimmed], fontSize: size };
+  }
+
+  // 2. Wrap into 2 lines for long multi-word names
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 1) {
+    while (size > 8 && font.widthOfTextAtSize(trimmed, size) > maxWidth) {
+      size -= 0.5;
+    }
+    return { lines: [trimmed], fontSize: size };
+  }
+
+  const bestSplit = Math.ceil(words.length / 2);
+  const line1 = words.slice(0, bestSplit).join(" ");
+  const line2 = words.slice(bestSplit).join(" ");
+  let wrapSize = Math.min(targetSize, 13.5);
+
+  while (
+    wrapSize > 8.5 &&
+    (font.widthOfTextAtSize(line1, wrapSize) > maxWidth || font.widthOfTextAtSize(line2, wrapSize) > maxWidth)
+  ) {
+    wrapSize -= 0.5;
+  }
+
+  return { lines: [line1, line2], fontSize: wrapSize };
+}
+
 export function parseReportsList(raw: string): string[] {
   if (!raw) return [];
   const normalized = normalizeReportItem(raw);
@@ -255,103 +297,88 @@ function drawSimpleBwCertificateSticker(params: {
 
   // 2. Serial Number & Student Name (English and/or Arabic name from Excel)
   const serialStr = String(serial).startsWith("(") ? String(serial) : `(${serial})`;
-  const serialFontSize = width > 320
-    ? (serialStr.length > 6 ? 20 : serialStr.length > 4 ? 23 : 26)
-    : (serialStr.length > 5 ? 17 : 21);
-  const serialW = font.widthOfTextAtSize(serialStr, serialFontSize);
+  const serialFontSize = 21;
 
-  const serialX = x + 10;
-  const nameStartX = Math.max(serialX + serialW + 8, width > 320 ? x + 72 : x + 48);
-  const maxNameWidth = width - (nameStartX - x) - 8;
+  // Dedicated row for Serial Number (left) and label (right)
+  const serialRowY = headerDividerY - 17;
+  page.drawText(serialStr, {
+    x: x + 12,
+    y: serialRowY,
+    size: serialFontSize,
+    font,
+    color: COLOR_BLACK,
+  });
 
-  const hasArabic = Boolean(student.studentNameAr && student.studentNameAr.trim());
-  const hasEnglish = Boolean(studentName && studentName.trim() && studentName !== student.studentNameAr);
-
-  const studentLabelY = headerDividerY - 14;
   const labelText = "STUDENT NAME:";
+  const labelSize = 9;
+  const labelW = font.widthOfTextAtSize(labelText, labelSize);
   page.drawText(labelText, {
-    x: nameStartX,
-    y: studentLabelY,
-    size: 9,
+    x: x + width - 12 - labelW,
+    y: serialRowY + 2,
+    size: labelSize,
     font,
     color: COLOR_DARK_GRAY,
   });
 
-  let studentSectionBottomY = studentLabelY - 24;
+  // Name lines take FULL width of the sticker
+  const nameStartX = x + 12;
+  const maxNameWidth = width - 24;
+
+  const hasArabic = Boolean(student.studentNameAr && student.studentNameAr.trim());
+  const hasEnglish = Boolean(studentName && studentName.trim() && studentName !== student.studentNameAr);
+
+  let curY = serialRowY - 19;
 
   if (hasEnglish && hasArabic) {
-    // Both English and Arabic names displayed cleanly stacked
     const primaryName = studentName;
     const arabicName = formatArabicForPdf(student.studentNameAr!.trim());
 
-    let enSize = width > 320 ? 17.5 : 15.5;
-    while (enSize > 8.5 && font.widthOfTextAtSize(primaryName, enSize) > maxNameWidth) {
-      enSize -= 0.5;
+    // English Name
+    const enFit = wrapTextToLines(primaryName, font, 14.5, maxNameWidth);
+    for (const line of enFit.lines) {
+      page.drawText(line, {
+        x: nameStartX,
+        y: curY,
+        size: enFit.fontSize,
+        font,
+        color: COLOR_BLACK,
+      });
+      curY -= enFit.fontSize + 4;
     }
-    const enY = studentLabelY - 18;
-    page.drawText(primaryName, {
-      x: nameStartX,
-      y: enY,
-      size: enSize,
-      font,
-      color: COLOR_BLACK,
-    });
 
-    let arSize = width > 320 ? 17 : 15;
-    while (arSize > 8.5 && font.widthOfTextAtSize(arabicName, arSize) > maxNameWidth) {
-      arSize -= 0.5;
+    curY -= 2;
+
+    // Arabic Name
+    const arFit = wrapTextToLines(arabicName, font, 14.5, maxNameWidth);
+    for (const line of arFit.lines) {
+      page.drawText(line, {
+        x: nameStartX,
+        y: curY,
+        size: arFit.fontSize,
+        font,
+        color: COLOR_BLACK,
+      });
+      curY -= arFit.fontSize + 4;
     }
-    const arY = enY - 20;
-    page.drawText(arabicName, {
-      x: nameStartX,
-      y: arY,
-      size: arSize,
-      font,
-      color: COLOR_BLACK,
-    });
-
-    studentSectionBottomY = arY;
-
-    // Serial number vertically centered beside both name lines
-    const serialCenterY = (enY + arY) / 2 - 2;
-    page.drawText(serialStr, {
-      x: serialX,
-      y: serialCenterY,
-      size: serialFontSize,
-      font,
-      color: COLOR_BLACK,
-    });
   } else {
     // Single name (either English or Arabic)
     const rawName = studentName || student.studentNameAr || "Student Candidate";
     const displayName = /[\u0600-\u06FF]/.test(rawName) ? formatArabicForPdf(rawName) : rawName;
-    let nameSize = width > 320 ? 21 : 18;
-    while (nameSize > 9.5 && font.widthOfTextAtSize(displayName, nameSize) > maxNameWidth) {
-      nameSize -= 0.5;
+    const fit = wrapTextToLines(displayName, font, 16.5, maxNameWidth);
+    for (const line of fit.lines) {
+      page.drawText(line, {
+        x: nameStartX,
+        y: curY,
+        size: fit.fontSize,
+        font,
+        color: COLOR_BLACK,
+      });
+      curY -= fit.fontSize + 4;
     }
-
-    const nameBaselineY = studentLabelY - 20;
-    page.drawText(displayName, {
-      x: nameStartX,
-      y: nameBaselineY,
-      size: nameSize,
-      font,
-      color: COLOR_BLACK,
-    });
-
-    studentSectionBottomY = nameBaselineY;
-
-    page.drawText(serialStr, {
-      x: serialX,
-      y: nameBaselineY,
-      size: serialFontSize,
-      font,
-      color: COLOR_BLACK,
-    });
   }
 
-  // Divider Line below Student Section
-  const studentDividerY = studentSectionBottomY - 10;
+  // Divider Line below Student Section (widened spacing)
+  const studentDividerY = curY - 12;
   page.drawLine({
     start: { x: x + 8, y: studentDividerY },
     end: { x: x + width - 8, y: studentDividerY },
@@ -359,12 +386,12 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  // 4. Reports Summary Row: TOTAL REPORTS (100% English, no Arabic text)
+  // 4. Reports Summary Row: TOTAL REPORTS (Widened spacing)
   const totalReportsNum = student.totalReports ? Number(student.totalReports) : reportsParts.length;
   const totalReportsCount = totalReportsNum > 0 ? totalReportsNum : Math.max(1, reportsParts.length);
   const totalReportsStr = `${totalReportsCount} ${totalReportsCount === 1 ? "Report" : "Reports"}`;
 
-  const totalLabelY = studentDividerY - 13;
+  const totalLabelY = studentDividerY - 18;
   page.drawText("TOTAL REPORTS:", {
     x: x + 12,
     y: totalLabelY,
@@ -373,17 +400,17 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_DARK_GRAY,
   });
 
-  const totalValY = totalLabelY - 17;
+  const totalValY = totalLabelY - 19;
   page.drawText(totalReportsStr, {
     x: x + 12,
     y: totalValY,
-    size: 15,
+    size: 15.5,
     font,
     color: COLOR_BLACK,
   });
 
-  // Divider Line below Total Reports
-  const summaryDividerY = totalValY - 8;
+  // Divider Line below Total Reports (Widened spacing)
+  const summaryDividerY = totalValY - 12;
   page.drawLine({
     start: { x: x + 8, y: summaryDividerY },
     end: { x: x + width - 8, y: summaryDividerY },
@@ -391,8 +418,8 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_LIGHT_GRAY,
   });
 
-  // 5. Enclosed Score Reports List
-  const listTitleY = summaryDividerY - 14;
+  // 5. Enclosed Score Reports List (Widened spacing)
+  const listTitleY = summaryDividerY - 18;
   page.drawText("ENCLOSED SCORE REPORTS:", {
     x: x + 12,
     y: listTitleY,
@@ -401,7 +428,7 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  const reportsStartY = listTitleY - 16;
+  const reportsStartY = listTitleY - 19;
   const count = reportsParts.length;
 
   if (count === 0) {
@@ -414,8 +441,8 @@ function drawSimpleBwCertificateSticker(params: {
     });
   } else if (count <= 6 || width < 320) {
     // 1 column with generous line spacing in portrait (width ~280pt, height ~403pt)
-    const step = count <= 2 ? 24 : count <= 4 ? 20 : 17;
-    const baseSize = count <= 2 ? 12.5 : count <= 4 ? 11.5 : 10.5;
+    const step = count <= 2 ? 26 : count <= 4 ? 22 : 18;
+    const baseSize = count <= 2 ? 13 : count <= 4 ? 11.5 : 10.5;
     const maxLineW = width - 24;
 
     for (let r = 0; r < count; r++) {
