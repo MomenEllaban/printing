@@ -32,6 +32,7 @@ export interface CertificateStickersOptions {
   examName?: string;
   students: CertificateStudentData[];
   layout?: "grid_4_per_a4" | "single_quarter_a4";
+  orientation?: "portrait" | "landscape";
 }
 
 // 100% Black & White Palette
@@ -137,14 +138,15 @@ export async function generateCertificateStickersPdf(
         },
       ];
 
-  // A4 Landscape: 841.89 x 595.28 pt (297mm x 210mm)
-  const a4W = 841.89;
-  const a4H = 595.28;
-  const margin = 14;
-  const gapX = 12;
-  const gapY = 12;
-  const stickerW = (a4W - margin * 2 - gapX) / 2; // ~400.9 pt (~141.4 mm)
-  const stickerH = (a4H - margin * 2 - gapY) / 2; // ~270.6 pt (~95.5 mm)
+  // A4 Portrait default (210mm x 297mm) as requested; Landscape optional
+  const isLandscape = options.orientation === "landscape";
+  const a4W = isLandscape ? 841.89 : 595.28;
+  const a4H = isLandscape ? 595.28 : 841.89;
+  const margin = isLandscape ? 14 : 12;
+  const gapX = isLandscape ? 12 : 10;
+  const gapY = isLandscape ? 12 : 12;
+  const stickerW = (a4W - margin * 2 - gapX) / 2; // Portrait: ~280.6 pt (~99 mm)
+  const stickerH = (a4H - margin * 2 - gapY) / 2; // Portrait: ~402.9 pt (~142.1 mm)
 
   const stickersPerPage = 4;
   const totalPages = Math.ceil(students.length / stickersPerPage);
@@ -217,8 +219,8 @@ function drawSimpleBwCertificateSticker(params: {
   const reportsParts = parseReportsList(rawReportsList);
 
   // 1. Top Header: Enlarged Official EST Logo (Centered, clean, no outer border box)
-  const logoH = 38;
-  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 62;
+  const logoH = width > 320 ? 38 : 35;
+  const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 56;
   const logoX = x + (width - logoW) / 2;
   const logoY = y + height - 8 - logoH;
 
@@ -253,12 +255,14 @@ function drawSimpleBwCertificateSticker(params: {
 
   // 2. Serial Number & Student Name (English and/or Arabic name from Excel)
   const serialStr = String(serial).startsWith("(") ? String(serial) : `(${serial})`;
-  const serialFontSize = serialStr.length > 6 ? 20 : serialStr.length > 4 ? 23 : 26;
+  const serialFontSize = width > 320
+    ? (serialStr.length > 6 ? 20 : serialStr.length > 4 ? 23 : 26)
+    : (serialStr.length > 5 ? 17 : 21);
   const serialW = font.widthOfTextAtSize(serialStr, serialFontSize);
 
-  const serialX = x + 14;
-  const nameStartX = Math.max(serialX + serialW + 16, x + 72);
-  const maxNameWidth = width - (nameStartX - x) - 14;
+  const serialX = x + 10;
+  const nameStartX = Math.max(serialX + serialW + 8, width > 320 ? x + 72 : x + 48);
+  const maxNameWidth = width - (nameStartX - x) - 8;
 
   const hasArabic = Boolean(student.studentNameAr && student.studentNameAr.trim());
   const hasEnglish = Boolean(studentName && studentName.trim() && studentName !== student.studentNameAr);
@@ -280,8 +284,8 @@ function drawSimpleBwCertificateSticker(params: {
     const primaryName = studentName;
     const arabicName = formatArabicForPdf(student.studentNameAr!.trim());
 
-    let enSize = 17.5;
-    while (enSize > 10 && font.widthOfTextAtSize(primaryName, enSize) > maxNameWidth) {
+    let enSize = width > 320 ? 17.5 : 15.5;
+    while (enSize > 8.5 && font.widthOfTextAtSize(primaryName, enSize) > maxNameWidth) {
       enSize -= 0.5;
     }
     const enY = studentLabelY - 18;
@@ -293,8 +297,8 @@ function drawSimpleBwCertificateSticker(params: {
       color: COLOR_BLACK,
     });
 
-    let arSize = 17;
-    while (arSize > 10 && font.widthOfTextAtSize(arabicName, arSize) > maxNameWidth) {
+    let arSize = width > 320 ? 17 : 15;
+    while (arSize > 8.5 && font.widthOfTextAtSize(arabicName, arSize) > maxNameWidth) {
       arSize -= 0.5;
     }
     const arY = enY - 20;
@@ -321,8 +325,8 @@ function drawSimpleBwCertificateSticker(params: {
     // Single name (either English or Arabic)
     const rawName = studentName || student.studentNameAr || "Student Candidate";
     const displayName = /[\u0600-\u06FF]/.test(rawName) ? formatArabicForPdf(rawName) : rawName;
-    let nameSize = 21;
-    while (nameSize > 11 && font.widthOfTextAtSize(displayName, nameSize) > maxNameWidth) {
+    let nameSize = width > 320 ? 21 : 18;
+    while (nameSize > 9.5 && font.widthOfTextAtSize(displayName, nameSize) > maxNameWidth) {
       nameSize -= 0.5;
     }
 
@@ -362,7 +366,7 @@ function drawSimpleBwCertificateSticker(params: {
 
   const totalLabelY = studentDividerY - 13;
   page.drawText("TOTAL REPORTS:", {
-    x: x + 14,
+    x: x + 12,
     y: totalLabelY,
     size: 9,
     font,
@@ -371,7 +375,7 @@ function drawSimpleBwCertificateSticker(params: {
 
   const totalValY = totalLabelY - 17;
   page.drawText(totalReportsStr, {
-    x: x + 14,
+    x: x + 12,
     y: totalValY,
     size: 15,
     font,
@@ -387,10 +391,10 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_LIGHT_GRAY,
   });
 
-  // 5. Enclosed Score Reports List (Fixed layout for 4+ reports, generous bottom margin)
+  // 5. Enclosed Score Reports List
   const listTitleY = summaryDividerY - 14;
   page.drawText("ENCLOSED SCORE REPORTS:", {
-    x: x + 14,
+    x: x + 12,
     y: listTitleY,
     size: 9.5,
     font,
@@ -402,28 +406,28 @@ function drawSimpleBwCertificateSticker(params: {
 
   if (count === 0) {
     page.drawText("• Official EST Score Report", {
-      x: x + 16,
+      x: x + 12,
       y: reportsStartY,
-      size: 13,
+      size: 12,
       font,
       color: COLOR_BLACK,
     });
-  } else if (count <= 4) {
-    // 1 column with generous vertical spacing and no border clipping
-    const step = count <= 2 ? 22 : count === 3 ? 20 : 18;
-    const baseSize = count <= 2 ? 13.5 : count === 3 ? 12.5 : 11.5;
-    const maxLineW = width - 36;
+  } else if (count <= 6 || width < 320) {
+    // 1 column with generous line spacing in portrait (width ~280pt, height ~403pt)
+    const step = count <= 2 ? 24 : count <= 4 ? 20 : 17;
+    const baseSize = count <= 2 ? 12.5 : count <= 4 ? 11.5 : 10.5;
+    const maxLineW = width - 24;
 
     for (let r = 0; r < count; r++) {
       const itemText = `• ${reportsParts[r]}`;
       let itemSize = baseSize;
       let itemW = font.widthOfTextAtSize(itemText, itemSize);
       if (itemW > maxLineW) {
-        itemSize = Math.max(9, (maxLineW / itemW) * itemSize);
+        itemSize = Math.max(8.5, (maxLineW / itemW) * itemSize);
       }
       const itemY = reportsStartY - r * step;
       page.drawText(itemText, {
-        x: x + 16,
+        x: x + 12,
         y: itemY,
         size: itemSize,
         font,
@@ -431,7 +435,7 @@ function drawSimpleBwCertificateSticker(params: {
       });
     }
   } else {
-    // 2 columns for 5+ reports
+    // 2 columns for 7+ reports on wide layout
     const colWidth = (width - 40) / 2;
     const rows = Math.ceil(count / 2);
     const step = Math.min(18, Math.max(14, (reportsStartY - (y + 14)) / rows));

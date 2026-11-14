@@ -63,9 +63,9 @@ describe("Certificate & Score Report Stickers PDF Generator", () => {
     expect(doc.getPageCount()).toBe(2);
 
     const page1 = doc.getPage(0);
-    // A4 Landscape: 841.89 x 595.28 pt
-    expect(Math.round(page1.getWidth())).toBe(842);
-    expect(Math.round(page1.getHeight())).toBe(595);
+    // A4 Portrait default: 595.28 x 841.89 pt
+    expect(Math.round(page1.getWidth())).toBe(595);
+    expect(Math.round(page1.getHeight())).toBe(842);
   });
 
   it("should handle empty fallback and render default sample sticker", async () => {
@@ -111,5 +111,20 @@ describe("Certificate & Score Report Stickers PDF Generator", () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     const doc = await PDFDocument.load(pdfBytes);
     expect(doc.getPageCount()).toBe(1);
+    const page = doc.getPage(0);
+    expect(Math.round(page.getWidth())).toBe(595);
+    expect(Math.round(page.getHeight())).toBe(842);
+  });
+
+  it("should support landscape orientation when explicitly requested", async () => {
+    const pdfBytes = await generateCertificateStickersPdf({
+      students: [sampleBatch1[0]],
+      orientation: "landscape",
+    });
+
+    const doc = await PDFDocument.load(pdfBytes);
+    const page = doc.getPage(0);
+    expect(Math.round(page.getWidth())).toBe(842);
+    expect(Math.round(page.getHeight())).toBe(595);
   });
 });
