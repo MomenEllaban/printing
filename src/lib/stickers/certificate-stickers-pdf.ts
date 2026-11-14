@@ -3,6 +3,7 @@ import path from "path";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { EST_LOGO_BASE64 } from "./est-logo-base64";
+import { formatArabicForPdf } from "./arabic-shaper";
 
 export interface CertificateStudentData {
   id?: string;
@@ -277,7 +278,7 @@ function drawSimpleBwCertificateSticker(params: {
   if (hasEnglish && hasArabic) {
     // Both English and Arabic names displayed cleanly stacked
     const primaryName = studentName;
-    const arabicName = student.studentNameAr!.trim();
+    const arabicName = formatArabicForPdf(student.studentNameAr!.trim());
 
     let enSize = 17.5;
     while (enSize > 10 && font.widthOfTextAtSize(primaryName, enSize) > maxNameWidth) {
@@ -318,7 +319,8 @@ function drawSimpleBwCertificateSticker(params: {
     });
   } else {
     // Single name (either English or Arabic)
-    const displayName = studentName || student.studentNameAr || "Student Candidate";
+    const rawName = studentName || student.studentNameAr || "Student Candidate";
+    const displayName = /[\u0600-\u06FF]/.test(rawName) ? formatArabicForPdf(rawName) : rawName;
     let nameSize = 21;
     while (nameSize > 11 && font.widthOfTextAtSize(displayName, nameSize) > maxNameWidth) {
       nameSize -= 0.5;

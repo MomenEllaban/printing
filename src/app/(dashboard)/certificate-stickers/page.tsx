@@ -24,11 +24,7 @@ import { useI18n } from "@/components/locale-provider";
 import { cn } from "@/lib/cn";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
 import type { CertificateStudentData } from "@/lib/stickers/certificate-stickers-pdf";
-
-type StudentWithReceipt = CertificateStudentData & {
-  received?: boolean;
-  receivedAt?: string | null;
-};
+import { parseCertificateWorkbook, type StudentWithReceipt } from "@/lib/certificates-parser";
 
 type ServerBatch = {
   id: string;
@@ -47,107 +43,7 @@ type ServerBatch = {
   updatedAt?: string;
 };
 
-function normalizeHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/[\s_\-#:()]+/g, "");
-}
 
-function parseSmartSheet(rawRows: any[][], defaultBatchName: string): StudentWithReceipt[] {
-  if (!Array.isArray(rawRows) || rawRows.length === 0) return [];
-
-  let headerIdx = 0;
-  for (let r = 0; r < Math.min(6, rawRows.length); r++) {
-    const row = rawRows[r] || [];
-    const joined = row.map((c) => String(c).toLowerCase()).join(" ");
-    if (joined.includes("name") || joined.includes("student") || joined.includes("report")) {
-      headerIdx = r;
-      break;
-    }
-  }
-
-  const headers = (rawRows[headerIdx] || []).map((h) => String(h || "").trim());
-  const normHeaders = headers.map((h) => normalizeHeader(h));
-  const results: StudentWithReceipt[] = [];
-
-  for (let r = headerIdx + 1; r < rawRows.length; r++) {
-    const row = rawRows[r];
-    if (!row || row.length === 0) continue;
-
-    let serial = "";
-    let nameAr = "";
-    let nameEn = "";
-    let nationalId = "";
-    let totalReports: number | string = 1;
-    let reportList = "";
-    let school = "";
-    let gov = "";
-    let reqId = "";
-    let batchName = defaultBatchName;
-
-    row.forEach((val: any, colIdx: number) => {
-      if (val === undefined || val === null || String(val).trim() === "") return;
-      const v = String(val).trim();
-      const h = normHeaders[colIdx] || "";
-      if (h === "sn" || h === "serial" || h === "no" || (colIdx === 0 && !isNaN(Number(v)))) {
-        if (!serial) serial = v;
-      }
-      if (
-        h.includes("namear") ||
-        h.includes("arabic") ||
-        h.includes("عربي") ||
-        h.includes("بالعربي") ||
-        h.includes("الاسمبالعربي") ||
-        h.includes("اسمالطالببالعربي")
-      ) {
-        nameAr = v;
-      } else if (
-        h.includes("nameen") ||
-        h.includes("english") ||
-        h.includes("انجليزي") ||
-        h.includes("إنجليزي") ||
-        h.includes("بالانجليزي") ||
-        h.includes("بالإنجليزي")
-      ) {
-        nameEn = v;
-      } else if (h.includes("name") || h.includes("student") || h.includes("طالب") || h.includes("اسم")) {
-        if (/[\u0600-\u06FF]/.test(v)) {
-          if (!nameAr) nameAr = v;
-        } else {
-          if (!nameEn) nameEn = v;
-        }
-      }
-      if (h.includes("national")) nationalId = v;
-      if (h.includes("totalreport") || h.includes("nbofreport")) totalReports = v;
-      if (h.includes("reportlist") || h.includes("reports")) reportList = v;
-      if (h.includes("school")) school = v;
-      if (h.includes("governorate") || h.includes("city")) gov = v;
-      if (h.includes("requestid")) reqId = v;
-      if (h.includes("batch")) batchName = v;
-    });
-
-    const studentName = nameEn || nameAr;
-    if (!studentName) continue;
-
-    const finalSerial = serial || String(results.length + 1);
-    results.push({
-      id: `row-${r}`,
-      serialNumber: finalSerial,
-      studentName,
-      studentNameAr: nameAr || undefined,
-      seatNumber: "",
-      nationalId,
-      schoolName: school,
-      governorate: gov,
-      totalReports: totalReports || 1,
-      reportsList: reportList || "Official EST Score Report",
-      certificateCode: reqId || `EST-REP-${String(finalSerial).padStart(4, "0")}`,
-      batchName,
-      received: false,
-      receivedAt: null,
-    });
-  }
-
-  return results;
-}
 
 export default function CertificateStickersPage() {
   const { locale } = useI18n();
@@ -292,21 +188,8 @@ export default function CertificateStickersPage() {
         setIsUploading(true);
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: "array" });
-        const sheetName = workbook.SheetNames.includes("Reports per Student")
-          ? "Reports per Student"
-          : workbook.SheetNames.includes("06-Reports per Student-Aramex")
-          ? "06-Reports per Student-Aramex"
-          : workbook.SheetNames[0];
-
-        if (!sheetName) {
-          toast.error(locale === "ar" ? "الملف لا يحتوي على أي Sheet" : "File contains no sheets");
-          return;
-        }
-
-        const sheet = workbook.Sheets[sheetName];
-        const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         const baseName = file.name.replace(/\.[^.]+$/, "").trim() || "Certificate Batch";
-        const parsed = parseSmartSheet(rawRows, baseName);
+        const parsed = parseCertificateWorkbook(workbook, baseName);
         if (parsed.length === 0) {
           toast.error(locale === "ar" ? "لم يتم العثور على بيانات طلاب صالحة" : "No valid student data found");
           return;
