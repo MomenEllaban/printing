@@ -295,39 +295,59 @@ function drawSimpleBwCertificateSticker(params: {
     color: COLOR_BLACK,
   });
 
-  // 2. Serial Number & Student Name (English and/or Arabic name from Excel)
+  // 2. Serial Number Row: Dedicated centered placard row
   const serialStr = String(serial).startsWith("(") ? String(serial) : `(${serial})`;
-  const serialFontSize = 21;
+  const serialRowY = headerDividerY - 15;
+  const serialLabel = "SERIAL NO:";
+  const serialLabelSize = 9.5;
+  const serialNumSize = 17;
+  const labelW = font.widthOfTextAtSize(serialLabel + "  ", serialLabelSize);
+  const numW = font.widthOfTextAtSize(serialStr, serialNumSize);
+  const totalSerialW = labelW + numW;
+  const serialStartX = x + (width - totalSerialW) / 2;
 
-  // Dedicated row for Serial Number (left) and label (right)
-  const serialRowY = headerDividerY - 17;
+  page.drawText(serialLabel, {
+    x: serialStartX,
+    y: serialRowY + 1.5,
+    size: serialLabelSize,
+    font,
+    color: COLOR_DARK_GRAY,
+  });
   page.drawText(serialStr, {
-    x: x + 12,
+    x: serialStartX + labelW,
     y: serialRowY,
-    size: serialFontSize,
+    size: serialNumSize,
     font,
     color: COLOR_BLACK,
   });
 
+  // Divider Line below Serial Number
+  const serialDividerY = serialRowY - 11;
+  page.drawLine({
+    start: { x: x + 8, y: serialDividerY },
+    end: { x: x + width - 8, y: serialDividerY },
+    thickness: 0.8,
+    color: COLOR_LIGHT_GRAY,
+  });
+
+  // 3. Student Name Section: Full width across the sticker
+  const nameStartX = x + 14;
+  const maxNameWidth = width - 28;
+
+  const studentLabelY = serialDividerY - 16;
   const labelText = "STUDENT NAME:";
-  const labelSize = 9;
-  const labelW = font.widthOfTextAtSize(labelText, labelSize);
   page.drawText(labelText, {
-    x: x + width - 12 - labelW,
-    y: serialRowY + 2,
-    size: labelSize,
+    x: nameStartX,
+    y: studentLabelY,
+    size: 9.5,
     font,
     color: COLOR_DARK_GRAY,
   });
 
-  // Name lines take FULL width of the sticker
-  const nameStartX = x + 12;
-  const maxNameWidth = width - 24;
-
   const hasArabic = Boolean(student.studentNameAr && student.studentNameAr.trim());
   const hasEnglish = Boolean(studentName && studentName.trim() && studentName !== student.studentNameAr);
 
-  let curY = serialRowY - 19;
+  let curY = studentLabelY - 19;
 
   if (hasEnglish && hasArabic) {
     const primaryName = studentName;
@@ -346,7 +366,7 @@ function drawSimpleBwCertificateSticker(params: {
       curY -= enFit.fontSize + 4;
     }
 
-    curY -= 2;
+    curY -= 3;
 
     // Arabic Name
     const arFit = wrapTextToLines(arabicName, font, 14.5, maxNameWidth);
@@ -393,24 +413,24 @@ function drawSimpleBwCertificateSticker(params: {
 
   const totalLabelY = studentDividerY - 18;
   page.drawText("TOTAL REPORTS:", {
-    x: x + 12,
+    x: x + 14,
     y: totalLabelY,
-    size: 9,
+    size: 9.5,
     font,
     color: COLOR_DARK_GRAY,
   });
 
   const totalValY = totalLabelY - 19;
   page.drawText(totalReportsStr, {
-    x: x + 12,
+    x: x + 14,
     y: totalValY,
-    size: 15.5,
+    size: 16.5,
     font,
     color: COLOR_BLACK,
   });
 
   // Divider Line below Total Reports (Widened spacing)
-  const summaryDividerY = totalValY - 12;
+  const summaryDividerY = totalValY - 13;
   page.drawLine({
     start: { x: x + 8, y: summaryDividerY },
     end: { x: x + width - 8, y: summaryDividerY },
@@ -421,21 +441,21 @@ function drawSimpleBwCertificateSticker(params: {
   // 5. Enclosed Score Reports List (Widened spacing)
   const listTitleY = summaryDividerY - 18;
   page.drawText("ENCLOSED SCORE REPORTS:", {
-    x: x + 12,
+    x: x + 14,
     y: listTitleY,
-    size: 9.5,
+    size: 10,
     font,
     color: COLOR_BLACK,
   });
 
-  const reportsStartY = listTitleY - 19;
+  const reportsStartY = listTitleY - 20;
   const count = reportsParts.length;
 
   if (count === 0) {
     page.drawText("• Official EST Score Report", {
-      x: x + 12,
+      x: x + 14,
       y: reportsStartY,
-      size: 12,
+      size: 12.5,
       font,
       color: COLOR_BLACK,
     });
@@ -443,7 +463,7 @@ function drawSimpleBwCertificateSticker(params: {
     // 1 column with generous line spacing in portrait (width ~280pt, height ~403pt)
     const step = count <= 2 ? 26 : count <= 4 ? 22 : 18;
     const baseSize = count <= 2 ? 13 : count <= 4 ? 11.5 : 10.5;
-    const maxLineW = width - 24;
+    const maxLineW = width - 28;
 
     for (let r = 0; r < count; r++) {
       const itemText = `• ${reportsParts[r]}`;
@@ -454,7 +474,7 @@ function drawSimpleBwCertificateSticker(params: {
       }
       const itemY = reportsStartY - r * step;
       page.drawText(itemText, {
-        x: x + 12,
+        x: x + 14,
         y: itemY,
         size: itemSize,
         font,
