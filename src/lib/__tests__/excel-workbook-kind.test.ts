@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SheetData } from "@/lib/stickers/building-excel";
-import { detectExcelWorkbookKind } from "@/lib/excel-workbook-kind";
+import type { SheetData } from "../stickers/building-excel";
+import { detectExcelWorkbookKind } from "../excel-workbook-kind";
 
 function sheet(name: string, rows: (string | number | null)[][]): SheetData {
   return { name, rows };
