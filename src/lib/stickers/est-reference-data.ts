@@ -560,6 +560,140 @@ export function isOfficialSchoolName(name?: string | null): boolean {
   );
 }
 
+export interface SchoolOrBuildingStats {
+  isSchool: boolean;
+  isCenter: boolean;
+  name: string;
+  cleanName: string;
+  governorate?: string;
+  centerName?: string;
+  totalFloors: number;
+  totalRooms: number;
+  floors: Array<{
+    floorName: string;
+    roomCount: number;
+    rooms: string[];
+  }>;
+}
+
+/**
+ * Resolves floor and room statistics for any official school, center, or building.
+ */
+export function getSchoolOrBuildingStats(
+  name?: string | null,
+  governorate?: string | null,
+): SchoolOrBuildingStats | null {
+  if (!name) return null;
+  const norm = (s?: string | null) =>
+    (s || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s*\([^)]+\)$/, "")
+      .replace(/[\s_-]+/g, " ");
+
+  const cleanTarget = norm(name);
+  const targetGov = norm(governorate);
+
+  // 1. Check official schools
+  const school = OFFICIAL_EST_SCHOOLS.find((s) => {
+    const sName = norm(s.schoolName);
+    const matchName = sName === cleanTarget || sName.includes(cleanTarget) || cleanTarget.includes(sName);
+    const matchGov = !targetGov || norm(s.governorate) === targetGov;
+    return matchName && matchGov;
+  });
+
+  if (school) {
+    const totalRooms = school.floors.reduce((sum, f) => sum + f.rooms.length, 0);
+    return {
+      isSchool: true,
+      isCenter: false,
+      name: school.schoolName,
+      cleanName: school.schoolName,
+      governorate: school.governorate,
+      totalFloors: school.floors.length,
+      totalRooms,
+      floors: school.floors.map((f) => ({
+        floorName: f.floorName,
+        roomCount: f.rooms.length,
+        rooms: f.rooms,
+      })),
+    };
+  }
+
+  // 2. Check university centers & buildings
+  for (const center of OFFICIAL_EST_CENTERS) {
+    const cName = norm(center.centerName);
+    const matchGov = !targetGov || norm(center.governorate) === targetGov;
+    if (!matchGov) continue;
+
+    const bld = center.buildings.find((b) => {
+      const bName = norm(b.buildingName);
+      return bName === cleanTarget || bName.includes(cleanTarget) || cleanTarget.includes(bName);
+    });
+
+    if (bld) {
+      const totalRooms = bld.floors.reduce((sum, f) => sum + f.rooms.length, 0);
+      return {
+        isSchool: false,
+        isCenter: true,
+        name: bld.buildingName,
+        cleanName: bld.buildingName,
+        centerName: center.centerName,
+        governorate: center.governorate,
+        totalFloors: bld.floors.length,
+        totalRooms,
+        floors: bld.floors.map((f) => ({
+          floorName: f.floorName,
+          roomCount: f.rooms.length,
+          rooms: f.rooms,
+        })),
+      };
+    }
+
+    if (cName === cleanTarget || cName.includes(cleanTarget) || cleanTarget.includes(cName)) {
+      const allFloors = center.buildings.flatMap((b) => b.floors);
+      const totalRooms = allFloors.reduce((sum, f) => sum + f.rooms.length, 0);
+      return {
+        isSchool: false,
+        isCenter: true,
+        name: center.centerName,
+        cleanName: center.centerName,
+        governorate: center.governorate,
+        totalFloors: allFloors.length,
+        totalRooms,
+        floors: allFloors.map((f) => ({
+          floorName: f.floorName,
+          roomCount: f.rooms.length,
+          rooms: f.rooms,
+        })),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolves room count and room list for a specific floor in a building or school.
+ */
+export function getFloorStats(
+  floorName?: string | null,
+  parentName?: string | null,
+  governorate?: string | null,
+): { floorName: string; roomCount: number; rooms: string[] } | null {
+  if (!floorName) return null;
+  const parentStats = getSchoolOrBuildingStats(parentName, governorate);
+  if (parentStats) {
+    const norm = (s: string) => s.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+    const targetF = norm(floorName);
+    const fl = parentStats.floors.find((f) => norm(f.floorName) === targetF);
+    if (fl) {
+      return fl;
+    }
+  }
+  return null;
+}
+
 /**
  * Set of all official room names across all schools and university centers (lowercase).
  */

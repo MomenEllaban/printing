@@ -21,6 +21,7 @@ import {
   Clock,
   CloudUpload,
   Download,
+  DoorOpen,
   ExternalLink,
   Eye,
   Files,
@@ -32,6 +33,7 @@ import {
   GraduationCap,
   Grid2X2,
   GripVertical,
+  Layers,
   List,
   Loader2,
   MoreVertical,
@@ -41,6 +43,7 @@ import {
   PinOff,
   Printer,
   RefreshCw,
+  School,
   Search,
   Sparkles,
   Star,
@@ -86,7 +89,16 @@ import {
   getRegisterTheme,
   type RegisterCategory,
 } from "@/lib/stickers/register-utils";
-import { isOfficialSchoolName, stripGovernorateFromName } from "@/lib/stickers/est-reference-data";
+import {
+  isOfficialSchoolName,
+  stripGovernorateFromName,
+  getSchoolOrBuildingStats,
+  getFloorStats,
+  OFFICIAL_EST_SCHOOLS,
+  OFFICIAL_EST_CENTERS,
+} from "@/lib/stickers/est-reference-data";
+import { SchoolsDirectoryDialog } from "./schools-directory-dialog";
+import { SchoolBuildingStatsBanner } from "./school-building-stats-banner";
 
 function RegisterIcon({ category, className }: { category: RegisterCategory; className?: string }) {
   if (category === "building_excel") return <FileSpreadsheet className={className} />;
@@ -1239,6 +1251,64 @@ export function FileBrowser({
 
   const [seedConfirmOpen, setSeedConfirmOpen] = useState(false);
   const [seedingEst, setSeedingEst] = useState(false);
+  const [schoolsDirectoryOpen, setSchoolsDirectoryOpen] = useState(false);
+  const [isNavigatingFromDirectory, setIsNavigatingFromDirectory] = useState(false);
+
+  const handleNavigateToSchoolFromDirectory = useCallback(
+    async (target: { name: string; governorate: string; isSchool: boolean }) => {
+      setIsNavigatingFromDirectory(true);
+      try {
+        const cleanName = stripGovernorateFromName(target.name);
+        const directMatch = items.find(
+          (it) =>
+            it.isFolder &&
+            (it.name.trim().toLowerCase() === cleanName.toLowerCase() ||
+              it.name.trim().toLowerCase() === target.name.trim().toLowerCase()),
+        );
+        if (directMatch) {
+          navigateFolder(directMatch.id);
+          setSchoolsDirectoryOpen(false);
+          toast.success(
+            locale === "ar"
+              ? `تم الانتقال إلى مجلد "${directMatch.name}"`
+              : `Navigated to "${directMatch.name}"`,
+          );
+          return;
+        }
+
+        const res = await fetch(`/api/drive/folders?search=${encodeURIComponent(cleanName)}`);
+        const data = await res.json();
+        if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
+          const match = data.items.find(
+            (it: any) =>
+              it.name.trim().toLowerCase() === cleanName.toLowerCase() ||
+              it.name.trim().toLowerCase() === target.name.trim().toLowerCase() ||
+              it.name.trim().toLowerCase().includes(cleanName.toLowerCase()),
+          );
+          if (match) {
+            navigateFolder(match.id);
+            setSchoolsDirectoryOpen(false);
+            toast.success(
+              locale === "ar"
+                ? `تم الانتقال إلى مجلد "${match.name}"`
+                : `Navigated to "${match.name}"`,
+            );
+            return;
+          }
+        }
+        toast.info(
+          locale === "ar"
+            ? `مجلد "${target.name}" غير موجود بعد. يمكنك إنشاؤه عبر زر "إنشاء هيكل EST".`
+            : `Folder "${target.name}" is not created yet. Use "Create EST Tree" to generate it.`,
+        );
+      } catch (err) {
+        console.warn("[directory] Navigation failed:", err);
+      } finally {
+        setIsNavigatingFromDirectory(false);
+      }
+    },
+    [items, locale],
+  );
 
   const handleSeedEst = useCallback(async () => {
     setSeedingEst(true);
@@ -2789,6 +2859,19 @@ export function FileBrowser({
               </Link>
             );
           })()}
+          <Button
+            variant="secondary"
+            onClick={() => setSchoolsDirectoryOpen(true)}
+            className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+            title={
+              locale === "ar"
+                ? "دليل وتفاصيل جميع المدارس والسناتر (18 مدرسة و7 سناتر جامعية) مع بحث وإحصائيات الأدوار والقاعات"
+                : "Directory & details of all schools & centers with floor and room stats"
+            }
+          >
+            <School className="size-4 text-emerald-600 dark:text-emerald-400" />
+            <span>{locale === "ar" ? "دليل المدارس والسناتر (25)" : "Schools & Centers (25)"}</span>
+          </Button>
           <Button variant="secondary" onClick={refresh} disabled={loading}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             {t("common.refresh")}
@@ -2897,6 +2980,66 @@ export function FileBrowser({
             </Button>
           </div>
         )}
+
+      {/* School / Building / Floor Details & Stats Banner */}
+      {currentFolder && (() => {
+        const hierarchy = extractLogisticsHierarchy({ breadcrumbs, currentFolder });
+        const isFloor = isFloorFolderName(currentFolder.name);
+        if (isFloor) {
+          const parentCrumb = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1] : null;
+          const parentName = parentCrumb?.name || hierarchy.building || hierarchy.center;
+          const fStats = getFloorStats(currentFolder.name, parentName, hierarchy.governorate);
+          return (
+            <SchoolBuildingStatsBanner
+              stats={null}
+              floorStats={fStats}
+              currentFolderName={currentFolder.name}
+              isFloor={true}
+              parentBuildingName={parentName}
+              governorate={hierarchy.governorate}
+              examName={hierarchy.exam || "EST 1"}
+              cycleName={hierarchy.cycle}
+              locale={locale as Locale}
+              onPrintSticker={(orientation) => handleStickerAction(null, currentFolder, "print", orientation)}
+              onPrintExamStickers={(orientation) => handleExamStickerAction(null, currentFolder, "print", orientation)}
+            />
+          );
+        }
+
+        const bStats = getSchoolOrBuildingStats(currentFolder.name, hierarchy.governorate);
+        if (bStats) {
+          const buildingExcelItem =
+            items.find(
+              (it) =>
+                !it.isFolder &&
+                it.name.toLowerCase().endsWith(".xlsx") &&
+                it.name.toLowerCase().includes("building"),
+            ) || null;
+          const floorFoldersInView = items.filter((it) => it.isFolder && isFloorFolderName(it.name));
+
+          return (
+            <SchoolBuildingStatsBanner
+              stats={bStats}
+              currentFolderName={currentFolder.name}
+              isFloor={false}
+              governorate={bStats.governorate || hierarchy.governorate}
+              examName={hierarchy.exam || "EST 1"}
+              cycleName={hierarchy.cycle}
+              locale={locale as Locale}
+              buildingExcelItem={buildingExcelItem}
+              floorFoldersInView={floorFoldersInView}
+              onNavigateToFloor={(floorId) => navigateFolder(floorId)}
+              onPrintSticker={(orientation) => handleStickerAction(null, currentFolder, "print", orientation)}
+              onPrintExamStickers={(orientation) => handleExamStickerAction(null, currentFolder, "print", orientation)}
+              onOpenBuildingExcel={(fileId) => {
+                const file = items.find((it) => it.id === fileId);
+                if (file) openItem(file);
+              }}
+            />
+          );
+        }
+        return null;
+      })()}
 
       <div className="card p-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -3328,6 +3471,35 @@ export function FileBrowser({
                         {t("common.pinned")}
                       </span>
                     )}
+                    {item.isFolder && (() => {
+                      const fStats = getSchoolOrBuildingStats(item.name);
+                      if (fStats) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
+                            <Building2 className="size-2.5" />
+                            <span>{fStats.totalFloors} {locale === "ar" ? "أدوار" : "fl"}</span>
+                            <span>•</span>
+                            <DoorOpen className="size-2.5" />
+                            <span>{fStats.totalRooms} {locale === "ar" ? "قاعة" : "rooms"}</span>
+                          </span>
+                        );
+                      }
+                      if (isFloorFolderName(item.name)) {
+                        const parentStats = getSchoolOrBuildingStats(currentFolder?.name);
+                        const flStats = parentStats ? getFloorStats(item.name, parentStats.name) : null;
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                            <Layers className="size-2.5" />
+                            {flStats ? (
+                              <span>{flStats.roomCount} {locale === "ar" ? "قاعات" : "rooms"}</span>
+                            ) : (
+                              <span>{locale === "ar" ? "دور" : "Floor"}</span>
+                            )}
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   <ExamBadges name={item.name} isRoomFolder={isCurrentFolderRoom && !item.isFolder} />
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -4139,6 +4311,15 @@ export function FileBrowser({
         }}
         file={excelModalFile}
         buildingName={excelModalBuilding}
+      />
+
+      {/* Schools & Centers Directory Dialog */}
+      <SchoolsDirectoryDialog
+        open={schoolsDirectoryOpen}
+        onClose={() => setSchoolsDirectoryOpen(false)}
+        onNavigateToFolder={handleNavigateToSchoolFromDirectory}
+        locale={locale as Locale}
+        isNavigating={isNavigatingFromDirectory}
       />
     </div>
   );
@@ -4989,6 +5170,36 @@ function TreeRow({
                     {t("common.pinned")}
                   </span>
                 )}
+                {item.isFolder && (() => {
+                  const fStats = getSchoolOrBuildingStats(item.name);
+                  if (fStats) {
+                    return (
+                      <span className="inline-flex items-center gap-1 rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 shrink-0">
+                        <Building2 className="size-2.5" />
+                        <span>{fStats.totalFloors} {locale === "ar" ? "أدوار" : "fl"}</span>
+                        <span>•</span>
+                        <DoorOpen className="size-2.5" />
+                        <span>{fStats.totalRooms} {locale === "ar" ? "قاعة" : "rooms"}</span>
+                      </span>
+                    );
+                  }
+                  if (isFloorFolderName(item.name)) {
+                    const parentCrumb = breadcrumbs && breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1] : null;
+                    const parentStats = getSchoolOrBuildingStats(parentCrumb?.name);
+                    const flStats = parentStats ? getFloorStats(item.name, parentStats.name) : null;
+                    return (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 shrink-0">
+                        <Layers className="size-2.5" />
+                        {flStats ? (
+                          <span>{flStats.roomCount} {locale === "ar" ? "قاعات" : "rooms"}</span>
+                        ) : (
+                          <span>{locale === "ar" ? "دور" : "Floor"}</span>
+                        )}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
                 {dragOverFolderId === item.id && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-xs animate-pulse shrink-0">
                     📥 {locale === "ar" ? "إفلات للنقل هنا" : "Drop to move here"}
