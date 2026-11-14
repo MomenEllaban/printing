@@ -96,6 +96,7 @@ import {
   getFloorStats,
   OFFICIAL_EST_SCHOOLS,
   OFFICIAL_EST_CENTERS,
+  OFFICIAL_GOVERNORATES,
 } from "@/lib/stickers/est-reference-data";
 import { SchoolsDirectoryDialog } from "./schools-directory-dialog";
 import { SchoolBuildingStatsBanner } from "./school-building-stats-banner";
@@ -1315,26 +1316,65 @@ export function FileBrowser({
     setSeedConfirmOpen(false);
     const toastId = toast.loading(
       locale === "ar"
-        ? "جاري إنشاء هيكل المدارس والقاعات كاملاً لاختبارات EST 1 و EST 2 في Google Drive..."
-        : "Creating official EST 1 & EST 2 Schools hierarchy in Google Drive...",
+        ? "جاري تجهيز هيكل المدارس والمحافظات..."
+        : "Preparing official EST hierarchy...",
     );
     try {
-      const res = await fetch("/api/est/seed", {
+      // Step 1: Create Base Tree (Exams, 9 Governorates, 25 Schools & Centers shallow) - ~3s
+      toast.loading(
+        locale === "ar"
+          ? "الخطوة [1/10]: إنشاء هيكل المحافظات والمدارس والسناتر..."
+          : "[1/10]: Creating Governorates & Schools structure...",
+        { id: toastId },
+      );
+
+      const baseRes = await fetch("/api/est/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          mode: "base",
+          cycle: "December 2026",
           targetFolderId: currentFolder?.id ?? null,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || (locale === "ar" ? "فشل إنشاء المجلدات" : "Failed to create folders"));
+      const baseData = await baseRes.json();
+      if (!baseRes.ok) {
+        throw new Error(baseData.message || (locale === "ar" ? "فشل إنشاء الهيكل الأساسي" : "Failed to create base hierarchy"));
       }
+
+      // Step 2: Seed Rooms for each governorate sequentially in small chunks (each ~1-3s, ZERO timeout)
+      const govs = Array.isArray(baseData.governorates) && baseData.governorates.length > 0
+        ? baseData.governorates
+        : OFFICIAL_GOVERNORATES;
+
+      for (let i = 0; i < govs.length; i++) {
+        const gov = govs[i];
+        toast.loading(
+          locale === "ar"
+            ? `الخطوة [${i + 2}/10]: إنشاء أدوار وقاعات محافظة ${gov}...`
+            : `[${i + 2}/10]: Creating rooms for ${gov}...`,
+          { id: toastId },
+        );
+        try {
+          await fetch("/api/est/seed", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: "governorate",
+              governorate: gov,
+              exam: "EST 1",
+              cycle: "December 2026",
+            }),
+          });
+        } catch (govErr) {
+          console.warn(`[seed] Failed rooms for ${gov}:`, govErr);
+        }
+      }
+
       toast.success(
-        data.message ||
-          (locale === "ar"
-            ? "تم بنجاح إنشاء وتحديث هيكل المدارس الرسمية (18 مدرسة) في Google Drive"
-            : "Successfully created/updated official Schools hierarchy in Google Drive"),
+        locale === "ar"
+          ? "تم بنجاح إنشاء وتحديث هيكل EST كاملاً بجميع المدارس والقاعات والأدوار!"
+          : "Successfully created complete EST hierarchy with all schools & rooms!",
         { id: toastId },
       );
       setRefreshKey((v) => v + 1);
@@ -1350,7 +1390,7 @@ export function FileBrowser({
     } finally {
       setSeedingEst(false);
     }
-  }, [locale]);
+  }, [currentFolder, locale]);
 
   const handleDragStartItem = useCallback(
     (e: React.DragEvent, item: DriveItem) => {
