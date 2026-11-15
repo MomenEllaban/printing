@@ -204,6 +204,21 @@ export async function GET(request: Request, context: Context) {
         orientation,
       });
       safeFilename = `Building-Head-Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    } else if (stickerType === "exam_dossier") {
+      const examDossierContent = {
+        ...stickerContent,
+        level: "building" as const,
+        isExamDossier: true,
+      };
+      pdfBytes = await generateStickerPdf({
+        content: examDossierContent,
+        lines: stickerContent.lines,
+        widthMm,
+        heightMm,
+        paperMode,
+        orientation,
+      });
+      safeFilename = `Building-Exam-Papers-Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
     } else if (stickerType === "exam") {
       const isFloor =
         stickerContent.level === "floor" ||

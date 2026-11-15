@@ -24,6 +24,7 @@ import {
   DoorOpen,
   ExternalLink,
   Eye,
+  FileCheck,
   Files,
   FileSpreadsheet,
   FileText,
@@ -1215,6 +1216,110 @@ export function FileBrowser({
     [handleHeadStickerAction],
   );
 
+  const handleExamDossierStickerAction = useCallback(
+    async (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      action: "show" | "print",
+      orientation: "portrait" | "landscape" = "portrait",
+    ) => {
+      if (e) e.stopPropagation();
+      if (!target.id || busyStickerId) return;
+
+      setBusyStickerId(target.id);
+      setStickerAction(action);
+      const toastId = toast.loading(
+        action === "show"
+          ? (locale === "ar"
+            ? `جاري تجهيز معاينة ستيكر مظروف الامتحانات لمبنى "${target.name || "EST"}"...`
+            : `Loading exam papers sticker preview for "${target.name || "EST"}"...`)
+          : (locale === "ar"
+            ? `جاري تجهيز ستيكر مظروف الامتحانات لمبنى "${target.name || "EST"}" للطباعة (${orientation === "portrait" ? "طولي" : "عرضي"})...`
+            : `Preparing exam papers sticker for "${target.name || "EST"}" for printing (${orientation})...`),
+      );
+
+      try {
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=exam_dossier&orientation=${orientation}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(
+            errorData.message ||
+              (locale === "ar" ? "فشل إنشاء ستيكر مظروف الامتحانات" : "Failed to generate exam papers sticker PDF"),
+          );
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+
+        if (action === "show") {
+          setPreviewStickerState({
+            open: true,
+            url: objectUrl,
+            title: `${target.name || "EST"} - EXAM PAPERS`,
+          });
+          toast.success(
+            locale === "ar" ? "تم فتح نافذة المعاينة بنجاح" : "Exam papers sticker preview opened",
+            { id: toastId },
+          );
+        } else {
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.right = "0";
+          iframe.style.bottom = "0";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "0";
+          iframe.src = objectUrl;
+          document.body.appendChild(iframe);
+          iframe.onload = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              const w = window.open(objectUrl, "_blank");
+              w?.focus();
+              w?.print();
+            }
+          };
+          toast.success(
+            locale === "ar" ? "تم إرسال ستيكر مظروف الامتحانات للطباعة بنجاح" : "Exam papers sticker sent to printer",
+            { id: toastId },
+          );
+        }
+      } catch (err: any) {
+        console.error("[exam-dossier-sticker] Failed:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : locale === "ar"
+            ? "حدث خطأ أثناء معالجة ستيكر مظروف الامتحانات"
+            : "Error processing exam papers sticker",
+          { id: toastId },
+        );
+      } finally {
+        setBusyStickerId(null);
+        setStickerAction(null);
+      }
+    },
+    [busyStickerId, locale],
+  );
+
+  const handleShowExamDossierSticker = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleExamDossierStickerAction(e, target, "show"),
+    [handleExamDossierStickerAction],
+  );
+
+  const handlePrintExamDossierSticker = useCallback(
+    (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      orientation: "portrait" | "landscape" = "portrait",
+    ) => handleExamDossierStickerAction(e, target, "print", orientation),
+    [handleExamDossierStickerAction],
+  );
+
   const handleExamStickerAction = useCallback(
     async (
       e: React.MouseEvent | null,
@@ -2167,8 +2272,8 @@ export function FileBrowser({
   const [batchStickersOpen, setBatchStickersOpen] = useState(false);
   const [busyBatchStickers, setBusyBatchStickers] = useState(false);
   const [batchStickerAction, setBatchStickerAction] = useState<"show" | "print" | null>(null);
-  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam" | "head">("regular");
-  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam" | "head">("regular");
+  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam" | "head" | "exam_dossier">("regular");
+  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam" | "head" | "exam_dossier">("regular");
 
   const handleBatchStickersAction = useCallback(
     async ({
@@ -2178,7 +2283,7 @@ export function FileBrowser({
       orientation,
     }: {
       action: "show" | "print";
-      type?: "regular" | "exam" | "head";
+      type?: "regular" | "exam" | "head" | "exam_dossier";
       includeChildren?: boolean;
       orientation?: "landscape" | "portrait";
     }) => {
@@ -2210,6 +2315,8 @@ export function FileBrowser({
               ? `جاري تجهيز استيكرات الامتحانات (${targetFolders.length} مجلد) للمعاينة...`
               : type === "head"
               ? `جاري تجهيز استيكرات الهيد (${targetFolders.length} مبنى) للمعاينة...`
+              : type === "exam_dossier"
+              ? `جاري تجهيز استيكرات مظروف الامتحانات (${targetFolders.length} مبنى) للمعاينة...`
               : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للمعاينة...`
             : `Generating sticker preview for ${targetFolders.length} folder(s)...`)
           : (locale === "ar"
@@ -2217,6 +2324,8 @@ export function FileBrowser({
               ? `جاري تجهيز استيكرات الامتحانات (${targetFolders.length} مجلد) للطباعة...`
               : type === "head"
               ? `جاري تجهيز استيكرات الهيد (${targetFolders.length} مبنى) للطباعة...`
+              : type === "exam_dossier"
+              ? `جاري تجهيز استيكرات مظروف الامتحانات (${targetFolders.length} مبنى) للطباعة...`
               : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للطباعة...`
             : `Preparing stickers for ${targetFolders.length} folder(s)...`),
       );
@@ -2269,6 +2378,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? `استيكرات الهيد (HEAD) — (${targetFolders.length} مبنى)`
                   : `Building Head Stickers (${targetFolders.length} Buildings)`
+                : type === "exam_dossier"
+                ? locale === "ar"
+                  ? `استيكرات مظروف الامتحانات — (${targetFolders.length} مبنى)`
+                  : `Exam Papers Stickers (${targetFolders.length} Buildings)`
                 : locale === "ar"
                 ? `استيكرات مجمعة (${targetFolders.length} مجلد)`
                 : `Batch Stickers (${targetFolders.length} Folders)`,
@@ -2281,6 +2394,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? `استيكرات الهيد الرسمية (HEAD) — ${targetFolders.length} مبنى`
                   : `Official Building Head Stickers — ${targetFolders.length} Buildings`
+                : type === "exam_dossier"
+                ? locale === "ar"
+                  ? `استيكرات مظروف الامتحانات الرسمي — ${targetFolders.length} مبنى`
+                  : `Official Exam Papers Stickers — ${targetFolders.length} Buildings`
                 : undefined,
             customDescription:
               type === "exam"
@@ -2291,6 +2408,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? "استيكر الهيد بمقاس ربع صفحة A4 مع كشوف ومهمات رئيس المبنى."
                   : "Quarter-A4 Building Head sticker with dossier checklist."
+                : type === "exam_dossier"
+                ? locale === "ar"
+                  ? "استيكر مظروف الامتحانات بمقاس ربع صفحة A4 لحفظ وتوزيع أوراق الاختبارات."
+                  : "Exam papers sticker at quarter-A4 size for exam test papers dossier."
                 : undefined,
           });
           toast.success(
@@ -2870,6 +2991,53 @@ export function FileBrowser({
                 disabled={busyStickerId === currentFolder.id}
                 className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer transition-all border-s border-rose-500/25"
                 title={locale === "ar" ? `طباعة استيكر الهيد (HEAD) لمبنى "${currentFolder.name}" بالعرض (Landscape)` : `Print head sticker for "${currentFolder.name}" in Landscape`}
+              >
+                <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
+              </button>
+            </div>
+          )}
+          {isCurrentFolderBuilding && currentFolder && (
+            <div className="inline-flex items-center rounded-xl border border-teal-500/40 bg-teal-500/10 p-0.5 shadow-xs">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-teal-800 dark:text-teal-200 border-e border-teal-500/25 select-none">
+                <FileCheck className="size-3.5 text-teal-600 dark:text-teal-400" />
+                <span className="hidden sm:inline">
+                  {locale === "ar" ? "مظروف الامتحانات" : "Exam Papers"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => handleShowExamDossierSticker(e, currentFolder)}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 cursor-pointer transition-all"
+                title={locale === "ar" ? `معاينة ستيكر مظروف الامتحانات لمبنى "${currentFolder.name}"` : `Preview exam papers sticker for "${currentFolder.name}"`}
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "show" ? (
+                  <Loader2 className="size-3.5 animate-spin text-teal-600 dark:text-teal-400" />
+                ) : (
+                  <Eye className="size-3.5 text-teal-600 dark:text-teal-400" />
+                )}
+                <span>{locale === "ar" ? "معاينة" : "Show"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintExamDossierSticker(e, currentFolder, "portrait")}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 cursor-pointer transition-all border-s border-teal-500/25"
+                title={locale === "ar" ? `طباعة ستيكر مظروف الامتحانات لمبنى "${currentFolder.name}" بالطول (Portrait)` : `Print exam papers sticker for "${currentFolder.name}" in Portrait`}
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "print" ? (
+                  <Loader2 className="size-3.5 animate-spin text-teal-600 dark:text-teal-400" />
+                ) : (
+                  <Printer className="size-3.5 text-teal-600 dark:text-teal-400" />
+                )}
+                <span>{locale === "ar" ? "بالطول" : "Portrait"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintExamDossierSticker(e, currentFolder, "landscape")}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 cursor-pointer transition-all border-s border-teal-500/25"
+                title={locale === "ar" ? `طباعة ستيكر مظروف الامتحانات لمبنى "${currentFolder.name}" بالعرض (Landscape)` : `Print exam papers sticker for "${currentFolder.name}" in Landscape`}
               >
                 <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
               </button>
@@ -3647,6 +3815,10 @@ export function FileBrowser({
                           onTogglePrint={() => void togglePrintStatus(item)}
                           onShowSticker={(folder) => handleShowSticker(null, folder)}
                           onPrintSticker={(folder, orientation) => handlePrintSticker(null, folder, orientation)}
+                          onShowHeadSticker={(folder) => handleShowHeadSticker(null, folder)}
+                          onPrintHeadSticker={(folder, orientation) => handlePrintHeadSticker(null, folder, orientation)}
+                          onShowExamDossierSticker={(folder) => handleShowExamDossierSticker(null, folder)}
+                          onPrintExamDossierSticker={(folder, orientation) => handlePrintExamDossierSticker(null, folder, orientation)}
                           onShowExamStickers={(folder) => handleShowExamStickers(null, folder)}
                           onPrintExamStickers={(folder, orientation) => handlePrintExamStickers(null, folder, orientation)}
                           onOpenProctorDialog={handleOpenProctorDialog}
@@ -3831,44 +4003,85 @@ export function FileBrowser({
                         });
                         if (regCategory !== "building_excel") return null;
                         return (
-                          <div className="inline-flex items-center rounded-lg border border-rose-500/40 bg-rose-500/10 p-0.5 text-xs shadow-2xs">
-                            <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-rose-800 dark:text-rose-200 border-e border-rose-500/25 select-none">
-                              <Building2 className="size-3 text-rose-600 dark:text-rose-400" />
-                              <span>{locale === "ar" ? "الهيد" : "Head"}</span>
-                            </span>
-                            <button
-                              type="button"
-                              onClick={(e) => handleShowHeadSticker(e, item)}
-                              disabled={busyStickerId === item.id}
-                              className="inline-flex items-center justify-center size-6 rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer"
-                              title={locale === "ar" ? `معاينة استيكر الهيد لمبنى "${item.name}" (عرض)` : `Preview head sticker for "${item.name}"`}
-                            >
-                              {busyStickerId === item.id && stickerAction === "show" ? (
-                                <Loader2 className="size-3 animate-spin text-rose-600" />
-                              ) : (
-                                <Eye className="size-3 text-rose-600 dark:text-rose-400" />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => handlePrintHeadSticker(e, item, "portrait")}
-                              disabled={busyStickerId === item.id}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer border-s border-rose-500/25"
-                              title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالطول (Portrait)` : `Print head sticker for "${item.name}" in Portrait`}
-                            >
-                              <Printer className="size-3 text-rose-600 dark:text-rose-400" />
-                              <span className="text-[10px]">{locale === "ar" ? "طولي" : "Port"}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => handlePrintHeadSticker(e, item, "landscape")}
-                              disabled={busyStickerId === item.id}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer border-s border-rose-500/25"
-                              title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالعرض (Landscape)` : `Print head sticker for "${item.name}" in Landscape`}
-                            >
-                              <span className="text-[10px]">{locale === "ar" ? "عرضي" : "Land"}</span>
-                            </button>
-                          </div>
+                          <>
+                            <div className="inline-flex items-center rounded-lg border border-rose-500/40 bg-rose-500/10 p-0.5 text-xs shadow-2xs">
+                              <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-rose-800 dark:text-rose-200 border-e border-rose-500/25 select-none">
+                                <Building2 className="size-3 text-rose-600 dark:text-rose-400" />
+                                <span>{locale === "ar" ? "الهيد" : "Head"}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleShowHeadSticker(e, item)}
+                                disabled={busyStickerId === item.id}
+                                className="inline-flex items-center justify-center size-6 rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer"
+                                title={locale === "ar" ? `معاينة استيكر الهيد لمبنى "${item.name}" (عرض)` : `Preview head sticker for "${item.name}"`}
+                              >
+                                {busyStickerId === item.id && stickerAction === "show" ? (
+                                  <Loader2 className="size-3 animate-spin text-rose-600" />
+                                ) : (
+                                  <Eye className="size-3 text-rose-600 dark:text-rose-400" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handlePrintHeadSticker(e, item, "portrait")}
+                                disabled={busyStickerId === item.id}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer border-s border-rose-500/25"
+                                title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالطول (Portrait)` : `Print head sticker for "${item.name}" in Portrait`}
+                              >
+                                <Printer className="size-3 text-rose-600 dark:text-rose-400" />
+                                <span className="text-[10px]">{locale === "ar" ? "طولي" : "Port"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handlePrintHeadSticker(e, item, "landscape")}
+                                disabled={busyStickerId === item.id}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer border-s border-rose-500/25"
+                                title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالعرض (Landscape)` : `Print head sticker for "${item.name}" in Landscape`}
+                              >
+                                <span className="text-[10px]">{locale === "ar" ? "عرضي" : "Land"}</span>
+                              </button>
+                            </div>
+
+                            <div className="inline-flex items-center rounded-lg border border-teal-500/40 bg-teal-500/10 p-0.5 text-xs shadow-2xs">
+                              <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-teal-800 dark:text-teal-200 border-e border-teal-500/25 select-none">
+                                <FileCheck className="size-3 text-teal-600 dark:text-teal-400" />
+                                <span>{locale === "ar" ? "أوراق الامتحانات" : "Exams"}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleShowExamDossierSticker(e, item)}
+                                disabled={busyStickerId === item.id}
+                                className="inline-flex items-center justify-center size-6 rounded hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 cursor-pointer"
+                                title={locale === "ar" ? `معاينة ستيكر مظروف الامتحانات لمبنى "${item.name}" (عرض)` : `Preview exam papers sticker for "${item.name}"`}
+                              >
+                                {busyStickerId === item.id && stickerAction === "show" ? (
+                                  <Loader2 className="size-3 animate-spin text-teal-600" />
+                                ) : (
+                                  <Eye className="size-3 text-teal-600 dark:text-teal-400" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handlePrintExamDossierSticker(e, item, "portrait")}
+                                disabled={busyStickerId === item.id}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 cursor-pointer border-s border-teal-500/25"
+                                title={locale === "ar" ? `طباعة ستيكر مظروف الامتحانات لمبنى "${item.name}" بالطول (Portrait)` : `Print exam papers sticker for "${item.name}" in Portrait`}
+                              >
+                                <Printer className="size-3 text-teal-600 dark:text-teal-400" />
+                                <span className="text-[10px]">{locale === "ar" ? "طولي" : "Port"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handlePrintExamDossierSticker(e, item, "landscape")}
+                                disabled={busyStickerId === item.id}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 cursor-pointer border-s border-teal-500/25"
+                                title={locale === "ar" ? `طباعة ستيكر مظروف الامتحانات لمبنى "${item.name}" بالعرض (Landscape)` : `Print exam papers sticker for "${item.name}" in Landscape`}
+                              >
+                                <span className="text-[10px]">{locale === "ar" ? "عرضي" : "Land"}</span>
+                              </button>
+                            </div>
+                          </>
                         );
                       })()}
 
@@ -4073,6 +4286,8 @@ export function FileBrowser({
                     onPrintSticker={handlePrintSticker}
                     onShowHeadSticker={handleShowHeadSticker}
                     onPrintHeadSticker={handlePrintHeadSticker}
+                    onShowExamDossierSticker={handleShowExamDossierSticker}
+                    onPrintExamDossierSticker={handlePrintExamDossierSticker}
                     onShowExamStickers={handleShowExamStickers}
                     onPrintExamStickers={handlePrintExamStickers}
                     onOpenProctorDialog={handleOpenProctorDialog}
@@ -4540,6 +4755,83 @@ export function FileBrowser({
               </div>
             )}
 
+            {/* Building Exam Papers Dossier Stickers Action Button */}
+            {hasSelectedBuildings && (
+              <div className="inline-flex items-center rounded-xl border border-teal-500/40 bg-teal-500/10 p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "exam_dossier" })}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-teal-800 dark:text-teal-200 hover:bg-teal-500/20 rounded-s-lg border-e border-teal-500/25 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات مظروف الامتحانات للمباني المحددة"
+                      : "Print Exam Papers Dossier Stickers for selected buildings"
+                  }
+                >
+                  <FileCheck className="size-3.5 text-teal-600 dark:text-teal-400" />
+                  <span>
+                    {locale === "ar"
+                      ? `مظروف الامتحانات (${selectedFolderCount > 0 ? selectedFolderCount : 1})`
+                      : `Exam Papers (${selectedFolderCount > 0 ? selectedFolderCount : 1})`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "exam_dossier" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center justify-center size-7 rounded hover:bg-teal-500/25 text-teal-800 dark:text-teal-200 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "معاينة استيكرات مظروف الامتحانات للمباني المحددة (Show)"
+                      : "Preview exam papers stickers for selected buildings (Show)"
+                  }
+                  aria-label="Preview Exam Papers Stickers"
+                >
+                  {busyBatchStickers && batchStickerAction === "show" && batchStickerType === "exam_dossier" ? (
+                    <Loader2 className="size-3.5 animate-spin text-teal-600 dark:text-teal-400" />
+                  ) : (
+                    <Eye className="size-3.5 text-teal-600 dark:text-teal-400" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "exam_dossier", orientation: "portrait" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-teal-500/25 text-teal-800 dark:text-teal-200 transition-all cursor-pointer border-s border-teal-500/25"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات مظروف الامتحانات للمباني المحددة بالطول (Portrait)"
+                      : "Print exam papers stickers in Portrait"
+                  }
+                  aria-label="Print Exam Papers Stickers Portrait"
+                >
+                  {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "exam_dossier" ? (
+                    <Loader2 className="size-3.5 animate-spin text-teal-600 dark:text-teal-400" />
+                  ) : (
+                    <Printer className="size-3.5 text-teal-600 dark:text-teal-400" />
+                  )}
+                  <span>{locale === "ar" ? "طولي" : "Port"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "exam_dossier", orientation: "landscape" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-teal-500/25 text-teal-800 dark:text-teal-200 transition-all cursor-pointer border-s border-teal-500/25"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات مظروف الامتحانات للمباني المحددة بالعرض (Landscape)"
+                      : "Print exam papers stickers in Landscape"
+                  }
+                  aria-label="Print Exam Papers Stickers Landscape"
+                >
+                  <span>{locale === "ar" ? "عرضي" : "Land"}</span>
+                </button>
+              </div>
+            )}
+
             <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-0.5 shadow-sm">
               <Button
                 variant="primary"
@@ -4711,6 +5003,8 @@ function ItemMenu({
   onPrintSticker,
   onShowHeadSticker,
   onPrintHeadSticker,
+  onShowExamDossierSticker,
+  onPrintExamDossierSticker,
   onShowExamStickers,
   onPrintExamStickers,
   onOpenProctorDialog,
@@ -4739,6 +5033,8 @@ function ItemMenu({
   onPrintSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowHeadSticker?: (folder: DriveItem) => void;
   onPrintHeadSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
+  onShowExamDossierSticker?: (folder: DriveItem) => void;
+  onPrintExamDossierSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (folder: DriveItem) => void;
   onPrintExamStickers?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
@@ -5095,6 +5391,70 @@ function ItemMenu({
                 </>
               );
             })()}
+            {item.isFolder && onShowExamDossierSticker && (() => {
+              const regCat = registerCategory ?? getFolderRegisterCategory({
+                folder: item,
+                breadcrumbs,
+                isCurrentFolder: false,
+              });
+              if (regCat !== "building_excel") return null;
+              return (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item cursor-pointer text-teal-700 dark:text-teal-400 font-semibold"
+                    onClick={() => {
+                      onShowExamDossierSticker(item);
+                      onClose();
+                    }}
+                  >
+                    <FileCheck className="size-4 text-teal-600 dark:text-teal-400" />
+                    <span>
+                      {locale === "ar"
+                        ? "معاينة ستيكر مظروف الامتحانات"
+                        : "Preview Exam Papers Sticker"}
+                    </span>
+                  </button>
+                  {onPrintExamDossierSticker && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="menu-item cursor-pointer text-teal-700 dark:text-teal-400 font-semibold"
+                        onClick={() => {
+                          onPrintExamDossierSticker(item, "portrait");
+                          onClose();
+                        }}
+                      >
+                        <Printer className="size-4" />
+                        <span>
+                          {locale === "ar"
+                            ? "طباعة ستيكر مظروف الامتحانات (طولي Portrait)"
+                            : "Print Exam Papers Sticker (Portrait)"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="menu-item cursor-pointer text-teal-700 dark:text-teal-400 font-semibold"
+                        onClick={() => {
+                          onPrintExamDossierSticker(item, "landscape");
+                          onClose();
+                        }}
+                      >
+                        <Printer className="size-4" />
+                        <span>
+                          {locale === "ar"
+                            ? "طباعة ستيكر مظروف الامتحانات (عرضي Landscape)"
+                            : "Print Exam Papers Sticker (Landscape)"}
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
             {item.isFolder && onOpenProctorDialog && (() => {
               const regCategory = registerCategory ?? getFolderRegisterCategory({
                 folder: item,
@@ -5382,6 +5742,8 @@ interface TreeRowProps {
   onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowHeadSticker?: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintHeadSticker?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
+  onShowExamDossierSticker?: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onPrintExamDossierSticker?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintExamStickers?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
@@ -5439,6 +5801,8 @@ function TreeRow({
   onPrintSticker,
   onShowHeadSticker,
   onPrintHeadSticker,
+  onShowExamDossierSticker,
+  onPrintExamDossierSticker,
   onShowExamStickers,
   onPrintExamStickers,
   onOpenProctorDialog,
@@ -5892,6 +6256,56 @@ function TreeRow({
                         </div>
                       )}
 
+                      {/* Button 4: Building Exam Papers Sticker */}
+                      {isBuildingFolder && onShowExamDossierSticker && onPrintExamDossierSticker && (
+                        <div className="inline-flex items-center rounded-lg border border-teal-500/40 bg-teal-500/10 p-0.5 shadow-2xs">
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-teal-800 dark:text-teal-200 border-e border-teal-500/25 select-none">
+                            <FileCheck className="size-3 text-teal-600 dark:text-teal-400" />
+                            <span className="hidden sm:inline">
+                              {locale === "ar" ? "أوراق الامتحانات" : "Exam Papers"}
+                            </span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onShowExamDossierSticker(e, item)}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center justify-center size-6 rounded hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 transition-all cursor-pointer"
+                            title={locale === "ar" ? `معاينة ستيكر مظروف الامتحانات لمبنى "${item.name}" (عرض)` : `Preview exam papers sticker for "${item.name}" (Show)`}
+                            aria-label="Preview Exam Papers Sticker"
+                          >
+                            {busyStickerId === item.id && stickerAction === "show" ? (
+                              <Loader2 className="size-3.5 animate-spin text-teal-600 dark:text-teal-400" />
+                            ) : (
+                              <Eye className="size-3.5 text-teal-600 dark:text-teal-400" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintExamDossierSticker(e, item, "portrait")}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 transition-all cursor-pointer border-s border-teal-500/25"
+                            title={locale === "ar" ? `طباعة ستيكر مظروف الامتحانات لمبنى "${item.name}" بالطول (Portrait)` : `Print exam papers sticker for "${item.name}" in Portrait`}
+                            aria-label="Print Exam Papers Sticker Portrait"
+                          >
+                            <Printer className="size-3 text-teal-600 dark:text-teal-400" />
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "طولي" : "Port"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintExamDossierSticker(e, item, "landscape")}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-teal-500/20 text-teal-800 dark:text-teal-200 transition-all cursor-pointer border-s border-teal-500/25"
+                            title={locale === "ar" ? `طباعة ستيكر مظروف الامتحانات لمبنى "${item.name}" بالعرض (Landscape)` : `Print exam papers sticker for "${item.name}" in Landscape`}
+                            aria-label="Print Exam Papers Sticker Landscape"
+                          >
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "عرضي" : "Land"}</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Register File / Chip */}
                       {(() => {
                         if (!regCategory) return null;
@@ -6155,6 +6569,8 @@ function TreeRow({
               onPrintSticker={onPrintSticker}
               onShowHeadSticker={onShowHeadSticker}
               onPrintHeadSticker={onPrintHeadSticker}
+              onShowExamDossierSticker={onShowExamDossierSticker}
+              onPrintExamDossierSticker={onPrintExamDossierSticker}
               onShowExamStickers={onShowExamStickers}
               onPrintExamStickers={onPrintExamStickers}
               onOpenProctorDialog={onOpenProctorDialog}

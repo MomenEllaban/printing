@@ -1201,6 +1201,30 @@ describe("generateStickerPdf", () => {
         // Each full building gets 1 full A4 placard page
         expect(pdfDoc.getPageCount()).toBe(2);
       });
+
+      it("generates Building Exam Papers Dossier sticker with examination papers mark and checklist", async () => {
+        const buildingContent = buildStickerContent(["EST 1", "Alexandria", "Smouha", "Smouha National School"]);
+        const examDossierContent = {
+          ...buildingContent,
+          isExamDossier: true,
+        };
+
+        const portraitBytes = await generateStickerPdf({
+          content: examDossierContent,
+          paperMode: "a4",
+          orientation: "portrait",
+        });
+        const portraitDoc = await PDFDocument.load(portraitBytes);
+        expect(portraitDoc.getPageCount()).toBe(1);
+
+        const landscapeBytes = await generateStickerPdf({
+          content: examDossierContent,
+          paperMode: "a4",
+          orientation: "landscape",
+        });
+        const landscapeDoc = await PDFDocument.load(landscapeBytes);
+        expect(landscapeDoc.getPageCount()).toBe(1);
+      });
     });
   });
 });
