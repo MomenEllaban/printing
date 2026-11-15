@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Award,
+  Check,
+  CheckSquare,
   Download,
   ExternalLink,
   Eye,
@@ -15,7 +17,9 @@ import {
   Printer,
   RefreshCw,
   Search,
+  Square,
   Trash2,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -72,6 +76,10 @@ export default function CertificateStickersPage() {
   const [batchToDelete, setBatchToDelete] = useState<ServerBatch | null>(null);
   const [deletingBatch, setDeletingBatch] = useState(false);
 
+  // Aramex shipping mode & row selection states
+  const [isAramexMode, setIsAramexMode] = useState<boolean>(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+
   const activeServerBatch = useMemo(
     () => serverBatches.find((b) => b.id === activeBatchId) || null,
     [serverBatches, activeBatchId],
@@ -102,6 +110,7 @@ export default function CertificateStickersPage() {
     setUploadedFileName(null);
     setActiveDriveFileId(null);
     setSearchQuery("");
+    setSelectedStudentIds(new Set());
   }, []);
 
   const fetchServerBatches = useCallback(async (opts?: { autoSelectFirst?: boolean }) => {
@@ -313,18 +322,56 @@ export default function CertificateStickersPage() {
   const totalSheetsA4 = Math.ceil(filteredStudents.length / 4);
   const receivedCount = useMemo(() => students.filter((s) => s.received).length, [students]);
 
+  // Selection handlers
+  const toggleSelectStudent = useCallback((id: string) => {
+    setSelectedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAllStudents = useCallback(() => {
+    const allIds = new Set(filteredStudents.map((s) => s.id || String(s.serialNumber)));
+    setSelectedStudentIds(allIds);
+  }, [filteredStudents]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedStudentIds(new Set());
+  }, []);
+
+  const isAllSelected =
+    filteredStudents.length > 0 &&
+    filteredStudents.every((s) => selectedStudentIds.has(s.id || String(s.serialNumber)));
+
+  const isIndeterminate =
+    selectedStudentIds.size > 0 && !isAllSelected;
+
+  const targetStudentsToPrint = useMemo(() => {
+    if (selectedStudentIds.size > 0) {
+      return filteredStudents.filter((s) => selectedStudentIds.has(s.id || String(s.serialNumber)));
+    }
+    return filteredStudents;
+  }, [filteredStudents, selectedStudentIds]);
+
   const fetchPdfBlob = useCallback(
     async (orientation: "portrait" | "landscape" = "portrait"): Promise<Blob> => {
-      if (filteredStudents.length === 0) {
-        throw new Error(locale === "ar" ? "لا توجد بيانات طلاب للطباعة" : "No student data to print");
+      if (targetStudentsToPrint.length === 0) {
+        throw new Error(locale === "ar" ? "لا توجد بيانات طلاب محددة للطباعة" : "No student data selected to print");
       }
+      const effectiveOrientation = isAramexMode ? "portrait" : orientation;
       const res = await fetch("/api/certificates/generate-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          students: filteredStudents,
+          students: targetStudentsToPrint,
           batchName: customBatchName || activeServerBatch?.name,
-          orientation,
+          orientation: effectiveOrientation,
+          isAramex: isAramexMode,
         }),
       });
       if (!res.ok) {
@@ -333,27 +380,26 @@ export default function CertificateStickersPage() {
       }
       return await res.blob();
     },
-    [filteredStudents, customBatchName, activeServerBatch, locale],
+    [targetStudentsToPrint, customBatchName, activeServerBatch, isAramexMode, locale],
   );
 
   const handlePreviewPdf = useCallback(
     async (orientation: "portrait" | "landscape" = "portrait") => {
       try {
         setIsGenerating(true);
-        setPreviewOrientation(orientation);
-        const blob = await fetchPdfBlob(orientation);
+        const effectiveOrientation = isAramexMode ? "portrait" : orientation;
+        setPreviewOrientation(effectiveOrientation);
+        const blob = await fetchPdfBlob(effectiveOrientation);
         const url = URL.createObjectURL(blob);
         setPdfPreviewBlobUrl(url);
-        const orientLabel =
-          locale === "ar"
-            ? orientation === "portrait"
-              ? "طولي (Portrait)"
-              : "عرضي (Landscape)"
-            : orientation === "portrait"
-            ? "Portrait"
-            : "Landscape";
+        const orientLabel = isAramexMode
+          ? (locale === "ar" ? "أرامكس - طولي (Aramex Portrait)" : "Aramex Portrait")
+          : effectiveOrientation === "portrait"
+          ? (locale === "ar" ? "طولي (Portrait)" : "Portrait")
+          : (locale === "ar" ? "عرضي (Landscape)" : "Landscape");
+
         setPreviewTitle(
-          `${activeServerBatch?.shortName || activeServerBatch?.name || customBatchName} (${filteredStudents.length}) - ${orientLabel}`,
+          `${activeServerBatch?.shortName || activeServerBatch?.name || customBatchName} (${targetStudentsToPrint.length} ${locale === "ar" ? "طالب" : "students"}) - ${orientLabel}`,
         );
         setPreviewOpen(true);
       } catch (err: any) {
@@ -362,14 +408,15 @@ export default function CertificateStickersPage() {
         setIsGenerating(false);
       }
     },
-    [fetchPdfBlob, activeServerBatch, customBatchName, filteredStudents.length, locale],
+    [fetchPdfBlob, isAramexMode, activeServerBatch, customBatchName, targetStudentsToPrint.length, locale],
   );
 
   const handleDirectPrint = useCallback(
     async (orientation: "portrait" | "landscape" = "portrait") => {
       try {
         setIsGenerating(true);
-        const blob = await fetchPdfBlob(orientation);
+        const effectiveOrientation = isAramexMode ? "portrait" : orientation;
+        const blob = await fetchPdfBlob(effectiveOrientation);
         const url = URL.createObjectURL(blob);
         const iframe = document.createElement("iframe");
         iframe.style.position = "fixed";
@@ -397,18 +444,20 @@ export default function CertificateStickersPage() {
         setIsGenerating(false);
       }
     },
-    [fetchPdfBlob],
+    [fetchPdfBlob, isAramexMode],
   );
 
   const handleDownloadPdf = useCallback(
     async (orientation: "portrait" | "landscape" = "portrait") => {
       try {
         setIsGenerating(true);
-        const blob = await fetchPdfBlob(orientation);
+        const effectiveOrientation = isAramexMode ? "portrait" : orientation;
+        const blob = await fetchPdfBlob(effectiveOrientation);
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `EST_Stickers_${(activeServerBatch?.shortName || activeServerBatch?.name || "Batch").replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_")}_${orientation}.pdf`;
+        const modeTag = isAramexMode ? "-aramex" : "";
+        a.download = `EST_Stickers${modeTag}_${(activeServerBatch?.shortName || activeServerBatch?.name || "Batch").replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_")}_${effectiveOrientation}.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -419,7 +468,7 @@ export default function CertificateStickersPage() {
         setIsGenerating(false);
       }
     },
-    [fetchPdfBlob, activeServerBatch],
+    [fetchPdfBlob, isAramexMode, activeServerBatch],
   );
 
   return (
@@ -583,10 +632,61 @@ export default function CertificateStickersPage() {
 
       {students.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={locale === "ar" ? "ابحث بالاسم أو الرقم..." : "Search by name or serial..."} className="ps-8 text-xs h-9" />
+          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={locale === "ar" ? "ابحث بالاسم أو الرقم أو المدينة..." : "Search by name, serial, or city..."}
+                className="ps-8 text-xs h-9"
+              />
+            </div>
+
+            {/* Aramex Delivery Mode Checkbox */}
+            <label
+              className={cn(
+                "inline-flex items-center gap-2 cursor-pointer select-none rounded-xl border px-3 py-2 text-xs font-bold transition-all shadow-xs shrink-0",
+                isAramexMode
+                  ? "border-amber-500 bg-amber-500 text-white shadow-amber-500/25 ring-2 ring-amber-500/30"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20",
+              )}
+              title={
+                locale === "ar"
+                  ? "تفعيل نمط أرامكس للطباعة بالطول ببيانات الشحن كاملة (المستلم، العنوان، المحافظة، المدينة، الهاتف)"
+                  : "Enable Aramex mode: prints in Portrait with full shipping details"
+              }
+            >
+              <input
+                type="checkbox"
+                checked={isAramexMode}
+                onChange={(e) => setIsAramexMode(e.target.checked)}
+                className="size-4 rounded accent-amber-600 cursor-pointer"
+              />
+              <Truck className="size-4" />
+              <span>{locale === "ar" ? "أرامكس (بيانات الشحن والعنوان)" : "Aramex Shipping"}</span>
+            </label>
+
+            {/* Selection Counter Badge */}
+            {selectedStudentIds.size > 0 && (
+              <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-xl text-xs font-bold shrink-0">
+                <CheckSquare className="size-3.5" />
+                <span>
+                  {locale === "ar"
+                    ? `محدد (${selectedStudentIds.size}) من ${filteredStudents.length}`
+                    : `Selected (${selectedStudentIds.size}) of ${filteredStudents.length}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-xs underline hover:text-indigo-900 dark:hover:text-white cursor-pointer ms-1"
+                >
+                  {locale === "ar" ? "إلغاء التحديد" : "Clear"}
+                </button>
+              </div>
+            )}
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
             {activeDriveFileId && (
               <>
@@ -595,73 +695,115 @@ export default function CertificateStickersPage() {
                 <a href={`/api/drive/files/${activeDriveFileId}/content?download=1`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-surface-soft"><Download className="size-3.5" />{locale === "ar" ? "تحميل Excel" : "Download Excel"}</a>
               </>
             )}
-            <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-1 gap-1">
-              <Button
-                variant="ghost"
-                onClick={() => handlePreviewPdf("portrait")}
-                disabled={isGenerating || filteredStudents.length === 0}
-                className="cursor-pointer gap-1.5 text-xs font-semibold h-7 px-2.5 hover:bg-surface"
-                title={locale === "ar" ? "معاينة استيكرات الشهادات بالطول (Portrait)" : "Preview Portrait stickers"}
-              >
-                {isGenerating && previewOrientation === "portrait" ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-amber-600" />}
-                <span>{locale === "ar" ? "معاينة بالطول" : "Preview Portrait"}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => handlePreviewPdf("landscape")}
-                disabled={isGenerating || filteredStudents.length === 0}
-                className="cursor-pointer gap-1.5 text-xs font-semibold h-7 px-2.5 hover:bg-surface"
-                title={locale === "ar" ? "معاينة استيكرات الشهادات بالعرض (Landscape)" : "Preview Landscape stickers"}
-              >
-                {isGenerating && previewOrientation === "landscape" ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-indigo-600" />}
-                <span>{locale === "ar" ? "معاينة بالعرض" : "Preview Landscape"}</span>
-              </Button>
-            </div>
 
-            <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-1 gap-1">
-              <Button
-                variant="ghost"
-                onClick={() => handleDownloadPdf("portrait")}
-                disabled={isGenerating || filteredStudents.length === 0}
-                className="cursor-pointer gap-1.5 text-xs font-medium h-7 px-2 hover:bg-surface"
-                title={locale === "ar" ? "تنزيل PDF بالطول" : "Download Portrait PDF"}
-              >
-                <Download className="size-3" />
-                <span>{locale === "ar" ? "تنزيل بالطول" : "Download Portrait"}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => handleDownloadPdf("landscape")}
-                disabled={isGenerating || filteredStudents.length === 0}
-                className="cursor-pointer gap-1.5 text-xs font-medium h-7 px-2 hover:bg-surface"
-                title={locale === "ar" ? "تنزيل PDF بالعرض" : "Download Landscape PDF"}
-              >
-                <Download className="size-3" />
-                <span>{locale === "ar" ? "تنزيل بالعرض" : "Download Landscape"}</span>
-              </Button>
-            </div>
+            {isAramexMode ? (
+              /* ARAMEX MODE: Dedicated Portrait Printing with All Shipping Details */
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => handlePreviewPdf("portrait")}
+                  disabled={isGenerating || targetStudentsToPrint.length === 0}
+                  className="cursor-pointer gap-1.5 text-xs font-bold border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 h-8 px-3.5 shadow-xs"
+                  title={locale === "ar" ? "معاينة استيكرات أرامكس بالطول (Portrait)" : "Preview Aramex stickers"}
+                >
+                  {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-amber-600" />}
+                  <span>{locale === "ar" ? `معاينة أرامكس (${targetStudentsToPrint.length})` : `Preview Aramex (${targetStudentsToPrint.length})`}</span>
+                </Button>
 
-            <Button
-              variant="primary"
-              onClick={() => handleDirectPrint("portrait")}
-              disabled={isGenerating || filteredStudents.length === 0}
-              className="cursor-pointer gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white h-8 px-3.5 shadow-sm"
-              title={locale === "ar" ? "طباعة الاستيكرات بالطول (Portrait - ربع A4)" : "Print stickers in Portrait orientation"}
-            >
-              {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
-              <span>{locale === "ar" ? "طباعة بالطول (Portrait)" : "Print Portrait"}</span>
-            </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleDirectPrint("portrait")}
+                  disabled={isGenerating || targetStudentsToPrint.length === 0}
+                  className="cursor-pointer gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white h-8 px-4 shadow-sm"
+                  title={locale === "ar" ? "طباعة استيكرات أرامكس بالطول (Portrait - ربع A4)" : "Print Aramex stickers"}
+                >
+                  {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+                  <span>{locale === "ar" ? `طباعة أرامكس بالطول (${targetStudentsToPrint.length})` : `Print Aramex (${targetStudentsToPrint.length})`}</span>
+                </Button>
 
-            <Button
-              variant="primary"
-              onClick={() => handleDirectPrint("landscape")}
-              disabled={isGenerating || filteredStudents.length === 0}
-              className="cursor-pointer gap-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white h-8 px-3.5 shadow-sm"
-              title={locale === "ar" ? "طباعة الاستيكرات بالعرض (Landscape - ربع A4)" : "Print stickers in Landscape orientation"}
-            >
-              {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
-              <span>{locale === "ar" ? "طباعة بالعرض (Landscape)" : "Print Landscape"}</span>
-            </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => handleDownloadPdf("portrait")}
+                  disabled={isGenerating || targetStudentsToPrint.length === 0}
+                  className="cursor-pointer gap-1.5 text-xs font-medium h-8 px-2.5 hover:bg-surface border border-border"
+                  title={locale === "ar" ? "تنزيل PDF أرامكس بالطول" : "Download Aramex PDF"}
+                >
+                  <Download className="size-3.5" />
+                  <span>{locale === "ar" ? "تنزيل PDF" : "Download PDF"}</span>
+                </Button>
+              </div>
+            ) : (
+              /* STANDARD MODE: Choice of Portrait or Landscape Printing */
+              <>
+                <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-1 gap-1">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handlePreviewPdf("portrait")}
+                    disabled={isGenerating || targetStudentsToPrint.length === 0}
+                    className="cursor-pointer gap-1.5 text-xs font-semibold h-7 px-2.5 hover:bg-surface"
+                    title={locale === "ar" ? "معاينة استيكرات الشهادات بالطول (Portrait)" : "Preview Portrait stickers"}
+                  >
+                    {isGenerating && previewOrientation === "portrait" ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-amber-600" />}
+                    <span>{locale === "ar" ? `معاينة بالطول (${targetStudentsToPrint.length})` : `Preview Port. (${targetStudentsToPrint.length})`}</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handlePreviewPdf("landscape")}
+                    disabled={isGenerating || targetStudentsToPrint.length === 0}
+                    className="cursor-pointer gap-1.5 text-xs font-semibold h-7 px-2.5 hover:bg-surface"
+                    title={locale === "ar" ? "معاينة استيكرات الشهادات بالعرض (Landscape)" : "Preview Landscape stickers"}
+                  >
+                    {isGenerating && previewOrientation === "landscape" ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5 text-indigo-600" />}
+                    <span>{locale === "ar" ? `معاينة بالعرض (${targetStudentsToPrint.length})` : `Preview Land. (${targetStudentsToPrint.length})`}</span>
+                  </Button>
+                </div>
+
+                <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-1 gap-1">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleDownloadPdf("portrait")}
+                    disabled={isGenerating || targetStudentsToPrint.length === 0}
+                    className="cursor-pointer gap-1.5 text-xs font-medium h-7 px-2 hover:bg-surface"
+                    title={locale === "ar" ? "تنزيل PDF بالطول" : "Download Portrait PDF"}
+                  >
+                    <Download className="size-3" />
+                    <span>{locale === "ar" ? "تنزيل بالطول" : "Download Port."}</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleDownloadPdf("landscape")}
+                    disabled={isGenerating || targetStudentsToPrint.length === 0}
+                    className="cursor-pointer gap-1.5 text-xs font-medium h-7 px-2 hover:bg-surface"
+                    title={locale === "ar" ? "تنزيل PDF بالعرض" : "Download Landscape PDF"}
+                  >
+                    <Download className="size-3" />
+                    <span>{locale === "ar" ? "تنزيل بالعرض" : "Download Land."}</span>
+                  </Button>
+                </div>
+
+                <Button
+                  variant="primary"
+                  onClick={() => handleDirectPrint("portrait")}
+                  disabled={isGenerating || targetStudentsToPrint.length === 0}
+                  className="cursor-pointer gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white h-8 px-3.5 shadow-sm"
+                  title={locale === "ar" ? "طباعة الاستيكرات بالطول (Portrait - ربع A4)" : "Print stickers in Portrait orientation"}
+                >
+                  {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+                  <span>{locale === "ar" ? `طباعة بالطول (${targetStudentsToPrint.length})` : `Print Portrait (${targetStudentsToPrint.length})`}</span>
+                </Button>
+
+                <Button
+                  variant="primary"
+                  onClick={() => handleDirectPrint("landscape")}
+                  disabled={isGenerating || targetStudentsToPrint.length === 0}
+                  className="cursor-pointer gap-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white h-8 px-3.5 shadow-sm"
+                  title={locale === "ar" ? "طباعة الاستيكرات بالعرض (Landscape - ربع A4)" : "Print stickers in Landscape orientation"}
+                >
+                  {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+                  <span>{locale === "ar" ? `طباعة بالعرض (${targetStudentsToPrint.length})` : `Print Landscape (${targetStudentsToPrint.length})`}</span>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -672,9 +814,32 @@ export default function CertificateStickersPage() {
             <table className="w-full text-start text-xs">
               <thead className="border-b border-border bg-surface-soft/60 font-semibold text-muted">
                 <tr>
-                  <th className="px-4 py-3 text-start">#</th>
-                  <th className="px-4 py-3 text-start">{locale === "ar" ? "الرقم" : "Serial"}</th>
+                  <th className="w-10 px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = isIndeterminate;
+                      }}
+                      onChange={(e) => {
+                        if (e.target.checked) selectAllStudents();
+                        else clearSelection();
+                      }}
+                      className="size-4 rounded border-border accent-amber-600 cursor-pointer"
+                      title={locale === "ar" ? "تحديد كل الطلاب الظاهرين" : "Select all visible students"}
+                    />
+                  </th>
+                  <th className="px-3 py-3 text-start">#</th>
+                  <th className="px-3 py-3 text-start">{locale === "ar" ? "الرقم" : "Serial"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "اسم الطالب" : "Student Name"}</th>
+                  {isAramexMode && (
+                    <>
+                      <th className="px-3 py-3 text-start">{locale === "ar" ? "المستلم" : "Recipient"}</th>
+                      <th className="px-3 py-3 text-start">{locale === "ar" ? "المحافظة والمدينة" : "Gov / City"}</th>
+                      <th className="px-3 py-3 text-start">{locale === "ar" ? "المنطقة والعنوان" : "Area & Street"}</th>
+                      <th className="px-3 py-3 text-start">{locale === "ar" ? "الهاتف" : "Phone"}</th>
+                    </>
+                  )}
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "التقارير" : "Reports"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "قائمة التقارير" : "Reports List"}</th>
                   <th className="px-4 py-3 text-start">{locale === "ar" ? "الاستلام" : "Received"}</th>
@@ -682,22 +847,50 @@ export default function CertificateStickersPage() {
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredStudents.map((s, idx) => {
+                  const sId = s.id || String(s.serialNumber || idx + 1);
+                  const isChecked = selectedStudentIds.has(sId);
                   const key = getStudentReceiptKey(s, idx);
                   const originalIndex = students.findIndex((st, stIdx) => getStudentReceiptKey(st, stIdx) === key);
                   const received = Boolean(s.received);
                   return (
-                    <tr key={s.id || idx} className={cn("hover:bg-surface-soft/40 transition-colors", received && "bg-emerald-500/5")}>
-                      <td className="px-4 py-2.5 font-mono text-muted">{idx + 1}</td>
-                      <td className="px-4 py-2.5"><span className="rounded bg-slate-900 text-amber-400 px-2 py-0.5 font-mono font-bold text-xs">({s.serialNumber || idx + 1})</span></td>
+                    <tr
+                      key={s.id || idx}
+                      onClick={() => toggleSelectStudent(sId)}
+                      className={cn(
+                        "hover:bg-surface-soft/40 transition-colors cursor-pointer",
+                        isChecked && "bg-amber-500/10",
+                        received && !isChecked && "bg-emerald-500/5",
+                      )}
+                    >
+                      <td className="w-10 px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleSelectStudent(sId)}
+                          className="size-4 rounded border-border accent-amber-600 cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-muted">{idx + 1}</td>
+                      <td className="px-3 py-2.5"><span className="rounded bg-slate-900 text-amber-400 px-2 py-0.5 font-mono font-bold text-xs">({s.serialNumber || idx + 1})</span></td>
                       <td className="px-4 py-2.5 font-bold text-foreground text-sm">
                         <div>{s.studentName}</div>
                         {s.studentNameAr && s.studentNameAr !== s.studentName && (
                           <div className="text-xs font-semibold text-muted mt-0.5">{s.studentNameAr}</div>
                         )}
                       </td>
+                      {isAramexMode && (
+                        <>
+                          <td className="px-3 py-2.5 font-semibold text-foreground">{s.recipient || s.studentNameAr || "—"}</td>
+                          <td className="px-3 py-2.5 text-muted">{[s.governorate, s.city].filter(Boolean).join(" / ") || "—"}</td>
+                          <td className="px-3 py-2.5 max-w-xs truncate" title={[s.area, s.street, s.landmark].filter(Boolean).join(" - ")}>
+                            {[s.area, s.street].filter(Boolean).join(" - ") || "—"}
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-xs">{[s.phone, s.phone2].filter(Boolean).join(" • ") || "—"}</td>
+                        </>
+                      )}
                       <td className="px-4 py-2.5"><span className="rounded bg-amber-500/15 text-amber-800 dark:text-amber-300 font-bold px-2 py-0.5 text-xs">{s.totalReports || 1}</span></td>
                       <td className="px-4 py-2.5 text-foreground max-w-xs">{s.reportsList || "-"}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => void toggleStudentReceipt(originalIndex >= 0 ? originalIndex : idx)}

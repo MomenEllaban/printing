@@ -187,6 +187,18 @@ export function parseCertificateWorkbook(
     let reqId = "";
     let batchName = defaultBatchName;
 
+    // Aramex / Delivery shipping fields
+    let recipient = "";
+    let city = "";
+    let area = "";
+    let street = "";
+    let apartment = "";
+    let floor = "";
+    let landmark = "";
+    let phone = "";
+    let phone2 = "";
+    let awb = "";
+
     row.forEach((val: any, colIdx: number) => {
       if (val === undefined || val === null || String(val).trim() === "") return;
       const v = String(val).trim();
@@ -222,6 +234,22 @@ export function parseCertificateWorkbook(
         }
       }
 
+      if (h.includes("recipient") || h.includes("المستلم") || h.includes("مستلم")) {
+        recipient = v;
+      }
+
+      if (h === "phonenumber" || h.includes("studentphone")) {
+        phone = v;
+      } else if (h === "phone" || h.includes("recipientphone") || h.includes("mobile") || h.includes("هاتف") || h.includes("تليفون") || h.includes("موبايل")) {
+        if (!phone) {
+          phone = v;
+        } else if (!phone2 && v !== phone) {
+          phone2 = v;
+        } else if (!phone2) {
+          phone2 = v;
+        }
+      }
+
       if (h.includes("national") || h.includes("nid") || h.includes("idnumber") || (h === "id" && !reqId)) {
         nationalId = v;
       }
@@ -239,9 +267,31 @@ export function parseCertificateWorkbook(
       if (h.includes("school") || h.includes("مدرسة") || h.includes("مدرسه")) {
         school = v;
       }
-      if (h.includes("governorate") || h.includes("city") || h.includes("محافظة") || h.includes("مدينة")) {
+      if (h.includes("governorate") || h.includes("محافظة") || h.includes("محافظه")) {
         gov = v;
       }
+      if (h.includes("city") || h.includes("مدينة") || h.includes("مدينه")) {
+        city = v;
+      }
+      if (h.includes("area") || h.includes("منطقة") || h.includes("منطقه") || h.includes("حي")) {
+        area = v;
+      }
+      if (h.includes("street") || h.includes("شارع")) {
+        street = v;
+      }
+      if (h.includes("apartment") || h.includes("شقة") || h.includes("شقه")) {
+        apartment = v;
+      }
+      if (h === "floor" || h.includes("الدور") || h.includes("دور")) {
+        floor = v;
+      }
+      if (h.includes("landmark") || h.includes("علامة") || h.includes("علامه")) {
+        landmark = v;
+      }
+      if (h.includes("awb") || h.includes("بوليصة") || h.includes("بوليصه")) {
+        awb = v;
+      }
+
       if (h.includes("requestid") || h.includes("newrequestid")) {
         reqId = v;
       }
@@ -276,6 +326,16 @@ export function parseCertificateWorkbook(
       nationalId,
       schoolName: school,
       governorate: gov,
+      city: city || undefined,
+      area: area || undefined,
+      street: street || undefined,
+      apartment: apartment || undefined,
+      floor: floor || undefined,
+      landmark: landmark || undefined,
+      recipient: recipient || undefined,
+      phone: phone || undefined,
+      phone2: phone2 || undefined,
+      awb: awb || undefined,
       totalReports: totalReports || 1,
       reportsList: reportList || "Official EST Score Report",
       certificateCode: reqId || `EST-REP-${String(finalSerial).padStart(4, "0")}`,

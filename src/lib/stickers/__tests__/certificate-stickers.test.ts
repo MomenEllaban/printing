@@ -127,4 +127,37 @@ describe("Certificate & Score Report Stickers PDF Generator", () => {
     expect(Math.round(page.getWidth())).toBe(842);
     expect(Math.round(page.getHeight())).toBe(595);
   });
+
+  it("should generate Aramex portrait shipping stickers with complete delivery fields", async () => {
+    const aramexStudent: CertificateStudentData = {
+      serialNumber: "205",
+      recipient: "مصطفي مهدي عبد الستار البطران",
+      studentName: "Mostafa Mahdy Abdelsattar Abdelhamid Elbattran",
+      studentNameAr: "مصطفى مهدى عبدالستار عبدالحميد البطران",
+      governorate: "Giza",
+      city: "Cheikh Zayed",
+      area: "كمبوند الخمايل المرحله الاوله",
+      street: "كمبوند الخمايل المرحله الاوله عمارة 34 الدور الاول شقه 13",
+      apartment: "34",
+      floor: "13",
+      landmark: "بوابه الكمبوند امام هايبر وان",
+      phone: "01112373064",
+      phone2: "01112373064",
+      totalReports: 2,
+      reportsList: "October 2025 - EST I; January 2026 - EST II",
+    };
+
+    const pdfBytes = await generateCertificateStickersPdf({
+      students: [aramexStudent],
+      isAramex: true,
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    const doc = await PDFDocument.load(pdfBytes);
+    expect(doc.getPageCount()).toBe(1);
+    const page = doc.getPage(0);
+    // Always Portrait for Aramex
+    expect(Math.round(page.getWidth())).toBe(595);
+    expect(Math.round(page.getHeight())).toBe(842);
+  });
 });

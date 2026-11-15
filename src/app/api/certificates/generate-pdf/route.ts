@@ -20,7 +20,8 @@ export async function POST(request: Request) {
     const examName = typeof body.examName === "string" ? body.examName : undefined;
     const batchName = typeof body.batchName === "string" ? body.batchName : undefined;
 
-    const orientation = body.orientation === "landscape" ? "landscape" : "portrait";
+    const isAramex = Boolean(body.isAramex);
+    const orientation = isAramex ? "portrait" : (body.orientation === "landscape" ? "landscape" : "portrait");
 
     const pdfBytes = await generateCertificateStickersPdf({
       students,
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       examName,
       batchName,
       orientation,
+      isAramex,
     });
 
     const bodyBuffer = Buffer.from(pdfBytes);
