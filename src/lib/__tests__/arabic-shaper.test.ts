@@ -19,11 +19,10 @@ describe("arabic-shaper", () => {
 
   it("formats for PDF with properly shaped connected characters in natural reading order", () => {
     const res = formatArabicForPdf("عماد");
-    // In LTR engine, characters are reversed so it renders RTL on page: د (isolated), ا (final), م (medial), ع (initial)
-    expect(res.charCodeAt(0)).toBe(0xfea9); // د isolated
-    expect(res.charCodeAt(1)).toBe(0xfe8e); // ا final
-    expect(res.charCodeAt(2)).toBe(0xfee4); // م medial
-    expect(res.charCodeAt(3)).toBe(0xfecb); // ع initial
+    expect(res.charCodeAt(0)).toBe(0xfecb); // ع initial
+    expect(res.charCodeAt(1)).toBe(0xfee4); // م medial
+    expect(res.charCodeAt(2)).toBe(0xfe8e); // ا final
+    expect(res.charCodeAt(3)).toBe(0xfea9); // د isolated
   });
 });
 
