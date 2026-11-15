@@ -355,16 +355,7 @@ export async function generateBuildingCartonStickerPdf(
       ? options.totalStudents
       : floors.reduce((sum, f) => sum + (f.totalStudents || 0), 0);
 
-  // Outer framing card
-  page.drawRectangle({
-    x: cardX,
-    y: cardY,
-    width: cardW,
-    height: cardH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.6,
-  });
+  // Outer framing card - removed per user request (border box removed)
 
   // Header Bar
   const headerH = 60;
@@ -389,10 +380,10 @@ export async function generateBuildingCartonStickerPdf(
   const examLabel = isEst2 ? "EST II" : "EST I";
   const sessionText = options.date || "OFFICIAL EXAMINATION SESSION";
 
-  page.drawText(`${examLabel} — OFFICIAL EXAMINATION LOGISTICS`, {
+  page.drawText(examLabel, {
     x: textStartX,
-    y: headerY + 34,
-    size: 14.5,
+    y: headerY + 32,
+    size: 20,
     font,
     color: COLOR_CHARCOAL,
   });

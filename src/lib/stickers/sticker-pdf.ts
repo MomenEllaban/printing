@@ -213,6 +213,30 @@ function expandSubjectName(codeOrName: string): string {
   return trimmed;
 }
 
+/**
+ * Resolves whether the active folder hierarchy is under EST 1 or EST 2.
+ * Returns normalized uppercase "EST 1" or "EST 2".
+ */
+export function resolveExamTag(content: StickerContent): string {
+  const candidates = [
+    content.examName,
+    ...(content.cleanChain || []),
+    content.examType,
+  ].filter(Boolean) as string[];
+
+  for (const c of candidates) {
+    if (/\bEST\s*[-_]?\s*2\b|\bEST\s*II\b/i.test(c)) {
+      return "EST 2";
+    }
+  }
+  for (const c of candidates) {
+    if (/\bEST\s*[-_]?\s*1\b|\bEST\s*I\b/i.test(c)) {
+      return "EST 1";
+    }
+  }
+  return "EST 1";
+}
+
 function getVerticalSubjectLines(content: StickerContent, isRoom: boolean): string[] {
   const lines: string[] = [];
 
@@ -280,9 +304,10 @@ function drawA4PlacardPage(params: {
   const { pdfDoc, font, logoImg, content, orientation } = params;
 
   // Determine hierarchy level
-  const isRoom = content.level === "room" && Boolean(content.room);
-  const isFloor = content.level === "floor" && Boolean(content.floor);
-  const isBuilding = content.level === "building" && Boolean(content.building);
+  const isHead = content.level === "building_head" || Boolean(content.isHead);
+  const isRoom = !isHead && content.level === "room" && Boolean(content.room);
+  const isFloor = !isHead && content.level === "floor" && Boolean(content.floor);
+  const isBuilding = !isHead && content.level === "building" && Boolean(content.building);
   const isCenter = content.level === "center" && Boolean(content.center);
   const isGov = content.level === "governorate" && Boolean(content.governorate);
   const isRoot = content.level === "root";
@@ -294,19 +319,25 @@ function drawA4PlacardPage(params: {
 
   const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-  // Outer framing rectangle
+  // Outer framing rectangle - removed per user request (border box removed)
   const margin = 24;
-  page.drawRectangle({
-    x: margin,
-    y: margin,
-    width: pageWidth - margin * 2,
-    height: pageHeight - margin * 2,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.8,
-  });
 
   // --- HEADER SECTION ---
   let headerBottomY = pageHeight - margin - 20;
+
+  // Top-Right Corner: Large EST 1 / EST 2 Exam Tag based on active folder
+  const examTag = resolveExamTag(content);
+  const cornerTagSize = isLandscape ? 30 : 34;
+  const cornerTagW = font.widthOfTextAtSize(examTag, cornerTagSize);
+  const cornerTagX = pageWidth - margin - cornerTagW - 16;
+  const cornerTagY = pageHeight - margin - 15 - (isLandscape ? 28 : 34);
+  page.drawText(examTag, {
+    x: cornerTagX,
+    y: cornerTagY,
+    size: cornerTagSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
 
   if (logoImg) {
     const logoHeight = isRoom ? (isLandscape ? 84 : 92) : (isLandscape ? 66 : 76);
@@ -323,17 +354,23 @@ function drawA4PlacardPage(params: {
     headerBottomY = logoY - 8;
   }
 
-  // Exam Subtitle Badge - skip for room stickers as requested (cleaner header)
+  // Exam Subtitle Badge - skip for room stickers as requested (cleaner header, no "— OFFICIAL EXAMINATION")
   if (!isRoom) {
-    const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
-    const examSize = isLandscape ? 13 : 14;
-    const examWidth = font.widthOfTextAtSize(examTitle, examSize);
-    page.drawText(examTitle, {
+    const subTitle = isHead
+      ? "BUILDING HEAD DOSSIER"
+      : isBuilding
+      ? "BUILDING EXAMINATION DOSSIER"
+      : isFloor
+      ? "FLOOR EXAMINATION DOSSIER (SENIOR)"
+      : "EXAMINATION DOSSIER";
+    const examSize = isLandscape ? 12 : 13;
+    const examWidth = font.widthOfTextAtSize(subTitle, examSize);
+    page.drawText(subTitle, {
       x: (pageWidth - examWidth) / 2,
       y: headerBottomY - 14,
       size: examSize,
       font,
-      color: COLOR_CHARCOAL,
+      color: COLOR_MUTED,
     });
   }
 
@@ -1374,19 +1411,40 @@ function drawQuarterPlacard(params: {
       page.drawText(estText, { x: isRoom ? x + (width - estW) / 2 : x + 10, y: logoY + 4, size: estSize, font, color: COLOR_CHARCOAL });
     }
 
+    // Top-Right Corner: Large EST 1 / EST 2 Tag based on active folder
+    const examTag = resolveExamTag(content);
+    const cornerTagSize = 24;
+    const cornerTagW = font.widthOfTextAtSize(examTag, cornerTagSize);
+    const cornerTagX = x + width - cornerTagW - 10;
+    const cornerTagY = logoY + (logoH - cornerTagSize) / 2 + 2;
+    page.drawText(examTag, {
+      x: cornerTagX,
+      y: cornerTagY,
+      size: cornerTagSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+
     if (!isRoom) {
-      const textStartX = logoImg ? logoX + logoW + 8 : x + 40;
-      page.drawText(`${content.examName || "EST 1"} — OFFICIAL EXAMINATION`, { x: textStartX, y: logoY + 11, size: 9, font, color: COLOR_CHARCOAL });
-      page.drawText(
-        isHead ? "BUILDING HEAD EXAMINATION DOSSIER" : "FLOOR EXAMINATION DOSSIER (SENIOR)",
-        { x: textStartX, y: logoY + 2, size: 6.5, font, color: COLOR_MUTED },
-      );
+      const textStartX = logoImg ? logoX + logoW + 10 : x + 40;
+      const subtitleText = isHead
+        ? "BUILDING HEAD DOSSIER"
+        : content.level === "building"
+        ? "BUILDING EXAMINATION DOSSIER"
+        : "FLOOR EXAMINATION DOSSIER (SENIOR)";
+      page.drawText(subtitleText, {
+        x: textStartX,
+        y: logoY + (logoH - 9) / 2 + 1,
+        size: 9,
+        font,
+        color: COLOR_MUTED,
+      });
     }
 
     const headerBottom = logoY - 5;
     page.drawLine({ start: { x: x + 8, y: headerBottom }, end: { x: x + width - 8, y: headerBottom }, thickness: 1, color: COLOR_CHARCOAL });
 
-    const locItems = [content.governorate, content.center, content.building, isRoom ? content.floor : undefined].filter(Boolean);
+    const locItems = Array.from(new Set([content.governorate, content.center, content.building, isRoom ? content.floor : undefined].filter(Boolean)));
     const locText = locItems.join("  •  ");
     let locSize = 8;
     let locWidth = font.widthOfTextAtSize(locText, locSize);
@@ -1556,28 +1614,35 @@ function drawQuarterPlacard(params: {
     });
   }
 
-  // Only draw subtitles if NOT isRoom
+  // Top-Right Corner: Large EST 1 / EST 2 Tag based on active folder
+  const examTag = resolveExamTag(content);
+  const cornerTagSize = 22;
+  const cornerTagW = font.widthOfTextAtSize(examTag, cornerTagSize);
+  const cornerTagX = x + width - cornerTagW - 8;
+  const cornerTagY = logoY + (logoH - cornerTagSize) / 2 + 2;
+  page.drawText(examTag, {
+    x: cornerTagX,
+    y: cornerTagY,
+    size: cornerTagSize,
+    font,
+    color: COLOR_CHARCOAL,
+  });
+
+  // Only draw subtitles if NOT isRoom (clean, no "— OFFICIAL EXAMINATION")
   if (!isRoom) {
     const textStartX = logoImg ? logoX + logoW + 8 : x + 40;
-    const examTitle = `${content.examName || "EST 1"} — OFFICIAL EXAMINATION`;
-    page.drawText(examTitle, {
+    const subtitleText = isHead
+      ? "BUILDING HEAD DOSSIER"
+      : content.level === "building"
+      ? "BUILDING EXAMINATION DOSSIER"
+      : "FLOOR EXAMINATION DOSSIER (SENIOR)";
+    page.drawText(subtitleText, {
       x: textStartX,
-      y: logoY + 11,
-      size: 9,
+      y: logoY + (logoH - 8.5) / 2 + 1,
+      size: 8.5,
       font,
-      color: COLOR_CHARCOAL,
+      color: COLOR_MUTED,
     });
-
-    page.drawText(
-      isHead ? "BUILDING HEAD EXAMINATION DOSSIER" : "FLOOR EXAMINATION DOSSIER (SENIOR)",
-      {
-        x: textStartX,
-        y: logoY + 2,
-        size: 6.5,
-        font,
-        color: COLOR_MUTED,
-      },
-    );
   }
 
   const headerBottom = logoY - 5;
@@ -1591,12 +1656,12 @@ function drawQuarterPlacard(params: {
   });
 
   // Location string
-  const locItems = [
+  const locItems = Array.from(new Set([
     content.governorate,
     content.center,
     content.building,
     isRoom ? content.floor : undefined,
-  ].filter(Boolean);
+  ].filter(Boolean)));
   const locText = locItems.join("  •  ");
   let locSize = 8;
   let locWidth = font.widthOfTextAtSize(locText, locSize);

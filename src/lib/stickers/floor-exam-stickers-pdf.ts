@@ -136,16 +136,7 @@ function drawFloorSubjectPlacardPage(params: {
   const cardW = width - margin * 2;
   const cardH = height - margin * 2;
 
-  // Outer framing card
-  page.drawRectangle({
-    x: cardX,
-    y: cardY,
-    width: cardW,
-    height: cardH,
-    color: COLOR_WHITE,
-    borderColor: COLOR_CHARCOAL,
-    borderWidth: 1.6,
-  });
+  // Outer framing card - removed per user request (border box removed)
 
   // Header Bar
   const headerH = 58;
@@ -170,10 +161,10 @@ function drawFloorSubjectPlacardPage(params: {
   const examLabel = isEst2 ? "EST II" : "EST I";
   const sessionText = options.date || "OFFICIAL EXAMINATION SESSION";
 
-  page.drawText(`${examLabel} — OFFICIAL EXAMINATION LOGISTICS`, {
+  page.drawText(examLabel, {
     x: textStartX,
-    y: headerY + 32,
-    size: 14,
+    y: headerY + 30,
+    size: 20,
     font,
     color: COLOR_CHARCOAL,
   });

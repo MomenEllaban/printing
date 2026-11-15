@@ -5,6 +5,7 @@ import {
   generateBatchStickerPdf,
   generateExamStickersPdf,
   generateBatchExamStickersPdf,
+  resolveExamTag,
 } from "../sticker-pdf";
 import {
   parseEst1FileName,
@@ -1167,6 +1168,38 @@ describe("generateStickerPdf", () => {
         const pdfDoc = await PDFDocument.load(pdfBytes);
         // 4 quarter items fit on exactly 1 A4 page
         expect(pdfDoc.getPageCount()).toBe(1);
+      });
+
+      it("resolves EST 1 and EST 2 corner exam tags correctly based on folder hierarchy", () => {
+        const est1Building = buildStickerContent(["EST 1", "Alexandria", "Agami", "Al-Forsan School"]);
+        expect(resolveExamTag(est1Building)).toBe("EST 1");
+
+        const est2Building = buildStickerContent(["EST 2", "Cairo", "Nasr City", "Manarat School"]);
+        expect(resolveExamTag(est2Building)).toBe("EST 2");
+
+        const est2Roman = buildStickerContent(["EST II", "Giza", "Dokki", "Orman School"]);
+        expect(resolveExamTag(est2Roman)).toBe("EST 2");
+
+        const customEst2 = {
+          ...est1Building,
+          examName: "EST 2",
+        };
+        expect(resolveExamTag(customEst2)).toBe("EST 2");
+      });
+
+      it("generates Building and School stickers in quarter-A4 for both EST 1 and EST 2", async () => {
+        const est1School = buildStickerContent(["EST 1", "Alexandria", "Smouha", "Smouha National School"]);
+        const est2School = buildStickerContent(["EST 2", "Giza", "Zayed", "Zayed Official School"]);
+
+        const pdfBytes = await generateBatchStickerPdf({
+          contents: [est1School, est2School],
+          paperMode: "a4",
+          orientation: "portrait",
+        });
+
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // Each full building gets 1 full A4 placard page
+        expect(pdfDoc.getPageCount()).toBe(2);
       });
     });
   });
