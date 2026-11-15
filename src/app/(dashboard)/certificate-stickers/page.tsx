@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Award,
+  Boxes,
   Check,
   CheckSquare,
   Download,
@@ -27,6 +28,7 @@ import { Button, ConfirmDialog, Input } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
 import { cn } from "@/lib/cn";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
+import { BoxManifestDialog } from "@/components/box-manifest-dialog";
 import type { CertificateStudentData } from "@/lib/stickers/certificate-stickers-pdf";
 import { parseCertificateWorkbook, type StudentWithReceipt } from "@/lib/certificates-parser";
 
@@ -79,6 +81,9 @@ export default function CertificateStickersPage() {
   // Aramex shipping mode & row selection states
   const [isAramexMode, setIsAramexMode] = useState<boolean>(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+
+  // Box packing manifest dialog state
+  const [boxManifestOpen, setBoxManifestOpen] = useState<boolean>(false);
 
   const activeServerBatch = useMemo(
     () => serverBatches.find((b) => b.id === activeBatchId) || null,
@@ -696,6 +701,22 @@ export default function CertificateStickersPage() {
               </>
             )}
 
+            {/* Box Manifest / Batch Splitting Button */}
+            <Button
+              variant="secondary"
+              onClick={() => setBoxManifestOpen(true)}
+              disabled={students.length === 0}
+              className="cursor-pointer gap-1.5 text-xs font-bold border-indigo-500/40 bg-indigo-500/10 text-indigo-800 dark:text-indigo-200 hover:bg-indigo-500/20 h-8 px-3 shadow-xs shrink-0"
+              title={
+                locale === "ar"
+                  ? "تقسيم الباتش وطباعة كشف محتويات الكرتونة (جدول من صف 1 إلى 100، 101 إلى 200، إلخ)"
+                  : "Split batch and print box packing manifest table (e.g. rows 1 to 100, 101 to 200)"
+              }
+            >
+              <Boxes className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>{locale === "ar" ? "كشف الكرتونة وتقسيم الباتش (جدول)" : "Box Manifest (Table)"}</span>
+            </Button>
+
             {isAramexMode ? (
               /* ARAMEX MODE: Dedicated Portrait Printing with All Shipping Details */
               <div className="flex flex-wrap items-center gap-2">
@@ -964,6 +985,20 @@ export default function CertificateStickersPage() {
             ? `لتأكيد حذف "${batchToDelete?.fileName || batchToDelete?.name}"، يرجى كتابة اسم الملف أو كلمة delete للتأكيد:`
             : `To confirm deleting "${batchToDelete?.fileName || batchToDelete?.name}", please type the file name or "delete" below:`
         }
+      />
+
+      {/* Box Packing Manifest & Batch Splitting Dialog */}
+      <BoxManifestDialog
+        open={boxManifestOpen}
+        onClose={() => setBoxManifestOpen(false)}
+        students={filteredStudents}
+        batchName={customBatchName || activeServerBatch?.name || "EST Batch"}
+        isAramex={isAramexMode}
+        onPreviewPdf={(url, title) => {
+          setPdfPreviewBlobUrl(url);
+          setPreviewTitle(title);
+          setPreviewOpen(true);
+        }}
       />
     </div>
   );
