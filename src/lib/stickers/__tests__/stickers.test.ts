@@ -1081,5 +1081,93 @@ describe("generateStickerPdf", () => {
         expect(pdfDoc.getPageCount()).toBe(4);
       });
     });
+
+    describe("Building Head Quarter-A4 Sticker System", () => {
+      it("generates a Quarter-A4 Building Head sticker in Portrait with HEAD and checklist items", async () => {
+        const buildingContent = buildStickerContent([
+          "EST 1",
+          "Alexandria",
+          "Abu Qir",
+          "Faculty of Pharmacy",
+        ]);
+
+        const headContent = {
+          ...buildingContent,
+          level: "building_head" as const,
+          isHead: true,
+        };
+
+        const pdfBytes = await generateStickerPdf({
+          content: headContent,
+          paperMode: "a4",
+          orientation: "portrait",
+        });
+
+        expect(pdfBytes).toBeInstanceOf(Uint8Array);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // Quarter-A4 sticker in A4 paper mode occupies 1 A4 sheet (as 1 quarter item in 4-up page)
+        expect(pdfDoc.getPageCount()).toBe(1);
+        const page = pdfDoc.getPage(0);
+        const size = page.getSize();
+        // A4 Portrait size: 595.28 x 841.89
+        expect(size.width).toBeCloseTo(595.28, 0);
+        expect(size.height).toBeCloseTo(841.89, 0);
+      });
+
+      it("generates a Quarter-A4 Building Head sticker in Landscape mode", async () => {
+        const buildingContent = buildStickerContent([
+          "EST 1",
+          "Giza",
+          "October Center",
+          "Engineering Building",
+        ]);
+
+        const headContent = {
+          ...buildingContent,
+          level: "building_head" as const,
+          isHead: true,
+        };
+
+        const pdfBytes = await generateStickerPdf({
+          content: headContent,
+          paperMode: "a4",
+          orientation: "landscape",
+        });
+
+        expect(pdfBytes).toBeInstanceOf(Uint8Array);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        expect(pdfDoc.getPageCount()).toBe(1);
+        const page = pdfDoc.getPage(0);
+        const size = page.getSize();
+        // A4 Landscape size: 841.89 x 595.28
+        expect(size.width).toBeCloseTo(841.89, 0);
+        expect(size.height).toBeCloseTo(595.28, 0);
+      });
+
+      it("batches 4 Building Head stickers into exactly 1 A4 sheet (4-up layout)", async () => {
+        const buildings = [
+          buildStickerContent(["EST 1", "Cairo", "Sheraton", "Building A"]),
+          buildStickerContent(["EST 1", "Cairo", "Sheraton", "Building B"]),
+          buildStickerContent(["EST 1", "Cairo", "Sheraton", "Building C"]),
+          buildStickerContent(["EST 1", "Cairo", "Sheraton", "Building D"]),
+        ];
+
+        const headContents = buildings.map((b) => ({
+          ...b,
+          level: "building_head" as const,
+          isHead: true,
+        }));
+
+        const pdfBytes = await generateBatchStickerPdf({
+          contents: headContents,
+          paperMode: "a4",
+          orientation: "portrait",
+        });
+
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // 4 quarter items fit on exactly 1 A4 page
+        expect(pdfDoc.getPageCount()).toBe(1);
+      });
+    });
   });
 });

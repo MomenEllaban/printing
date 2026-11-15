@@ -5,6 +5,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { buildStickerContent, type StickerContent } from "./sticker-content";
 import { type RoomSubjectCount } from "./est-room-data";
 import { EST_LOGO_BASE64 } from "./est-logo-base64";
+import { formatArabicForPdf } from "./arabic-shaper";
 
 export interface StickerPdfOptions {
   lines?: string[];
@@ -13,6 +14,7 @@ export interface StickerPdfOptions {
   heightMm?: number;
   paperMode?: "custom" | "a4";
   orientation?: "portrait" | "landscape";
+  includeBuildingHead?: boolean;
 }
 
 export interface BatchStickerPdfOptions {
@@ -21,6 +23,7 @@ export interface BatchStickerPdfOptions {
   heightMm?: number;
   paperMode?: "custom" | "a4";
   orientation?: "portrait" | "landscape";
+  includeBuildingHead?: boolean;
 }
 
 const MM_TO_PT = 2.83464567;
@@ -95,6 +98,7 @@ export async function generateStickerPdf(options: StickerPdfOptions): Promise<Ui
     orientation: options.orientation,
     widthMm: options.widthMm,
     heightMm: options.heightMm,
+    includeBuildingHead: options.includeBuildingHead,
   });
 }
 
@@ -139,7 +143,12 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
     };
 
     for (const content of contents) {
-      const isQuarter = content.level === "room" || content.level === "floor";
+      const isQuarter =
+        content.level === "room" ||
+        content.level === "floor" ||
+        content.level === "building_head" ||
+        Boolean(content.isHead);
+
       if (isQuarter) {
         pendingQuarterItems.push(content);
         if (pendingQuarterItems.length === 4) {
@@ -147,6 +156,7 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
         }
       } else {
         flushQuarterItems();
+        // 1. Existing full-page A4 Placard (Building, Center, Governorate)
         drawA4PlacardPage({
           pdfDoc,
           font,
@@ -154,6 +164,19 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
           content,
           orientation,
         });
+
+        // 2. Any building also gets an additional Quarter-A4 Head sticker when includeBuildingHead is true
+        if (content.level === "building" && options.includeBuildingHead) {
+          const headContent: StickerContent = {
+            ...content,
+            level: "building_head",
+            isHead: true,
+          };
+          pendingQuarterItems.push(headContent);
+          if (pendingQuarterItems.length === 4) {
+            flushQuarterItems();
+          }
+        }
       }
     }
 
@@ -1326,7 +1349,8 @@ function drawQuarterPlacard(params: {
 }) {
   const { page, font, logoImg, content, slotX, slotY, slotWidth, slotHeight } = params;
 
-  const isRoom = content.level === "room";
+  const isHead = content.level === "building_head" || Boolean(content.isHead) || (!Boolean(content.floor) && !Boolean(content.room) && content.level === "building");
+  const isRoom = !isHead && content.level === "room";
   const margin = 12;
   const x = slotX + margin;
   const y = slotY + margin;
@@ -1337,7 +1361,7 @@ function drawQuarterPlacard(params: {
 
   if (isLandscapeSlot) {
     // Landscape 2-column layout (NO OUTER BORDER)
-    const logoH = isRoom ? 32 : 22;
+    const logoH = isRoom ? 32 : isHead ? 26 : 22;
     const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
     const logoX = isRoom ? x + (width - logoW) / 2 : x + 10;
     const logoY = y + height - 6 - logoH;
@@ -1353,7 +1377,10 @@ function drawQuarterPlacard(params: {
     if (!isRoom) {
       const textStartX = logoImg ? logoX + logoW + 8 : x + 40;
       page.drawText(`${content.examName || "EST 1"} — OFFICIAL EXAMINATION`, { x: textStartX, y: logoY + 11, size: 9, font, color: COLOR_CHARCOAL });
-      page.drawText("FLOOR EXAMINATION DOSSIER (SENIOR)", { x: textStartX, y: logoY + 2, size: 6.5, font, color: COLOR_MUTED });
+      page.drawText(
+        isHead ? "BUILDING HEAD EXAMINATION DOSSIER" : "FLOOR EXAMINATION DOSSIER (SENIOR)",
+        { x: textStartX, y: logoY + 2, size: 6.5, font, color: COLOR_MUTED },
+      );
     }
 
     const headerBottom = logoY - 5;
@@ -1386,13 +1413,13 @@ function drawQuarterPlacard(params: {
     page.drawLine({ start: { x: dividerX, y: bodyBottom + 6 }, end: { x: dividerX, y: bodyTop }, thickness: 1, color: COLOR_BORDER });
 
     // Left Column
-    const badgeText = isRoom ? "EXAM ROOM" : "FLOOR";
+    const badgeText = isHead ? "BUILDING HEAD" : isRoom ? "EXAM ROOM" : "FLOOR";
     const badgeSize = 9;
     const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
     page.drawText(badgeText, { x: leftX + (leftW - badgeW) / 2, y: bodyTop - 12, size: badgeSize, font, color: COLOR_MUTED });
 
-    const heroValue = isRoom ? (content.room || "") : (content.floor || "");
-    let heroSize = isRoom ? 40 : 26;
+    const heroValue = isHead ? "HEAD" : isRoom ? (content.room || "") : (content.floor || "");
+    let heroSize = isRoom ? 40 : isHead ? 38 : 26;
     let heroW = font.widthOfTextAtSize(heroValue, heroSize);
     if (heroW > leftW - 8) {
       heroSize = Math.max(16, ((leftW - 8) / heroW) * heroSize);
@@ -1423,6 +1450,22 @@ function drawQuarterPlacard(params: {
           page.drawText(lineText, { x: leftX + (leftW - lineW) / 2, y: startSubjectY - sIdx * step, size: lineSize, font, color: COLOR_CHARCOAL });
         }
       }
+    } else if (isHead) {
+      const childFloorsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+      const headSubText = typeof content.totalRooms === "number" && content.totalRooms > 0
+        ? `${childFloorsCount > 0 ? `${childFloorsCount} FLOORS  •  ` : ""}${content.totalRooms} ROOMS`
+        : childFloorsCount > 0
+        ? `${childFloorsCount} FLOORS INCLUDED`
+        : typeof content.totalStudents === "number" && content.totalStudents > 0
+        ? `${content.totalStudents} STUDENTS TOTAL`
+        : "HEAD DOSSIER";
+      let totalSize = 12.5;
+      let totalW = font.widthOfTextAtSize(headSubText, totalSize);
+      if (totalW > leftW - 8) {
+        totalSize = Math.max(8.5, ((leftW - 8) / totalW) * totalSize);
+        totalW = font.widthOfTextAtSize(headSubText, totalSize);
+      }
+      page.drawText(headSubText, { x: leftX + (leftW - totalW) / 2, y: leftDividerY - 20, size: totalSize, font, color: COLOR_CHARCOAL });
     } else {
       const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
       const floorSubText = typeof content.totalStudents === "number" && content.totalStudents > 0
@@ -1438,30 +1481,57 @@ function drawQuarterPlacard(params: {
     }
 
     // Right Column (Checklist)
-    const chkTitle = isRoom ? "ROOM FILE CONTENTS CHECKLIST" : "FLOOR DOSSIER CHECKLIST";
+    const chkTitle = isHead
+      ? "HEAD DOSSIER & SUPPLIES CHECKLIST"
+      : isRoom
+      ? "ROOM FILE CONTENTS CHECKLIST"
+      : "FLOOR DOSSIER CHECKLIST";
     page.drawText(chkTitle, { x: rightX, y: bodyTop - 12, size: 8, font, color: COLOR_CHARCOAL });
     page.drawLine({ start: { x: rightX, y: bodyTop - 18 }, end: { x: rightX + rightW, y: bodyTop - 18 }, thickness: 0.8, color: COLOR_BORDER });
 
-    const items = isRoom
-      ? ["1. Student Register", "2. Proctor Report", "3. Numbers & Mobile Collection Files", "4. Student Misconduct Forms", "5. Draft papers, pens, and IDs"]
-      : ["1. Proctor Register", "2. Senior Report", "3. Numbers & Mobile Collection Files", "4. Proctor Misconduct Forms", "5. Draft papers, pens, and IDs"];
+    const rawItems = isHead
+      ? [
+          "1. Control Register (ريجستر كنترول)",
+          "2. Blank White Paper (ورق أبيض مسودات)",
+          "3. Mobile Collection Files (فايلات موبايل)",
+          "4. Proctor Attendance Registers (كشوف المراقبين)",
+          "5. Student Misconduct Forms (محاضر إثبات الحالة)",
+          "6. Security Bags & Control Seals (أكياس وسجلات التأمين)",
+        ]
+      : isRoom
+      ? [
+          "1. Student Register",
+          "2. Proctor Report",
+          "3. Numbers & Mobile Collection Files",
+          "4. Student Misconduct Forms",
+          "5. Draft papers, pens, and IDs",
+        ]
+      : [
+          "1. Proctor Register",
+          "2. Senior Report",
+          "3. Numbers & Mobile Collection Files",
+          "4. Proctor Misconduct Forms",
+          "5. Draft papers, pens, and IDs",
+        ];
+
+    const items = rawItems.map((it) => (/[ \u0600-\u06FF]/.test(it) ? formatArabicForPdf(it) : it));
 
     const itemsStartY = bodyTop - 22;
     const availItemsH = itemsStartY - (bodyBottom + 8);
-    const rowH = availItemsH / 5;
+    const rowH = availItemsH / items.length;
     for (let i = 0; i < items.length; i++) {
       const itemY = itemsStartY - (i + 1) * rowH;
-      const boxSize = 9;
+      const boxSize = 8.5;
       const boxX = rightX + 2;
       const boxY = itemY + (rowH - boxSize) / 2;
       page.drawRectangle({ x: boxX, y: boxY, width: boxSize, height: boxSize, color: COLOR_WHITE, borderColor: COLOR_CHARCOAL, borderWidth: 1 });
-      page.drawText(items[i], { x: boxX + boxSize + 6, y: boxY + 1.5, size: 7.5, font, color: COLOR_CHARCOAL });
+      page.drawText(items[i], { x: boxX + boxSize + 6, y: boxY + 1.5, size: isHead ? 6.8 : 7.5, font, color: COLOR_CHARCOAL });
     }
     return;
   }
 
   // Header: Logo (Enlarged and centered)
-  const logoH = isRoom ? 32 : 24;
+  const logoH = isRoom ? 32 : isHead ? 28 : 24;
   const logoW = logoImg ? logoH * (logoImg.width / logoImg.height) : 0;
   const logoX = isRoom ? x + (width - logoW) / 2 : x + 8;
   const logoY = y + height - 4 - logoH;
@@ -1498,13 +1568,16 @@ function drawQuarterPlacard(params: {
       color: COLOR_CHARCOAL,
     });
 
-    page.drawText("FLOOR EXAMINATION DOSSIER (SENIOR)", {
-      x: textStartX,
-      y: logoY + 2,
-      size: 6.5,
-      font,
-      color: COLOR_MUTED,
-    });
+    page.drawText(
+      isHead ? "BUILDING HEAD EXAMINATION DOSSIER" : "FLOOR EXAMINATION DOSSIER (SENIOR)",
+      {
+        x: textStartX,
+        y: logoY + 2,
+        size: 6.5,
+        font,
+        color: COLOR_MUTED,
+      },
+    );
   }
 
   const headerBottom = logoY - 5;
@@ -1549,8 +1622,8 @@ function drawQuarterPlacard(params: {
     color: COLOR_BORDER,
   });
 
-  // 1. Room / Floor Section
-  const badgeText = isRoom ? "EXAM ROOM" : "FLOOR";
+  // 1. Room / Floor / Head Section
+  const badgeText = isHead ? "BUILDING HEAD / رئيس المبنى" : isRoom ? "EXAM ROOM" : "FLOOR";
   const badgeSize = 9.5;
   const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
   const badgeY = divider2Y - 14;
@@ -1562,8 +1635,8 @@ function drawQuarterPlacard(params: {
     color: COLOR_MUTED,
   });
 
-  const heroValue = isRoom ? (content.room || "") : (content.floor || "");
-  let heroSize = isRoom ? 38 : 26;
+  const heroValue = isHead ? "HEAD" : isRoom ? (content.room || "") : (content.floor || "");
+  let heroSize = isRoom ? 38 : isHead ? 40 : 26;
   let heroW = font.widthOfTextAtSize(heroValue, heroSize);
   if (heroW > width - 16) {
     heroSize = Math.max(18, ((width - 16) / heroW) * heroSize);
@@ -1586,7 +1659,7 @@ function drawQuarterPlacard(params: {
     color: COLOR_BORDER,
   });
 
-  // 2. Subjects Breakdown
+  // 2. Middle Section (Subjects / Stats / Floor info / Head info)
   let nextSectionTop = heroDividerY - 10;
   if (isRoom) {
     const subjectLines = getVerticalSubjectLines(content, true);
@@ -1624,6 +1697,40 @@ function drawQuarterPlacard(params: {
       });
       nextSectionTop = subjDividerY - 10;
     }
+  } else if (isHead) {
+    const childFloorsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
+    const headSubText =
+      typeof content.totalRooms === "number" && content.totalRooms > 0
+        ? `${childFloorsCount > 0 ? `${childFloorsCount} FLOORS  •  ` : ""}${content.totalRooms} ROOMS INCLUDED`
+        : childFloorsCount > 0
+        ? `${childFloorsCount} FLOORS INCLUDED`
+        : typeof content.totalStudents === "number" && content.totalStudents > 0
+        ? `${content.totalStudents} STUDENTS TOTAL`
+        : "BUILDING HEAD DOSSIER";
+
+    let totalSize = 12.5;
+    let totalW = font.widthOfTextAtSize(headSubText, totalSize);
+    if (totalW > width - 16) {
+      totalSize = Math.max(9, ((width - 16) / totalW) * totalSize);
+      totalW = font.widthOfTextAtSize(headSubText, totalSize);
+    }
+    const totalY = heroDividerY - 15;
+    page.drawText(headSubText, {
+      x: x + (width - totalW) / 2,
+      y: totalY,
+      size: totalSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+
+    const headDividerY = totalY - 8;
+    page.drawLine({
+      start: { x: x + 6, y: headDividerY },
+      end: { x: x + width - 6, y: headDividerY },
+      thickness: 0.6,
+      color: COLOR_BORDER,
+    });
+    nextSectionTop = headDividerY - 10;
   } else {
     // Floor level
     const childRoomsCount = content.childCount || (content.childNames ? content.childNames.length : 0);
@@ -1660,7 +1767,11 @@ function drawQuarterPlacard(params: {
   }
 
   // 3. Checklist Section
-  const chkTitle = isRoom ? "ROOM FILE CONTENTS CHECKLIST" : "FLOOR DOSSIER CHECKLIST";
+  const chkTitle = isHead
+    ? "HEAD DOSSIER & SUPPLIES CHECKLIST"
+    : isRoom
+    ? "ROOM FILE CONTENTS CHECKLIST"
+    : "FLOOR DOSSIER CHECKLIST";
   const chkTitleSize = 8;
   page.drawText(chkTitle, {
     x: x + 6,
@@ -1677,7 +1788,16 @@ function drawQuarterPlacard(params: {
     color: COLOR_BORDER,
   });
 
-  const items = isRoom
+  const rawItems = isHead
+    ? [
+        "1. Control Register (ريجستر كنترول)",
+        "2. Blank White Paper (ورق أبيض مسودات)",
+        "3. Mobile Collection Files (فايلات موبايل)",
+        "4. Proctor Attendance Registers (كشوف توزيع المراقبين)",
+        "5. Student Misconduct Forms (محاضر إثبات الحالة واللجان)",
+        "6. Security Bags & Control Seals (أكياس وسجلات التأمين والكنترول)",
+      ]
+    : isRoom
     ? [
         "1. Student Register",
         "2. Proctor Report",
@@ -1693,8 +1813,10 @@ function drawQuarterPlacard(params: {
         "5. Draft papers, pens, and IDs",
       ];
 
+  const items = rawItems.map((it) => (/[ \u0600-\u06FF]/.test(it) ? formatArabicForPdf(it) : it));
+
   const itemsStartY = nextSectionTop - 8;
-  const rowStep = 15;
+  const rowStep = isHead ? 15 : 15;
   for (let i = 0; i < items.length; i++) {
     const itemY = itemsStartY - (i + 1) * rowStep;
     const boxSize = 8.5;
@@ -1714,9 +1836,24 @@ function drawQuarterPlacard(params: {
     page.drawText(items[i], {
       x: boxX + boxSize + 6,
       y: boxY + 1.2,
-      size: 7.2,
+      size: isHead ? 6.8 : 7.2,
       font,
       color: COLOR_CHARCOAL,
+    });
+  }
+
+  // Bottom footer for Head sticker in Portrait
+  if (isHead) {
+    const footerY = y + 10;
+    const footerText = "OFFICIAL EST EXAMINATION DOSSIER • BUILDING HEAD";
+    const footerSize = 7;
+    const footerW = font.widthOfTextAtSize(footerText, footerSize);
+    page.drawText(footerText, {
+      x: x + (width - footerW) / 2,
+      y: footerY,
+      size: footerSize,
+      font,
+      color: COLOR_MUTED,
     });
   }
 }

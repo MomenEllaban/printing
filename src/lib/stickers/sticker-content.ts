@@ -7,7 +7,7 @@ import {
 import { isFloorFolderName } from "./register-utils";
 import { getRoomExamCounts, type RoomSubjectCount } from "./est-room-data";
 
-export type StickerLevel = "root" | "governorate" | "center" | "building" | "floor" | "room" | "custom";
+export type StickerLevel = "root" | "governorate" | "center" | "building" | "building_head" | "floor" | "room" | "custom";
 
 export interface StickerFieldItem {
   key: "exam" | "governorate" | "center" | "building" | "floor" | "room";
@@ -43,6 +43,7 @@ export interface StickerContent {
   floor?: string;
   room?: string;
   fields: StickerFieldItem[];
+  isHead?: boolean;
   // Dynamic subfolder counts
   childCount?: number;
   childLabel?: string;

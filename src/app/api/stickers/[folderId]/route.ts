@@ -29,7 +29,7 @@ export async function GET(request: Request, context: Context) {
 
     const url = new URL(request.url);
     const customChainParam = url.searchParams.get("chain");
-    const stickerType = url.searchParams.get("type"); // "regular" | "exam"
+    const stickerType = url.searchParams.get("type"); // "regular" | "exam" | "head"
     const settings = await getSettings();
 
     const widthMm = Math.max(
@@ -189,7 +189,22 @@ export async function GET(request: Request, context: Context) {
     let pdfBytes: Uint8Array;
     let safeFilename: string;
 
-    if (stickerType === "exam") {
+    if (stickerType === "head") {
+      const headContent = {
+        ...stickerContent,
+        level: "building_head" as const,
+        isHead: true,
+      };
+      pdfBytes = await generateStickerPdf({
+        content: headContent,
+        lines: stickerContent.lines,
+        widthMm,
+        heightMm,
+        paperMode,
+        orientation,
+      });
+      safeFilename = `Building-Head-Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    } else if (stickerType === "exam") {
       const isFloor =
         stickerContent.level === "floor" ||
         isFloorFolderName(targetName) ||

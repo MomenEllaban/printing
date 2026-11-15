@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Eye, Files, Layers, Loader2, Printer, Tag, X } from "lucide-react";
+import { Building2, Eye, Files, Layers, Loader2, Printer, Tag, X } from "lucide-react";
 import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
 import type { DriveItem } from "@/lib/types";
@@ -11,10 +11,10 @@ interface BatchStickersDialogProps {
   onClose: () => void;
   selectedFolders: Array<{ id: string; name?: string | null }>;
   currentFolder?: { id: string; name?: string | null } | null;
-  initialType?: "regular" | "exam";
+  initialType?: "regular" | "exam" | "head";
   onExecute: (options: {
     action: "show" | "print";
-    type: "regular" | "exam";
+    type: "regular" | "exam" | "head";
     includeChildren: boolean;
     orientation: "landscape" | "portrait";
   }) => Promise<void>;
@@ -31,7 +31,7 @@ export function BatchStickersDialog({
   loading = false,
 }: BatchStickersDialogProps) {
   const { locale } = useI18n();
-  const [stickerType, setStickerType] = useState<"regular" | "exam">(initialType);
+  const [stickerType, setStickerType] = useState<"regular" | "exam" | "head">(initialType);
   const [includeChildren, setIncludeChildren] = useState(false);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("portrait");
   const [activeAction, setActiveAction] = useState<"show" | "print" | null>(null);
@@ -77,6 +77,10 @@ export function BatchStickersDialog({
           ? locale === "ar"
             ? "طباعة استيكرات الامتحانات (EST I Exam Stickers)"
             : "Print EST I Exam Stickers"
+          : stickerType === "head"
+          ? locale === "ar"
+            ? "طباعة استيكرات الهيد (Building Head Stickers)"
+            : "Print Building Head Stickers (HEAD)"
           : locale === "ar"
           ? "طباعة استيكرات EST للمحدد"
           : "Print EST Stickers for Selected"
@@ -86,6 +90,10 @@ export function BatchStickersDialog({
           ? locale === "ar"
             ? `توليد استيكرات الامتحانات الرسمية (نسختين لكل مادة: Literacy, Math, و Essay إن وجدت) لـ ${effectiveFolders.length} مجلد.`
             : `Generate official exam paper stickers (2 copies per subject: Literacy, Math, and Essay if applicable) for ${effectiveFolders.length} folders.`
+          : stickerType === "head"
+          ? locale === "ar"
+            ? `تجهيز استيكرات ربع A4 لهيد المبنى (HEAD) مع قائمة استلام الكنترول واللوازم لـ ${effectiveFolders.length} مجلد/مبنى.`
+            : `Prepare quarter-A4 building head stickers (HEAD) with supplies and control checklist for ${effectiveFolders.length} building(s).`
           : locale === "ar"
           ? `تجهيز استيكرات A4 رسمية تحمل شعار EST وإجمالي الطلاب لـ ${effectiveFolders.length} مجلد محدد.`
           : `Prepare official A4 EST placards with logo and total student counts for ${effectiveFolders.length} selected folder(s).`
@@ -105,6 +113,8 @@ export function BatchStickersDialog({
               className={`flex items-center gap-1.5 cursor-pointer ${
                 stickerType === "exam"
                   ? "border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                  : stickerType === "head"
+                  ? "border-rose-500/30 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10"
                   : "border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10"
               }`}
             >
@@ -123,6 +133,8 @@ export function BatchStickersDialog({
               className={`flex items-center gap-1.5 text-white cursor-pointer ${
                 stickerType === "exam"
                   ? "bg-amber-600 hover:bg-amber-700"
+                  : stickerType === "head"
+                  ? "bg-rose-600 hover:bg-rose-700"
                   : "bg-indigo-600 hover:bg-indigo-700"
               }`}
             >
@@ -138,13 +150,13 @@ export function BatchStickersDialog({
       }
     >
       <div className="space-y-4">
-        {/* Type Selector: Regular vs Exam Stickers */}
+        {/* Type Selector: Regular vs Exam vs Head Stickers */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-foreground block">
             {locale === "ar" ? "نوع الاستيكرات المطلوب طباعتها:" : "Sticker Type:"}
           </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <button
               type="button"
               onClick={() => setStickerType("regular")}
@@ -156,12 +168,12 @@ export function BatchStickersDialog({
             >
               <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                 <Tag className="size-3.5 text-indigo-600" />
-                {locale === "ar" ? "استيكر الغرفة / الملف (عادي)" : "Regular Room / Folder Sticker"}
+                {locale === "ar" ? "استيكر الغرفة / الملف (عادي)" : "Regular Room / Folder"}
               </span>
               <span className="text-[11px] text-muted">
                 {locale === "ar"
                   ? "ملصق دوسيه الغرفة يوضح رقم القاعة وإجمالي عدد الطلاب."
-                  : "Dossier sticker showing room number and total student count."}
+                  : "Dossier sticker showing room number and student count."}
               </span>
             </button>
 
@@ -182,6 +194,26 @@ export function BatchStickersDialog({
                 {locale === "ar"
                   ? "ملصقات أوراق الامتحان: نسختان لكل مادة (Literacy, Math, Essay)."
                   : "Exam paper stickers: 2 copies per subject (Literacy, Math, Essay)."}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStickerType("head")}
+              className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-start transition-all cursor-pointer ${
+                stickerType === "head"
+                  ? "border-rose-600 bg-rose-500/10 ring-2 ring-rose-500/20"
+                  : "border-border bg-surface hover:bg-surface-soft"
+              }`}
+            >
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Building2 className="size-3.5 text-rose-600" />
+                {locale === "ar" ? "استيكر الهيد (HEAD)" : "Building Head"}
+              </span>
+              <span className="text-[11px] text-muted">
+                {locale === "ar"
+                  ? "استيكر ربع A4 لهيد المبنى وقائمة استلام الكنترول واللوازم."
+                  : "Quarter-A4 building head sticker with control checklist."}
               </span>
             </button>
           </div>

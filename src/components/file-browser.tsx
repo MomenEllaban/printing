@@ -1111,6 +1111,110 @@ export function FileBrowser({
     [handleStickerAction],
   );
 
+  const handleHeadStickerAction = useCallback(
+    async (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      action: "show" | "print",
+      orientation: "portrait" | "landscape" = "portrait",
+    ) => {
+      if (e) e.stopPropagation();
+      if (!target.id || busyStickerId) return;
+
+      setBusyStickerId(target.id);
+      setStickerAction(action);
+      const toastId = toast.loading(
+        action === "show"
+          ? (locale === "ar"
+            ? `جاري تجهيز معاينة استيكر الهيد (HEAD) لمبنى "${target.name || "EST"}"...`
+            : `Loading building head sticker preview for "${target.name || "EST"}"...`)
+          : (locale === "ar"
+            ? `جاري تجهيز استيكر الهيد (HEAD) لمبنى "${target.name || "EST"}" للطباعة (${orientation === "portrait" ? "طولي" : "عرضي"})...`
+            : `Preparing building head sticker for "${target.name || "EST"}" for printing (${orientation})...`),
+      );
+
+      try {
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=head&orientation=${orientation}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(
+            errorData.message ||
+              (locale === "ar" ? "فشل إنشاء استيكر الهيد" : "Failed to generate building head sticker PDF"),
+          );
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+
+        if (action === "show") {
+          setPreviewStickerState({
+            open: true,
+            url: objectUrl,
+            title: `${target.name || "EST"} - HEAD`,
+          });
+          toast.success(
+            locale === "ar" ? "تم فتح نافذة المعاينة بنجاح" : "Building head sticker preview opened",
+            { id: toastId },
+          );
+        } else {
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.right = "0";
+          iframe.style.bottom = "0";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "0";
+          iframe.src = objectUrl;
+          document.body.appendChild(iframe);
+          iframe.onload = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              const w = window.open(objectUrl, "_blank");
+              w?.focus();
+              w?.print();
+            }
+          };
+          toast.success(
+            locale === "ar" ? "تم إرسال استيكر الهيد للطباعة بنجاح" : "Building head sticker sent to printer",
+            { id: toastId },
+          );
+        }
+      } catch (err: any) {
+        console.error("[head-sticker] Failed:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : locale === "ar"
+            ? "حدث خطأ أثناء معالجة استيكر الهيد"
+            : "Error processing building head sticker",
+          { id: toastId },
+        );
+      } finally {
+        setBusyStickerId(null);
+        setStickerAction(null);
+      }
+    },
+    [busyStickerId, locale],
+  );
+
+  const handleShowHeadSticker = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleHeadStickerAction(e, target, "show"),
+    [handleHeadStickerAction],
+  );
+
+  const handlePrintHeadSticker = useCallback(
+    (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      orientation: "portrait" | "landscape" = "portrait",
+    ) => handleHeadStickerAction(e, target, "print", orientation),
+    [handleHeadStickerAction],
+  );
+
   const handleExamStickerAction = useCallback(
     async (
       e: React.MouseEvent | null,
@@ -1545,6 +1649,27 @@ export function FileBrowser({
   }, [currentFolder, breadcrumbs]);
 
   const isCurrentFolderCanHaveExamStickers = isCurrentFolderRoom || isCurrentFolderFloor;
+
+  const isCurrentFolderBuilding = useMemo(() => {
+    if (!currentFolder) return false;
+    const cat = getFolderRegisterCategory({
+      folder: currentFolder,
+      breadcrumbs,
+      isCurrentFolder: true,
+    });
+    return cat === "building_excel";
+  }, [currentFolder, breadcrumbs]);
+
+  const hasSelectedBuildings = useMemo(() => {
+    return selectedItems.some((it) => {
+      if (!it.isFolder) return false;
+      const cat = getFolderRegisterCategory({
+        folder: it,
+        breadcrumbs,
+      });
+      return cat === "building_excel";
+    });
+  }, [selectedItems, breadcrumbs]);
 
   const displayItems = useMemo(() => {
     let filtered = items;
@@ -2042,8 +2167,8 @@ export function FileBrowser({
   const [batchStickersOpen, setBatchStickersOpen] = useState(false);
   const [busyBatchStickers, setBusyBatchStickers] = useState(false);
   const [batchStickerAction, setBatchStickerAction] = useState<"show" | "print" | null>(null);
-  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam">("regular");
-  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam">("regular");
+  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam" | "head">("regular");
+  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam" | "head">("regular");
 
   const handleBatchStickersAction = useCallback(
     async ({
@@ -2053,7 +2178,7 @@ export function FileBrowser({
       orientation,
     }: {
       action: "show" | "print";
-      type?: "regular" | "exam";
+      type?: "regular" | "exam" | "head";
       includeChildren?: boolean;
       orientation?: "landscape" | "portrait";
     }) => {
@@ -2083,11 +2208,15 @@ export function FileBrowser({
           ? (locale === "ar"
             ? type === "exam"
               ? `جاري تجهيز استيكرات الامتحانات (${targetFolders.length} مجلد) للمعاينة...`
+              : type === "head"
+              ? `جاري تجهيز استيكرات الهيد (${targetFolders.length} مبنى) للمعاينة...`
               : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للمعاينة...`
             : `Generating sticker preview for ${targetFolders.length} folder(s)...`)
           : (locale === "ar"
             ? type === "exam"
               ? `جاري تجهيز استيكرات الامتحانات (${targetFolders.length} مجلد) للطباعة...`
+              : type === "head"
+              ? `جاري تجهيز استيكرات الهيد (${targetFolders.length} مبنى) للطباعة...`
               : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للطباعة...`
             : `Preparing stickers for ${targetFolders.length} folder(s)...`),
       );
@@ -2136,6 +2265,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? `استيكرات الامتحانات — (${targetFolders.length} مجلد)`
                   : `Exam Stickers (${targetFolders.length} Folders)`
+                : type === "head"
+                ? locale === "ar"
+                  ? `استيكرات الهيد (HEAD) — (${targetFolders.length} مبنى)`
+                  : `Building Head Stickers (${targetFolders.length} Buildings)`
                 : locale === "ar"
                 ? `استيكرات مجمعة (${targetFolders.length} مجلد)`
                 : `Batch Stickers (${targetFolders.length} Folders)`,
@@ -2144,12 +2277,20 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? `استيكرات الامتحانات الرسمية — ${targetFolders.length} مجلد`
                   : `Official Exam Stickers — ${targetFolders.length} Folders`
+                : type === "head"
+                ? locale === "ar"
+                  ? `استيكرات الهيد الرسمية (HEAD) — ${targetFolders.length} مبنى`
+                  : `Official Building Head Stickers — ${targetFolders.length} Buildings`
                 : undefined,
             customDescription:
               type === "exam"
                 ? locale === "ar"
                   ? "نسختان لكل مادة بمقاس ربع صفحة A4."
                   : "2 copies per subject at quarter-A4 size."
+                : type === "head"
+                ? locale === "ar"
+                  ? "استيكر الهيد بمقاس ربع صفحة A4 مع كشوف ومهمات رئيس المبنى."
+                  : "Quarter-A4 Building Head sticker with dossier checklist."
                 : undefined,
           });
           toast.success(
@@ -2682,6 +2823,53 @@ export function FileBrowser({
                 disabled={busyStickerId === currentFolder.id}
                 className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 cursor-pointer transition-all border-s border-indigo-500/20"
                 title={locale === "ar" ? `طباعة استيكر "${currentFolder.name}" بالعرض (Landscape)` : `Print sticker for "${currentFolder.name}" in Landscape`}
+              >
+                <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
+              </button>
+            </div>
+          )}
+          {isCurrentFolderBuilding && currentFolder && (
+            <div className="inline-flex items-center rounded-xl border border-rose-500/40 bg-rose-500/10 p-0.5 shadow-xs">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-rose-800 dark:text-rose-200 border-e border-rose-500/25 select-none">
+                <Building2 className="size-3.5 text-rose-600 dark:text-rose-400" />
+                <span className="hidden sm:inline">
+                  {locale === "ar" ? "استيكر الهيد (HEAD)" : "Building Head Sticker"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => handleShowHeadSticker(e, currentFolder)}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer transition-all"
+                title={locale === "ar" ? `معاينة استيكر الهيد (HEAD) لمبنى "${currentFolder.name}"` : `Preview building head sticker for "${currentFolder.name}"`}
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "show" ? (
+                  <Loader2 className="size-3.5 animate-spin text-rose-600 dark:text-rose-400" />
+                ) : (
+                  <Eye className="size-3.5 text-rose-600 dark:text-rose-400" />
+                )}
+                <span>{locale === "ar" ? "معاينة" : "Show"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintHeadSticker(e, currentFolder, "portrait")}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer transition-all border-s border-rose-500/25"
+                title={locale === "ar" ? `طباعة استيكر الهيد (HEAD) لمبنى "${currentFolder.name}" بالطول (Portrait)` : `Print head sticker for "${currentFolder.name}" in Portrait`}
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "print" ? (
+                  <Loader2 className="size-3.5 animate-spin text-rose-600 dark:text-rose-400" />
+                ) : (
+                  <Printer className="size-3.5 text-rose-600 dark:text-rose-400" />
+                )}
+                <span>{locale === "ar" ? "بالطول" : "Portrait"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintHeadSticker(e, currentFolder, "landscape")}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer transition-all border-s border-rose-500/25"
+                title={locale === "ar" ? `طباعة استيكر الهيد (HEAD) لمبنى "${currentFolder.name}" بالعرض (Landscape)` : `Print head sticker for "${currentFolder.name}" in Landscape`}
               >
                 <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
               </button>
@@ -3641,6 +3829,55 @@ export function FileBrowser({
                           breadcrumbs,
                           isCurrentFolder: false,
                         });
+                        if (regCategory !== "building_excel") return null;
+                        return (
+                          <div className="inline-flex items-center rounded-lg border border-rose-500/40 bg-rose-500/10 p-0.5 text-xs shadow-2xs">
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-rose-800 dark:text-rose-200 border-e border-rose-500/25 select-none">
+                              <Building2 className="size-3 text-rose-600 dark:text-rose-400" />
+                              <span>{locale === "ar" ? "الهيد" : "Head"}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleShowHeadSticker(e, item)}
+                              disabled={busyStickerId === item.id}
+                              className="inline-flex items-center justify-center size-6 rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer"
+                              title={locale === "ar" ? `معاينة استيكر الهيد لمبنى "${item.name}" (عرض)` : `Preview head sticker for "${item.name}"`}
+                            >
+                              {busyStickerId === item.id && stickerAction === "show" ? (
+                                <Loader2 className="size-3 animate-spin text-rose-600" />
+                              ) : (
+                                <Eye className="size-3 text-rose-600 dark:text-rose-400" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handlePrintHeadSticker(e, item, "portrait")}
+                              disabled={busyStickerId === item.id}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer border-s border-rose-500/25"
+                              title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالطول (Portrait)` : `Print head sticker for "${item.name}" in Portrait`}
+                            >
+                              <Printer className="size-3 text-rose-600 dark:text-rose-400" />
+                              <span className="text-[10px]">{locale === "ar" ? "طولي" : "Port"}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handlePrintHeadSticker(e, item, "landscape")}
+                              disabled={busyStickerId === item.id}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 cursor-pointer border-s border-rose-500/25"
+                              title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالعرض (Landscape)` : `Print head sticker for "${item.name}" in Landscape`}
+                            >
+                              <span className="text-[10px]">{locale === "ar" ? "عرضي" : "Land"}</span>
+                            </button>
+                          </div>
+                        );
+                      })()}
+
+                      {(() => {
+                        const regCategory = getFolderRegisterCategory({
+                          folder: item,
+                          breadcrumbs,
+                          isCurrentFolder: false,
+                        });
                         if (!regCategory) return null;
 
                         const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
@@ -3834,6 +4071,8 @@ export function FileBrowser({
                     onUploadToFolder={handleOpenUploadForFolder}
                     onShowSticker={handleShowSticker}
                     onPrintSticker={handlePrintSticker}
+                    onShowHeadSticker={handleShowHeadSticker}
+                    onPrintHeadSticker={handlePrintHeadSticker}
                     onShowExamStickers={handleShowExamStickers}
                     onPrintExamStickers={handlePrintExamStickers}
                     onOpenProctorDialog={handleOpenProctorDialog}
@@ -4224,6 +4463,83 @@ export function FileBrowser({
               </div>
             )}
 
+            {/* Building Head Stickers Action Button (shown when buildings/schools are selected) */}
+            {hasSelectedBuildings && (
+              <div className="inline-flex items-center rounded-xl border border-rose-500/40 bg-rose-500/10 p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "head" })}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-rose-800 dark:text-rose-200 hover:bg-rose-500/20 rounded-s-lg border-e border-rose-500/25 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الهيد (HEAD) للمباني المحددة"
+                      : "Print Head Stickers for selected buildings"
+                  }
+                >
+                  <Building2 className="size-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>
+                    {locale === "ar"
+                      ? `استيكر الهيد (${selectedFolderCount > 0 ? selectedFolderCount : 1})`
+                      : `Head Stickers (${selectedFolderCount > 0 ? selectedFolderCount : 1})`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "head" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center justify-center size-7 rounded hover:bg-rose-500/25 text-rose-800 dark:text-rose-200 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "معاينة استيكرات الهيد للمباني المحددة (Show)"
+                      : "Preview head stickers for selected buildings (Show)"
+                  }
+                  aria-label="Preview Head Stickers"
+                >
+                  {busyBatchStickers && batchStickerAction === "show" && batchStickerType === "head" ? (
+                    <Loader2 className="size-3.5 animate-spin text-rose-600 dark:text-rose-400" />
+                  ) : (
+                    <Eye className="size-3.5 text-rose-600 dark:text-rose-400" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "head", orientation: "portrait" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-rose-500/25 text-rose-800 dark:text-rose-200 transition-all cursor-pointer border-s border-rose-500/25"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الهيد للمباني المحددة بالطول (Portrait)"
+                      : "Print head stickers in Portrait"
+                  }
+                  aria-label="Print Head Stickers Portrait"
+                >
+                  {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "head" ? (
+                    <Loader2 className="size-3.5 animate-spin text-rose-600 dark:text-rose-400" />
+                  ) : (
+                    <Printer className="size-3.5 text-rose-600 dark:text-rose-400" />
+                  )}
+                  <span>{locale === "ar" ? "طولي" : "Port"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "head", orientation: "landscape" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded hover:bg-rose-500/25 text-rose-800 dark:text-rose-200 transition-all cursor-pointer border-s border-rose-500/25"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الهيد للمباني المحددة بالعرض (Landscape)"
+                      : "Print head stickers in Landscape"
+                  }
+                  aria-label="Print Head Stickers Landscape"
+                >
+                  <span>{locale === "ar" ? "عرضي" : "Land"}</span>
+                </button>
+              </div>
+            )}
+
             <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-0.5 shadow-sm">
               <Button
                 variant="primary"
@@ -4393,6 +4709,8 @@ function ItemMenu({
   onTogglePrint,
   onShowSticker,
   onPrintSticker,
+  onShowHeadSticker,
+  onPrintHeadSticker,
   onShowExamStickers,
   onPrintExamStickers,
   onOpenProctorDialog,
@@ -4419,6 +4737,8 @@ function ItemMenu({
   onTogglePrint?: () => void;
   onShowSticker?: (folder: DriveItem) => void;
   onPrintSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
+  onShowHeadSticker?: (folder: DriveItem) => void;
+  onPrintHeadSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (folder: DriveItem) => void;
   onPrintExamStickers?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
@@ -4711,6 +5031,70 @@ function ItemMenu({
                 </>
               );
             })()}
+            {item.isFolder && onShowHeadSticker && (() => {
+              const regCat = registerCategory ?? getFolderRegisterCategory({
+                folder: item,
+                breadcrumbs,
+                isCurrentFolder: false,
+              });
+              if (regCat !== "building_excel") return null;
+              return (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item cursor-pointer text-rose-700 dark:text-rose-400 font-semibold"
+                    onClick={() => {
+                      onShowHeadSticker(item);
+                      onClose();
+                    }}
+                  >
+                    <Building2 className="size-4 text-rose-600 dark:text-rose-400" />
+                    <span>
+                      {locale === "ar"
+                        ? "معاينة استيكر الهيد (HEAD)"
+                        : "Preview Building Head Sticker"}
+                    </span>
+                  </button>
+                  {onPrintHeadSticker && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="menu-item cursor-pointer text-rose-700 dark:text-rose-400 font-semibold"
+                        onClick={() => {
+                          onPrintHeadSticker(item, "portrait");
+                          onClose();
+                        }}
+                      >
+                        <Printer className="size-4" />
+                        <span>
+                          {locale === "ar"
+                            ? "طباعة استيكر الهيد (طولي Portrait)"
+                            : "Print Head Sticker (Portrait)"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="menu-item cursor-pointer text-rose-700 dark:text-rose-400 font-semibold"
+                        onClick={() => {
+                          onPrintHeadSticker(item, "landscape");
+                          onClose();
+                        }}
+                      >
+                        <Printer className="size-4" />
+                        <span>
+                          {locale === "ar"
+                            ? "طباعة استيكر الهيد (عرضي Landscape)"
+                            : "Print Head Sticker (Landscape)"}
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
             {item.isFolder && onOpenProctorDialog && (() => {
               const regCategory = registerCategory ?? getFolderRegisterCategory({
                 folder: item,
@@ -4996,6 +5380,8 @@ interface TreeRowProps {
   onUploadToFolder: (folder: DriveItem) => void;
   onShowSticker: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintSticker: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
+  onShowHeadSticker?: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onPrintHeadSticker?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintExamStickers?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
@@ -5051,6 +5437,8 @@ function TreeRow({
   onUploadToFolder,
   onShowSticker,
   onPrintSticker,
+  onShowHeadSticker,
+  onPrintHeadSticker,
   onShowExamStickers,
   onPrintExamStickers,
   onOpenProctorDialog,
@@ -5303,6 +5691,7 @@ function TreeRow({
                   });
                   const isRoomFolder = regCategory === "student" || isRoomFolderName(item.name);
                   const isFloorFolder = regCategory === "proctor" || isFloorFolderName(item.name);
+                  const isBuildingFolder = regCategory === "building_excel";
 
                   return (
                     <>
@@ -5447,6 +5836,56 @@ function TreeRow({
                                 : `Print exam stickers for "${item.name}" in Landscape`
                             }
                             aria-label="Print Exam Stickers Landscape"
+                          >
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "عرضي" : "Land"}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Button 3: Building Head Sticker (HEAD) */}
+                      {isBuildingFolder && onShowHeadSticker && onPrintHeadSticker && (
+                        <div className="inline-flex items-center rounded-lg border border-rose-500/40 bg-rose-500/10 p-0.5 shadow-2xs">
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-rose-800 dark:text-rose-200 border-e border-rose-500/25 select-none">
+                            <Building2 className="size-3 text-rose-600 dark:text-rose-400" />
+                            <span className="hidden sm:inline">
+                              {locale === "ar" ? "استيكر الهيد (HEAD)" : "Head Sticker"}
+                            </span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onShowHeadSticker(e, item)}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center justify-center size-6 rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 transition-all cursor-pointer"
+                            title={locale === "ar" ? `معاينة استيكر الهيد لمبنى "${item.name}" (عرض)` : `Preview head sticker for "${item.name}" (Show)`}
+                            aria-label="Preview Head Sticker"
+                          >
+                            {busyStickerId === item.id && stickerAction === "show" ? (
+                              <Loader2 className="size-3.5 animate-spin text-rose-600 dark:text-rose-400" />
+                            ) : (
+                              <Eye className="size-3.5 text-rose-600 dark:text-rose-400" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintHeadSticker(e, item, "portrait")}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 transition-all cursor-pointer border-s border-rose-500/25"
+                            title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالطول (Portrait)` : `Print head sticker for "${item.name}" in Portrait`}
+                            aria-label="Print Head Sticker Portrait"
+                          >
+                            <Printer className="size-3 text-rose-600 dark:text-rose-400" />
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "طولي" : "Port"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintHeadSticker(e, item, "landscape")}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-rose-500/20 text-rose-800 dark:text-rose-200 transition-all cursor-pointer border-s border-rose-500/25"
+                            title={locale === "ar" ? `طباعة استيكر الهيد لمبنى "${item.name}" بالعرض (Landscape)` : `Print head sticker for "${item.name}" in Landscape`}
+                            aria-label="Print Head Sticker Landscape"
                           >
                             <span className="text-[10px] font-bold">{locale === "ar" ? "عرضي" : "Land"}</span>
                           </button>
@@ -5633,6 +6072,8 @@ function TreeRow({
                   onTogglePrint={() => onTogglePrintStatus(item)}
                   onShowSticker={(folder) => onShowSticker(null, folder)}
                   onPrintSticker={(folder, orientation) => onPrintSticker(null, folder, orientation)}
+                  onShowHeadSticker={(folder) => onShowHeadSticker?.(null, folder)}
+                  onPrintHeadSticker={(folder, orientation) => onPrintHeadSticker?.(null, folder, orientation)}
                   onShowExamStickers={(folder) => onShowExamStickers?.(null, folder)}
                   onPrintExamStickers={(folder, orientation) => onPrintExamStickers?.(null, folder, orientation)}
                   onOpenProctorDialog={onOpenProctorDialog}
@@ -5712,6 +6153,8 @@ function TreeRow({
               onUploadToFolder={onUploadToFolder}
               onShowSticker={onShowSticker}
               onPrintSticker={onPrintSticker}
+              onShowHeadSticker={onShowHeadSticker}
+              onPrintHeadSticker={onPrintHeadSticker}
               onShowExamStickers={onShowExamStickers}
               onPrintExamStickers={onPrintExamStickers}
               onOpenProctorDialog={onOpenProctorDialog}

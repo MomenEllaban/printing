@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 const batchStickersSchema = z.object({
   folderIds: z.array(z.string().min(1)).min(1).max(200),
-  type: z.enum(["regular", "exam"]).optional().default("regular"),
+  type: z.enum(["regular", "exam", "head"]).optional().default("regular"),
   includeChildren: z.boolean().optional().default(false),
   paperMode: z.enum(["custom", "a4"]).optional(),
   orientation: z.enum(["portrait", "landscape"]).optional(),
@@ -235,15 +235,26 @@ export async function POST(request: Request) {
       });
     }
 
+    const isHeadStickers = body.type === "head";
+    const targetContents = isHeadStickers
+      ? contents.map((c) => ({
+          ...c,
+          level: "building_head" as const,
+          isHead: true,
+        }))
+      : contents;
+
     const pdfBytes = await generateBatchStickerPdf({
-      contents,
+      contents: targetContents,
       paperMode,
       orientation,
       widthMm,
       heightMm,
     });
 
-    const safeFilename = `EST-Stickers-Batch-${contents.length}-Folders.pdf`;
+    const safeFilename = isHeadStickers
+      ? `EST-Building-Head-Stickers-Batch-${contents.length}-Buildings.pdf`
+      : `EST-Stickers-Batch-${contents.length}-Folders.pdf`;
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
