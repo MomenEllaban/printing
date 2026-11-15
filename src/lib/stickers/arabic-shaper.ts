@@ -136,9 +136,9 @@ export function shapeArabicText(text: string): string {
 }
 
 /**
- * Shapes Arabic text for PDF-lib with proper Unicode Presentation Forms-B
- * so that connected letters (initial, medial, final, isolated) and Lam-Alef ligatures
- * render joined and beautifully in natural reading order without broken/reversed characters.
+ * Shapes Arabic text and reverses it for Left-To-Right rendering engines like PDF-lib.
+ * Handles pure Arabic text (reversing shaped glyphs so reading order is natural RTL),
+ * as well as mixed text (keeping numbers and Latin runs in internal LTR order).
  */
 export function formatArabicForPdf(text: string): string {
   if (!text) return "";
@@ -150,6 +150,40 @@ export function formatArabicForPdf(text: string): string {
     return trimmed;
   }
 
-  return shapeArabicText(trimmed);
+  // If text starts with a list bullet or number like "1. " or "2. " or "- "
+  const listPrefixMatch = trimmed.match(/^(\d+[\.\)\-:]\s*|[-•*]\s*)/);
+  if (listPrefixMatch) {
+    const prefix = listPrefixMatch[1];
+    const rest = trimmed.slice(prefix.length).trim();
+    return prefix + formatArabicForPdf(rest);
+  }
+
+  // Pure Arabic text without Latin or ASCII digits: shape and reverse for LTR canvas/pdf
+  if (!/[a-zA-Z0-9]/.test(trimmed)) {
+    const shaped = shapeArabicText(trimmed);
+    return Array.from(shaped).reverse().join("");
+  }
+
+  // For mixed text: split into runs of Arabic (including punctuation/spaces) and runs of digits/Latin
+  const tokens: Array<{ text: string; isArabic: boolean }> = [];
+  const regex = /([\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF\s\u060C\u061B\u061F]+)|([^ \u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF\u060C\u061B\u061F]+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(trimmed)) !== null) {
+    if (match[1]) {
+      tokens.push({ text: match[1], isArabic: true });
+    } else if (match[2]) {
+      tokens.push({ text: match[2], isArabic: false });
+    }
+  }
+
+  const processedRuns = tokens.map((token) => {
+    if (token.isArabic) {
+      return Array.from(shapeArabicText(token.text)).reverse().join("");
+    }
+    return token.text;
+  });
+
+  return processedRuns.reverse().join("");
 }
 

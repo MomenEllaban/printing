@@ -412,7 +412,7 @@ function drawSimpleBwCertificateSticker(params: {
   const maxNameWidth = width - 24;
 
   const studentLabelY = placardY - (isPortrait ? 16 : 11);
-  const labelText = "STUDENT NAME / اسم الطالب:";
+  const labelText = "STUDENT NAME:";
   page.drawText(labelText, {
     x: nameStartX,
     y: studentLabelY,
@@ -428,7 +428,7 @@ function drawSimpleBwCertificateSticker(params: {
 
   if (hasEnglish && hasArabic) {
     const primaryName = studentName;
-    const arabicName = formatArabicForPdf(student.studentNameAr!.trim());
+    const rawArabic = student.studentNameAr!.trim();
 
     // English Name
     const enFit = wrapTextToLines(primaryName, font, isPortrait ? 15 : 13.5, maxNameWidth);
@@ -445,10 +445,11 @@ function drawSimpleBwCertificateSticker(params: {
 
     curY -= isPortrait ? 4 : 2;
 
-    // Arabic Name
-    const arFit = wrapTextToLines(arabicName, font, isPortrait ? 15 : 13.5, maxNameWidth);
+    // Arabic Name: wrap raw Arabic first, then format each line for natural RTL reading order in PDF
+    const arFit = wrapTextToLines(rawArabic, font, isPortrait ? 15 : 13.5, maxNameWidth);
     for (const line of arFit.lines) {
-      page.drawText(line, {
+      const shapedLine = formatArabicForPdf(line);
+      page.drawText(shapedLine, {
         x: nameStartX,
         y: curY,
         size: arFit.fontSize,
@@ -460,10 +461,11 @@ function drawSimpleBwCertificateSticker(params: {
   } else {
     // Single name (either English or Arabic)
     const rawName = studentName || student.studentNameAr || "Student Candidate";
-    const displayName = /[\u0600-\u06FF]/.test(rawName) ? formatArabicForPdf(rawName) : rawName;
-    const fit = wrapTextToLines(displayName, font, isPortrait ? 17 : 15, maxNameWidth);
+    const isAr = /[\u0600-\u06FF]/.test(rawName);
+    const fit = wrapTextToLines(rawName, font, isPortrait ? 17 : 15, maxNameWidth);
     for (const line of fit.lines) {
-      page.drawText(line, {
+      const displayLine = isAr ? formatArabicForPdf(line) : line;
+      page.drawText(displayLine, {
         x: nameStartX,
         y: curY,
         size: fit.fontSize,
@@ -585,28 +587,6 @@ function drawSimpleBwCertificateSticker(params: {
         color: COLOR_BLACK,
       });
     }
-  }
-
-  // 6. Professional Official Footer: Fills and anchors the portrait sticker elegantly
-  if (isPortrait) {
-    const footerLineY = y + 26;
-    page.drawLine({
-      start: { x: x + 12, y: footerLineY },
-      end: { x: x + width - 12, y: footerLineY },
-      thickness: 0.5,
-      color: COLOR_LIGHT_GRAY,
-    });
-
-    const footerText = "OFFICIAL EST SCORE REPORT ENVELOPE";
-    const footerSize = 7.5;
-    const footerW = font.widthOfTextAtSize(footerText, footerSize);
-    page.drawText(footerText, {
-      x: x + (width - footerW) / 2,
-      y: y + 14,
-      size: footerSize,
-      font,
-      color: COLOR_DARK_GRAY,
-    });
   }
 }
 
