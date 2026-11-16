@@ -356,18 +356,6 @@ function drawA4PlacardPage(params: {
       font,
       color: COLOR_CHARCOAL,
     });
-  } else if (content.isFloorBag) {
-    const badgeText = "★ FLOOR LARGE OUTER BAG ★";
-    const badgeSize = isLandscape ? 12 : 13;
-    const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
-    const badgeX = pageWidth - margin - badgeW - 16;
-    page.drawText(badgeText, {
-      x: badgeX,
-      y: cornerTagY + 4,
-      size: badgeSize,
-      font,
-      color: COLOR_CHARCOAL,
-    });
   }
 
   if (logoImg) {
