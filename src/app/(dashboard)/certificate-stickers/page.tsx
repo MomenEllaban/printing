@@ -989,6 +989,8 @@ export default function CertificateStickersPage() {
           onSelectBatch={(id) => void loadServerBatch(id)}
           activeBatchStudents={students}
           loadingBatches={loadingServerBatches}
+          onUploadBatch={handleFileUpload}
+          isUploadingBatch={isUploading}
         />
       )}
 

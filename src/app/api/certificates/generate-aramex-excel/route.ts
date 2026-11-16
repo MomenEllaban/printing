@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import * as XLSX from "xlsx";
+import JSZip from "jszip";
 import type { AramexRowItem } from "@/lib/aramex-utils";
 import { ARAMEX_CITY_MAP, DEFAULT_ARAMEX_CITY } from "@/lib/aramex-utils";
+
+function escapeXml(unsafe: any): string {
+  if (unsafe === undefined || unsafe === null) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,59 +26,32 @@ export async function POST(req: NextRequest) {
     }
 
     const tplPath = path.join(process.cwd(), "Aramex_PDU_Template_City_Auto_Fixed (2).xlsx");
-    let wb: XLSX.WorkBook;
-
-    if (fs.existsSync(tplPath)) {
-      const tplBuffer = fs.readFileSync(tplPath);
-      wb = XLSX.read(tplBuffer, { type: "buffer", cellFormula: true, cellStyles: true });
-    } else {
-      // Fallback: create fresh workbook if template is not found on disk
-      wb = XLSX.utils.book_new();
+    if (!fs.existsSync(tplPath)) {
+      throw new Error("Aramex official template file not found on server");
     }
 
-    let ws = wb.Sheets["PDU_Data"];
-    if (!ws) {
-      ws = XLSX.utils.aoa_to_sheet([]);
-      XLSX.utils.book_append_sheet(wb, ws, "PDU_Data");
+    const tplBuffer = fs.readFileSync(tplPath);
+    const zip = await JSZip.loadAsync(tplBuffer);
+
+    const sheet1File = zip.file("xl/worksheets/sheet1.xml");
+    if (!sheet1File) {
+      throw new Error("Could not find xl/worksheets/sheet1.xml inside Aramex template");
     }
 
-    // Set merges for header
-    ws["!merges"] = [
-      { s: { c: 12, r: 4 }, e: { c: 16, r: 4 } }, // Shipper Details
-      { s: { c: 0, r: 4 }, e: { c: 11, r: 4 } },  // Customer Details
-    ];
+    let sheet1Xml = await sheet1File.async("text");
 
-    // Ensure header row 4 and row 5
-    ws["A5"] = { t: "s", v: "Customer Details" };
-    ws["M5"] = { t: "s", v: "Shipper Details" };
+    // Locate the start of row 7 and the end of sheetData
+    const row7Idx = sheet1Xml.indexOf('<row r="7"');
+    const sheetDataEndIdx = sheet1Xml.indexOf("</sheetData>");
 
-    const headers = [
-      "HAWB",
-      "Name",
-      "Attention",
-      "Full Address",
-      "City - Governorate (Please select from the list)",
-      "City",
-      "Destination",
-      "Government",
-      "Reference / Unique",
-      "Mobile Number",
-      "Tel Number",
-      "Landline Number",
-      "Origin City (Please select from the list)",
-      "Account Number",
-      "Shipper Reference",
-      "Commodity Description",
-      "Remarks",
-    ];
-
-    const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q"];
-
-    for (let c = 0; c < headers.length; c++) {
-      ws[`${colLetters[c]}6`] = { t: "s", v: headers[c] };
+    if (row7Idx === -1 || sheetDataEndIdx === -1) {
+      throw new Error("Could not find row 7 or </sheetData> in sheet1.xml");
     }
 
-    // Populate data rows starting from row 7 (index 6)
+    const maxRowsInTemplate = 3001;
+    const newRowXmls: string[] = [];
+
+    // 1. Populate rows with student shipment data starting at row 7
     for (let idx = 0; idx < rows.length; idx++) {
       const r = rows[idx];
       const rowNum = idx + 7;
@@ -78,85 +61,78 @@ export async function POST(req: NextRequest) {
         DEFAULT_ARAMEX_CITY;
 
       const nameVal = r.studentNameAr || r.studentNameEn || "";
-      const attentionNum = r.serialNumber !== undefined && r.serialNumber !== "" ? Number(r.serialNumber) || r.serialNumber : idx + 1;
-      const totalReports = r.totalReports !== undefined && r.totalReports !== "" ? r.totalReports : 1;
+      const attentionNum =
+        r.serialNumber !== undefined && r.serialNumber !== ""
+          ? Number(r.serialNumber) || r.serialNumber
+          : idx + 1;
+      const totalReports =
+        r.totalReports !== undefined && r.totalReports !== "" ? r.totalReports : 1;
       const remarksText = `تم تسليم عدد * ${totalReports}   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى`;
 
-      ws[`A${rowNum}`] = { t: "s", v: "" };
-      ws[`B${rowNum}`] = { t: "s", v: nameVal };
-      ws[`C${rowNum}`] = typeof attentionNum === "number" ? { t: "n", v: attentionNum } : { t: "s", v: String(attentionNum) };
-      ws[`D${rowNum}`] = { t: "s", v: r.fullAddress || "" };
-      ws[`E${rowNum}`] = {
-        t: "s",
-        v: cityOpt.cityGov,
-        f: `IFERROR(LOOKUP(2,1/(ISNUMBER(SEARCH(CityLookup!$A$2:$A$477,D${rowNum}))),CityLookup!$B$2:$B$477),"")`,
-      };
-      ws[`F${rowNum}`] = {
-        t: "s",
-        v: cityOpt.city,
-        f: `IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,2,FALSE()),"")`,
-      };
-      ws[`G${rowNum}`] = {
-        t: "s",
-        v: cityOpt.code,
-        f: `IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,4,FALSE()),"")`,
-      };
-      ws[`H${rowNum}`] = {
-        t: "s",
-        v: cityOpt.gov,
-        f: `IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,3,FALSE()),"")`,
-      };
-      ws[`I${rowNum}`] = { t: "s", v: r.originalCity || r.area || "" };
-      ws[`J${rowNum}`] = { t: "s", v: r.phone || "" };
-      ws[`K${rowNum}`] = { t: "s", v: r.phone2 || r.phone || "" };
-      ws[`L${rowNum}`] = { t: "s", v: "" };
-      ws[`M${rowNum}`] = { t: "s", v: "Alexandria" };
-      ws[`N${rowNum}`] = { t: "n", v: 233677 };
-      ws[`O${rowNum}`] = { t: "n", v: 3930356 };
-      ws[`P${rowNum}`] = { t: "s", v: "" };
-      ws[`Q${rowNum}`] = { t: "s", v: remarksText };
+      const refUnique = r.originalCity || r.area || "";
+      const mobileVal = r.phone || "";
+      const telVal = r.phone2 || r.phone || "";
+      const fullAddressVal = r.fullAddress || "";
+
+      const rowXml =
+        `<row r="${rowNum}" spans="1:30" ht="16.35" customHeight="1">` +
+        `<c r="A${rowNum}" s="8"/>` +
+        `<c r="B${rowNum}" s="9" t="inlineStr"><is><t>${escapeXml(nameVal)}</t></is></c>` +
+        `<c r="C${rowNum}" s="8"><v>${attentionNum}</v></c>` +
+        `<c r="D${rowNum}" s="10" t="inlineStr"><is><t>${escapeXml(fullAddressVal)}</t></is></c>` +
+        `<c r="E${rowNum}" s="8" t="str"><f>IFERROR(LOOKUP(2,1/(ISNUMBER(SEARCH(CityLookup!$A$2:$A$477,D${rowNum}))),CityLookup!$B$2:$B$477),"")</f><v>${escapeXml(cityOpt.cityGov)}</v></c>` +
+        `<c r="F${rowNum}" s="11" t="str"><f>IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,2,FALSE()),"")</f><v>${escapeXml(cityOpt.city)}</v></c>` +
+        `<c r="G${rowNum}" s="11" t="str"><f>IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,4,FALSE()),"")</f><v>${escapeXml(cityOpt.code)}</v></c>` +
+        `<c r="H${rowNum}" s="11" t="str"><f>IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,3,FALSE()),"")</f><v>${escapeXml(cityOpt.gov)}</v></c>` +
+        `<c r="I${rowNum}" s="10" t="inlineStr"><is><t>${escapeXml(refUnique)}</t></is></c>` +
+        `<c r="J${rowNum}" s="8" t="inlineStr"><is><t>${escapeXml(mobileVal)}</t></is></c>` +
+        `<c r="K${rowNum}" s="8" t="inlineStr"><is><t>${escapeXml(telVal)}</t></is></c>` +
+        `<c r="L${rowNum}" s="10"/>` +
+        `<c r="M${rowNum}" s="12" t="inlineStr"><is><t>Alexandria</t></is></c>` +
+        `<c r="N${rowNum}" s="8"><v>233677</v></c>` +
+        `<c r="O${rowNum}" s="8"><v>3930356</v></c>` +
+        `<c r="P${rowNum}" s="8"/>` +
+        `<c r="Q${rowNum}" s="13" t="inlineStr"><is><t>${escapeXml(remarksText)}</t></is></c>` +
+        `<c r="R${rowNum}" s="2"/><c r="S${rowNum}" s="2"/><c r="T${rowNum}" s="2"/><c r="U${rowNum}" s="2"/><c r="V${rowNum}" s="2"/><c r="W${rowNum}" s="2"/><c r="X${rowNum}" s="2"/><c r="Y${rowNum}" s="2"/><c r="Z${rowNum}" s="2"/><c r="AA${rowNum}" s="2"/><c r="AB${rowNum}" s="2"/><c r="AC${rowNum}" s="2"/><c r="AD${rowNum}" s="2"/>` +
+        `</row>`;
+
+      newRowXmls.push(rowXml);
     }
 
-    // Clear stale rows beyond current dataset up to 3001
-    const endRow = Math.max(rows.length + 6, 6);
-    for (let r = endRow + 1; r <= 3001; r++) {
-      let hasCell = false;
-      for (const col of colLetters) {
-        const addr = `${col}${r}`;
-        if (ws[addr]) {
-          delete ws[addr];
-          hasCell = true;
-        }
-      }
-      if (!hasCell && r > endRow + 10) break;
+    // 2. For remaining rows up to 3001, keep blank formula rows exactly like the official template
+    const lastFilledRow = rows.length + 6;
+    const endRow = Math.max(lastFilledRow, maxRowsInTemplate);
+
+    for (let rowNum = lastFilledRow + 1; rowNum <= endRow; rowNum++) {
+      const emptyRowXml =
+        `<row r="${rowNum}" spans="1:30" ht="15" customHeight="1">` +
+        `<c r="A${rowNum}" s="8"/><c r="B${rowNum}" s="8"/><c r="C${rowNum}" s="8"/><c r="D${rowNum}" s="8"/>` +
+        `<c r="E${rowNum}" s="14" t="str"><f>IFERROR(LOOKUP(2,1/(ISNUMBER(SEARCH(CityLookup!$A$2:$A$477,D${rowNum}))),CityLookup!$B$2:$B$477),"")</f><v/></c>` +
+        `<c r="F${rowNum}" s="11" t="str"><f>IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,2,FALSE()),"")</f><v/></c>` +
+        `<c r="G${rowNum}" s="11" t="str"><f>IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,4,FALSE()),"")</f><v/></c>` +
+        `<c r="H${rowNum}" s="11" t="str"><f>IFERROR(VLOOKUP($E${rowNum},List!$A$2:$D$346,3,FALSE()),"")</f><v/></c>` +
+        `<c r="I${rowNum}" s="8"/><c r="J${rowNum}" s="8"/><c r="K${rowNum}" s="8"/><c r="L${rowNum}" s="13"/>` +
+        `<c r="M${rowNum}" s="12"/><c r="N${rowNum}" s="8"/><c r="O${rowNum}" s="8"/><c r="P${rowNum}" s="8"/>` +
+        `<c r="Q${rowNum}" s="13"/>` +
+        `<c r="R${rowNum}" s="2"/><c r="S${rowNum}" s="2"/><c r="T${rowNum}" s="2"/><c r="U${rowNum}" s="2"/><c r="V${rowNum}" s="2"/><c r="W${rowNum}" s="2"/><c r="X${rowNum}" s="2"/><c r="Y${rowNum}" s="2"/><c r="Z${rowNum}" s="2"/><c r="AA${rowNum}" s="2"/><c r="AB${rowNum}" s="2"/><c r="AC${rowNum}" s="2"/><c r="AD${rowNum}" s="2"/>` +
+        `</row>`;
+
+      newRowXmls.push(emptyRowXml);
     }
 
-    ws["!ref"] = `A1:Q${endRow}`;
+    // Replace the row block in sheet1Xml
+    const updatedSheet1Xml =
+      sheet1Xml.slice(0, row7Idx) + newRowXmls.join("") + sheet1Xml.slice(sheetDataEndIdx);
 
-    // Column widths
-    ws["!cols"] = [
-      { wch: 10 }, // HAWB
-      { wch: 32 }, // Name
-      { wch: 10 }, // Attention
-      { wch: 70 }, // Full Address
-      { wch: 32 }, // City - Governorate
-      { wch: 22 }, // City
-      { wch: 12 }, // Destination
-      { wch: 15 }, // Government
-      { wch: 20 }, // Reference / Unique
-      { wch: 16 }, // Mobile Number
-      { wch: 16 }, // Tel Number
-      { wch: 16 }, // Landline Number
-      { wch: 18 }, // Origin City
-      { wch: 16 }, // Account Number
-      { wch: 18 }, // Shipper Reference
-      { wch: 20 }, // Commodity Description
-      { wch: 75 }, // Remarks
-    ];
+    zip.file("xl/worksheets/sheet1.xml", updatedSheet1Xml);
 
-    const outBuf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const outBuf = await zip.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
 
-    return new NextResponse(outBuf, {
+    return new NextResponse(new Uint8Array(outBuf), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -165,7 +141,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("[generate-aramex-excel] error:", err);
-    return NextResponse.json({ error: err?.message || "Failed to generate Aramex Excel file" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "Failed to generate Aramex Excel file" },
+      { status: 500 },
+    );
   }
 }
-
