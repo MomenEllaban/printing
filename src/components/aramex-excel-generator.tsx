@@ -22,6 +22,10 @@ import {
   Copy,
   Loader2,
   Upload,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
@@ -77,16 +81,44 @@ export function AramexExcelGenerator({
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isPreparingRows, setIsPreparingRows] = useState<boolean>(false);
 
-  // Initialize or re-generate rows when active students change
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+
+  // Memoize city options once so all rows share identical VDOM nodes
+  const cityOptionsElements = useMemo(() => {
+    return ARAMEX_CITIES_LIST.map((c) => (
+      <option key={c.cityGov} value={c.cityGov}>
+        {c.cityGov}
+      </option>
+    ));
+  }, []);
+
+  // Initialize or re-generate rows when active students change (non-blocking for UI)
   useEffect(() => {
-    if (activeBatchStudents && activeBatchStudents.length > 0) {
-      const converted = convertStudentsToAramexRows(activeBatchStudents);
-      setRows(converted);
-      setSelectedRowIds(new Set());
-    } else {
+    if (!activeBatchStudents || activeBatchStudents.length === 0) {
       setRows([]);
+      setSelectedRowIds(new Set());
+      setIsPreparingRows(false);
+      return;
     }
+
+    setIsPreparingRows(true);
+    // Yield to the event loop so the browser immediately paints the tab and spinner
+    const timer = setTimeout(() => {
+      try {
+        const converted = convertStudentsToAramexRows(activeBatchStudents);
+        setRows(converted);
+        setSelectedRowIds(new Set());
+        setCurrentPage(1);
+      } finally {
+        setIsPreparingRows(false);
+      }
+    }, 20);
+
+    return () => clearTimeout(timer);
   }, [activeBatchStudents, activeBatchId]);
 
   const activeBatch = useMemo(
@@ -101,12 +133,15 @@ export function AramexExcelGenerator({
       if (!file) return;
 
       try {
+        setIsPreparingRows(true);
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: "array" });
         const parsed = parseCertificateWorkbook(wb, file.name);
         if (parsed && parsed.length > 0) {
           const converted = convertStudentsToAramexRows(parsed);
           setRows(converted);
+          setSelectedRowIds(new Set());
+          setCurrentPage(1);
           toast.success(
             locale === "ar"
               ? `تم استخراج ${converted.length} شحنة بالعناوين الكاملة وأرقام الهواتف مباشرة!`
@@ -115,6 +150,8 @@ export function AramexExcelGenerator({
         }
       } catch (err: any) {
         console.warn("Local parse error:", err);
+      } finally {
+        setIsPreparingRows(false);
       }
 
       if (onUploadBatch) {
@@ -309,6 +346,22 @@ export function AramexExcelGenerator({
     return result;
   }, [rows, searchQuery, selectedCityFilter]);
 
+  // Reset pagination when search query or city filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCityFilter]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredRows.length / (pageSize === -1 ? filteredRows.length || 1 : pageSize)),
+  );
+
+  const paginatedRows = useMemo(() => {
+    if (pageSize === -1) return filteredRows;
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
+
   return (
     <div className="space-y-6">
       {/* Hidden file input for uploading batches from this tab */}
@@ -456,8 +509,25 @@ export function AramexExcelGenerator({
         )}
       </div>
 
-      {/* Empty State when no batch or no rows */}
-      {rows.length === 0 ? (
+      {/* Loading state when fetching batch or processing rows */}
+      {(loadingBatches || isPreparingRows) ? (
+        <div className="rounded-2xl border border-border bg-surface p-14 text-center text-muted shadow-xs animate-in fade-in duration-200">
+          <div className="relative mb-3 inline-block">
+            <div className="size-16 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto">
+              <Truck className="size-8 text-[#D32F2F] animate-pulse" />
+            </div>
+            <Loader2 className="size-5 text-[#D32F2F] animate-spin absolute -top-1 -right-1" />
+          </div>
+          <h3 className="text-base font-bold text-foreground">
+            {locale === "ar" ? "جارٍ إعداد شيت أرامكس ومعالجة العناوين..." : "Preparing Aramex Excel Sheet..."}
+          </h3>
+          <p className="text-xs text-muted mt-1.5 max-w-sm mx-auto">
+            {locale === "ar"
+              ? "يتم تجميع العناوين كاملة والربط بالمدن وأرقام الهواتف تلقائياً لسرعة وسلاسة العرض."
+              : "Merging addresses, matching city codes and phone numbers automatically."}
+          </p>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-surface p-12 text-center text-muted">
           <Truck className="size-10 mx-auto mb-3 text-muted/40" />
           <h3 className="text-sm font-bold text-foreground">
@@ -509,13 +579,72 @@ export function AramexExcelGenerator({
                   className="h-8 px-2.5 rounded-xl border border-border bg-surface text-xs font-medium text-foreground focus:border-red-500 outline-none cursor-pointer max-w-[220px]"
                 >
                   <option value="all">{locale === "ar" ? "كل المدن" : "All Cities"}</option>
-                  {ARAMEX_CITIES_LIST.map((c) => (
-                    <option key={c.cityGov} value={c.cityGov}>
-                      {c.cityGov}
-                    </option>
-                  ))}
+                  {cityOptionsElements}
                 </select>
               </div>
+
+              {/* Items per page selector */}
+              <div className="flex items-center gap-1.5 text-xs text-muted">
+                <span className="text-[11px] font-semibold">{locale === "ar" ? "عرض:" : "Show:"}</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-8 px-2 rounded-xl border border-border bg-surface text-xs font-bold text-foreground focus:border-red-500 outline-none cursor-pointer"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={-1}>{locale === "ar" ? "الكل" : "All"}</option>
+                </select>
+              </div>
+
+              {/* Page Navigator */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1 border-s border-border ps-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage <= 1}
+                    className="size-7 p-0 cursor-pointer disabled:opacity-30"
+                    title={locale === "ar" ? "الصفحة الأولى" : "First Page"}
+                  >
+                    <ChevronsRight className={cn("size-3.5", locale === "ar" ? "" : "rotate-180")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="size-7 p-0 cursor-pointer disabled:opacity-30"
+                    title={locale === "ar" ? "الصفحة السابقة" : "Previous Page"}
+                  >
+                    <ChevronRight className={cn("size-3.5", locale === "ar" ? "" : "rotate-180")} />
+                  </Button>
+                  <span className="px-2 font-mono font-bold text-[11px] text-foreground">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="size-7 p-0 cursor-pointer disabled:opacity-30"
+                    title={locale === "ar" ? "الصفحة التالية" : "Next Page"}
+                  >
+                    <ChevronLeft className={cn("size-3.5", locale === "ar" ? "" : "rotate-180")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage >= totalPages}
+                    className="size-7 p-0 cursor-pointer disabled:opacity-30"
+                    title={locale === "ar" ? "الصفحة الأخيرة" : "Last Page"}
+                  >
+                    <ChevronsLeft className={cn("size-3.5", locale === "ar" ? "" : "rotate-180")} />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Quick Bulk Actions */}
@@ -538,11 +667,7 @@ export function AramexExcelGenerator({
                   className="h-8 px-2 rounded-xl border border-border bg-surface text-xs text-foreground focus:border-red-500 outline-none cursor-pointer max-w-[180px]"
                 >
                   <option value="">{locale === "ar" ? "-- تعيين مدينة --" : "-- Select City --"}</option>
-                  {ARAMEX_CITIES_LIST.map((c) => (
-                    <option key={c.cityGov} value={c.cityGov}>
-                      {c.cityGov}
-                    </option>
-                  ))}
+                  {cityOptionsElements}
                 </select>
                 <Button
                   variant="secondary"
@@ -657,8 +782,9 @@ export function AramexExcelGenerator({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border font-medium">
-                {filteredRows.map((r, idx) => {
+                {paginatedRows.map((r, idx) => {
                   const isSelected = selectedRowIds.has(r.id);
+                  const actualIndex = (pageSize === -1 ? 0 : (currentPage - 1) * pageSize) + idx;
                   const totalReports = r.totalReports || 1;
                   const remarksText = `تم تسليم عدد * ${totalReports}   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى`;
 
@@ -682,7 +808,7 @@ export function AramexExcelGenerator({
 
                       {/* Attention / No. */}
                       <td className="p-2.5 text-center font-mono text-muted text-[11px]">
-                        {r.serialNumber || idx + 1}
+                        {r.serialNumber || actualIndex + 1}
                       </td>
 
                       {/* Name (Arabic candidate name preferred) */}
@@ -753,11 +879,7 @@ export function AramexExcelGenerator({
                               : "border-amber-400/80 bg-amber-50/50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100 focus:border-amber-500",
                           )}
                         >
-                          {ARAMEX_CITIES_LIST.map((c) => (
-                            <option key={c.cityGov} value={c.cityGov}>
-                              {c.cityGov}
-                            </option>
-                          ))}
+                          {cityOptionsElements}
                         </select>
                       </td>
 
@@ -858,10 +980,38 @@ export function AramexExcelGenerator({
 
           {/* Footer bar with summary count and quick export */}
           <div className="p-3.5 border-t border-border flex flex-wrap items-center justify-between gap-3 bg-surface-soft/40 text-xs text-muted">
-            <div>
-              {locale === "ar"
-                ? `عرض ${filteredRows.length} من إجمالي ${rows.length} شحنة`
-                : `Showing ${filteredRows.length} of ${rows.length} shipments`}
+            <div className="flex items-center gap-3">
+              <span>
+                {pageSize === -1
+                  ? (locale === "ar" ? `عرض الكل (${filteredRows.length} شحنة)` : `Showing all ${filteredRows.length} shipments`)
+                  : (locale === "ar"
+                    ? `عرض ${(currentPage - 1) * pageSize + 1} إلى ${Math.min(currentPage * pageSize, filteredRows.length)} من إجمالي ${filteredRows.length} شحنة`
+                    : `Showing ${(currentPage - 1) * pageSize + 1} to ${Math.min(currentPage * pageSize, filteredRows.length)} of ${filteredRows.length} shipments`)}
+              </span>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="size-7 p-0 cursor-pointer disabled:opacity-30"
+                  >
+                    <ChevronRight className={cn("size-3.5", locale === "ar" ? "" : "rotate-180")} />
+                  </Button>
+                  <span className="font-bold text-foreground px-1">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className="size-7 p-0 cursor-pointer disabled:opacity-30"
+                  >
+                    <ChevronLeft className={cn("size-3.5", locale === "ar" ? "" : "rotate-180")} />
+                  </Button>
+                </div>
+              )}
             </div>
 
             <Button

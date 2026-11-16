@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import * as XLSX from "xlsx";
 import {
   Award,
@@ -81,6 +81,23 @@ export default function CertificateStickersPage() {
 
   // Main Page Tabs: "stickers" | "aramex"
   const [mainTab, setMainTab] = useState<"stickers" | "aramex">("stickers");
+  const [tabLoading, setTabLoading] = useState<boolean>(false);
+  const [isPendingTab, startTabTransition] = useTransition();
+
+  const handleTabChange = useCallback((newTab: "stickers" | "aramex") => {
+    if (mainTab === newTab) return;
+    setTabLoading(true);
+    startTabTransition(() => {
+      setMainTab(newTab);
+    });
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (!isPendingTab && tabLoading) {
+      const t = setTimeout(() => setTabLoading(false), 80);
+      return () => clearTimeout(t);
+    }
+  }, [isPendingTab, tabLoading]);
 
   // Aramex shipping mode & row selection states
   const [isAramexMode, setIsAramexMode] = useState<boolean>(false);
@@ -517,32 +534,63 @@ export default function CertificateStickersPage() {
       <div className="flex items-center gap-2 border-b border-border pb-2">
         <button
           type="button"
-          onClick={() => setMainTab("stickers")}
+          onClick={() => handleTabChange("stickers")}
+          disabled={tabLoading || isPendingTab}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer",
+            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer",
             mainTab === "stickers"
-              ? "bg-emerald-600 text-white shadow-xs"
+              ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-600/30"
               : "bg-surface-elevated text-muted hover:text-foreground border border-border hover:border-emerald-500/40",
+            (tabLoading || isPendingTab) && "opacity-80",
           )}
         >
-          <Award className="size-4" />
+          {tabLoading && mainTab !== "stickers" ? (
+            <Loader2 className="size-4 animate-spin text-emerald-500" />
+          ) : (
+            <Award className="size-4" />
+          )}
           <span>{locale === "ar" ? "ستيكرات" : "Stickers"}</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setMainTab("aramex")}
+          onClick={() => handleTabChange("aramex")}
+          disabled={tabLoading || isPendingTab}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer",
+            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer",
             mainTab === "aramex"
-              ? "bg-orange-600 text-white shadow-xs"
-              : "bg-surface-elevated text-muted hover:text-foreground border border-border hover:border-orange-500/40",
+              ? "bg-[#D32F2F] text-white shadow-xs ring-2 ring-red-600/30"
+              : "bg-surface-elevated text-muted hover:text-foreground border border-border hover:border-red-500/40",
+            (tabLoading || isPendingTab) && "opacity-80",
           )}
         >
-          <Truck className="size-4" />
+          {tabLoading && mainTab !== "aramex" ? (
+            <Loader2 className="size-4 animate-spin text-red-500" />
+          ) : (
+            <Truck className="size-4" />
+          )}
           <span>{locale === "ar" ? "شيت اكسيل اراميكس" : "Aramex Excel Sheet"}</span>
         </button>
       </div>
+
+      {/* Global Tab Transition / Loading Indicator */}
+      {(tabLoading || isPendingTab) && (
+        <div className="flex items-center justify-center gap-3 p-8 rounded-2xl border border-border bg-surface shadow-xs animate-in fade-in duration-150">
+          <Loader2 className="size-6 animate-spin text-[#D32F2F]" />
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-foreground">
+              {locale === "ar"
+                ? mainTab === "aramex"
+                  ? "جارٍ تحميل وتجهيز شيت إكسيل أرامكس..."
+                  : "جارٍ فتح مساحة عمل ستيكرات الشهادات..."
+                : "Switching workspace view..."}
+            </span>
+            <span className="text-xs text-muted">
+              {locale === "ar" ? "يرجى الانتظار ثانية واحدة..." : "Please wait a moment..."}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: STICKERS WORKSPACE */}
       {mainTab === "stickers" && (
@@ -664,6 +712,20 @@ export default function CertificateStickersPage() {
                 : "Uploaded files (e.g. Aramex / MoE reports) appear in the list above and can be used from any device with per-student receipt tracking."}
             </p>
           </div>
+
+          {loadingBatch && (
+            <div className="flex items-center justify-center gap-3 p-8 rounded-2xl border border-border bg-surface shadow-xs animate-in fade-in duration-150">
+              <Loader2 className="size-6 animate-spin text-amber-500" />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-foreground">
+                  {locale === "ar" ? "جارٍ تحميل بيانات الطلاب والشهادات..." : "Loading batch student records..."}
+                </span>
+                <span className="text-xs text-muted">
+                  {locale === "ar" ? "يرجى الانتظار لحظات لجلب العناوين" : "Please wait while fetching address data"}
+                </span>
+              </div>
+            </div>
+          )}
 
           {students.length > 0 && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -988,7 +1050,7 @@ export default function CertificateStickersPage() {
           activeBatchId={activeBatchId}
           onSelectBatch={(id) => void loadServerBatch(id)}
           activeBatchStudents={students}
-          loadingBatches={loadingServerBatches}
+          loadingBatches={loadingServerBatches || loadingBatch || tabLoading || isPendingTab}
           onUploadBatch={handleFileUpload}
           isUploadingBatch={isUploading}
         />
