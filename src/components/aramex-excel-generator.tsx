@@ -20,8 +20,11 @@ import { Button, Input } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
 import { cn } from "@/lib/cn";
 import {
-  ARAMEX_EGYPT_CITIES,
+  ARAMEX_CITIES_LIST,
+  ARAMEX_CITY_MAP,
+  DEFAULT_ARAMEX_CITY,
   type AramexRowItem,
+  type AramexCityOption,
   convertStudentsToAramexRows,
   generateAramexWorkbook,
   detectAramexCity,
@@ -58,7 +61,7 @@ export function AramexExcelGenerator({
   const [rows, setRows] = useState<AramexRowItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCityFilter, setSelectedCityFilter] = useState<string>("all");
-  const [bulkCity, setBulkCity] = useState<string>("");
+  const [bulkCityGov, setBulkCityGov] = useState<string>("");
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
   // Initialize or re-generate rows when active students change
@@ -90,14 +93,16 @@ export function AramexExcelGenerator({
     );
   }, []);
 
-  // Update a single row's Selected City
-  const handleCityChange = useCallback((id: string, newCity: string) => {
+  // Update a single row's Selected City Option
+  const handleCityChange = useCallback((id: string, newCityGov: string) => {
+    const opt = ARAMEX_CITY_MAP.get(newCityGov.toLowerCase()) || DEFAULT_ARAMEX_CITY;
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
         return {
           ...r,
-          selectedCity: newCity,
+          selectedCityGov: opt.cityGov,
+          cityOption: opt,
         };
       }),
     );
@@ -108,14 +113,18 @@ export function AramexExcelGenerator({
     setRows((prev) =>
       prev.map((r) => {
         if (selectedRowIds.size > 0 && !selectedRowIds.has(r.id)) return r;
-        const auto = detectAramexCity({
+        const autoOpt = detectAramexCity({
           governorate: r.governorate,
           city: r.originalCity,
           area: r.area,
           street: r.street,
           fullAddress: r.fullAddress,
         });
-        return { ...r, selectedCity: auto };
+        return {
+          ...r,
+          selectedCityGov: autoOpt.cityGov,
+          cityOption: autoOpt,
+        };
       }),
     );
     toast.success(
@@ -125,34 +134,35 @@ export function AramexExcelGenerator({
     );
   }, [selectedRowIds, locale]);
 
-  // Bulk apply a chosen city to selected or empty rows
+  // Bulk apply a chosen city to selected or all rows
   const handleApplyBulkCity = useCallback(() => {
-    if (!bulkCity) {
+    if (!bulkCityGov) {
       toast.error(locale === "ar" ? "يرجى اختيار مدينة للتطبيق" : "Please select a city to apply");
       return;
     }
+
+    const opt = ARAMEX_CITY_MAP.get(bulkCityGov.toLowerCase()) || DEFAULT_ARAMEX_CITY;
 
     setRows((prev) =>
       prev.map((r) => {
         if (selectedRowIds.size > 0) {
           if (selectedRowIds.has(r.id)) {
-            return { ...r, selectedCity: bulkCity };
+            return { ...r, selectedCityGov: opt.cityGov, cityOption: opt };
           }
           return r;
         }
-        // If none selected, apply to rows with empty or other city
-        return { ...r, selectedCity: bulkCity };
+        return { ...r, selectedCityGov: opt.cityGov, cityOption: opt };
       }),
     );
 
     toast.success(
       locale === "ar"
-        ? `تم تطبيق "${bulkCity}" على ${selectedRowIds.size > 0 ? selectedRowIds.size : "جميع"} الشحنات`
-        : `Applied "${bulkCity}" to ${selectedRowIds.size > 0 ? selectedRowIds.size : "all"} shipments`,
+        ? `تم تطبيق "${opt.cityGov}" على ${selectedRowIds.size > 0 ? selectedRowIds.size : "جميع"} الشحنات`
+        : `Applied "${opt.cityGov}" to ${selectedRowIds.size > 0 ? selectedRowIds.size : "all"} shipments`,
     );
-  }, [bulkCity, selectedRowIds, locale]);
+  }, [bulkCityGov, selectedRowIds, locale]);
 
-  // Download Aramex Excel Workbook
+  // Download Aramex Excel Workbook matching the official carrier format
   const handleDownloadExcel = useCallback(() => {
     if (rows.length === 0) {
       toast.error(locale === "ar" ? "لا توجد بيانات لتصديرها" : "No data to export");
@@ -163,13 +173,13 @@ export function AramexExcelGenerator({
       /[^a-zA-Z0-9_\u0600-\u06FF]/g,
       "_",
     );
-    const wb = generateAramexWorkbook(rows, "Aramex-Shipments");
+    const wb = generateAramexWorkbook(rows, "Sheet1");
     XLSX.writeFile(wb, `Aramex_Shipments_${batchLabel}.xlsx`);
 
     toast.success(
       locale === "ar"
-        ? "تم تحميل شيت إكسيل أرامكس بنجاح!"
-        : "Aramex Excel sheet downloaded successfully!",
+        ? "تم تحميل شيت أرامكس الرسمي (Excel) بنجاح بالمطابقة الكاملة!"
+        : "Official Aramex Excel sheet downloaded successfully with 100% template fidelity!",
     );
   }, [rows, activeBatch, locale]);
 
@@ -196,7 +206,7 @@ export function AramexExcelGenerator({
     let result = rows;
 
     if (selectedCityFilter !== "all") {
-      result = result.filter((r) => r.selectedCity === selectedCityFilter);
+      result = result.filter((r) => r.selectedCityGov === selectedCityFilter);
     }
 
     if (searchQuery.trim()) {
@@ -208,7 +218,7 @@ export function AramexExcelGenerator({
           (r.phone && r.phone.includes(q)) ||
           (r.phone2 && r.phone2.includes(q)) ||
           (r.fullAddress && r.fullAddress.toLowerCase().includes(q)) ||
-          (r.selectedCity && r.selectedCity.toLowerCase().includes(q)) ||
+          (r.selectedCityGov && r.selectedCityGov.toLowerCase().includes(q)) ||
           (r.governorate && r.governorate.toLowerCase().includes(q)) ||
           (r.newRequestId && r.newRequestId.toLowerCase().includes(q)),
       );
@@ -233,8 +243,8 @@ export function AramexExcelGenerator({
                 </h2>
                 <p className="text-xs text-muted">
                   {locale === "ar"
-                    ? "اختر الشيت المطلوب لتحويل عناوينه إلى (Full Address) واختيار المدينة (City) المناسبة لكل شحنة."
-                    : "Select a sheet to generate full address and choose the designated Aramex city for each shipment."}
+                    ? "اختر الشيت المطلوب لتحويل عناوينه إلى (Full Address) وتوليد شيت أرامكس الرسمي بكامل خاناته وملاحظات الاستلام."
+                    : "Select a sheet to generate full address and build the official Aramex shipment sheet."}
                 </p>
               </div>
             </div>
@@ -297,10 +307,10 @@ export function AramexExcelGenerator({
 
             <div className="rounded-xl border border-border bg-surface-soft/40 p-3">
               <span className="text-[11px] font-medium text-muted block">
-                {locale === "ar" ? "المدن المحددة (City)" : "Cities Assigned"}
+                {locale === "ar" ? "المدن المحددة (City - Gov)" : "Cities Assigned"}
               </span>
               <span className="text-lg font-bold text-sky-600 dark:text-sky-400">
-                {rows.filter((r) => Boolean(r.selectedCity && r.selectedCity !== "Other / أخرى")).length}
+                {rows.filter((r) => Boolean(r.selectedCityGov)).length}
               </span>
             </div>
 
@@ -353,12 +363,12 @@ export function AramexExcelGenerator({
                 <select
                   value={selectedCityFilter}
                   onChange={(e) => setSelectedCityFilter(e.target.value)}
-                  className="h-8 px-2.5 rounded-xl border border-border bg-surface text-xs font-medium text-foreground focus:border-orange-500 outline-none cursor-pointer"
+                  className="h-8 px-2.5 rounded-xl border border-border bg-surface text-xs font-medium text-foreground focus:border-orange-500 outline-none cursor-pointer max-w-[220px]"
                 >
                   <option value="all">{locale === "ar" ? "كل المدن" : "All Cities"}</option>
-                  {ARAMEX_EGYPT_CITIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                  {ARAMEX_CITIES_LIST.map((c) => (
+                    <option key={c.cityGov} value={c.cityGov}>
+                      {c.cityGov}
                     </option>
                   ))}
                 </select>
@@ -380,21 +390,21 @@ export function AramexExcelGenerator({
               {/* Bulk City Apply */}
               <div className="flex items-center gap-1 border-s border-border ps-2">
                 <select
-                  value={bulkCity}
-                  onChange={(e) => setBulkCity(e.target.value)}
-                  className="h-8 px-2 rounded-xl border border-border bg-surface text-xs text-foreground focus:border-orange-500 outline-none cursor-pointer max-w-[140px]"
+                  value={bulkCityGov}
+                  onChange={(e) => setBulkCityGov(e.target.value)}
+                  className="h-8 px-2 rounded-xl border border-border bg-surface text-xs text-foreground focus:border-orange-500 outline-none cursor-pointer max-w-[180px]"
                 >
                   <option value="">{locale === "ar" ? "-- تعيين مدينة --" : "-- Select City --"}</option>
-                  {ARAMEX_EGYPT_CITIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                  {ARAMEX_CITIES_LIST.map((c) => (
+                    <option key={c.cityGov} value={c.cityGov}>
+                      {c.cityGov}
                     </option>
                   ))}
                 </select>
                 <Button
                   variant="secondary"
                   onClick={handleApplyBulkCity}
-                  disabled={!bulkCity}
+                  disabled={!bulkCityGov}
                   className="h-8 text-xs font-semibold px-2.5 cursor-pointer"
                 >
                   {locale === "ar" ? "تطبيق" : "Apply"}
@@ -417,21 +427,21 @@ export function AramexExcelGenerator({
                     />
                   </th>
                   <th className="w-12 p-2.5 text-center">#</th>
-                  <th className="min-w-[190px] p-2.5 text-start">Student / Recipient</th>
-                  <th className="w-32 p-2.5 text-start">Phone</th>
-                  <th className="w-24 p-2.5 text-center">Governorate</th>
+                  <th className="min-w-[190px] p-2.5 text-start">Student Name (Arabic)</th>
+                  <th className="w-32 p-2.5 text-start">Phones</th>
                   <th className="min-w-[280px] p-2.5 text-start bg-orange-500/5 text-orange-700 dark:text-orange-300 font-extrabold">
                     Full Address (فل ادريس)
                   </th>
-                  <th className="min-w-[170px] p-2.5 text-start bg-sky-500/5 text-sky-700 dark:text-sky-300 font-extrabold">
-                    City (سيتى)
+                  <th className="min-w-[220px] p-2.5 text-start bg-sky-500/5 text-sky-700 dark:text-sky-300 font-extrabold">
+                    City - Governorate (سيتى)
                   </th>
-                  <th className="w-20 p-2.5 text-center">Reports</th>
+                  <th className="min-w-[220px] p-2.5 text-start">Remarks (الملاحظات وعدد الشهادات)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredRows.map((r, idx) => {
                   const isSelected = selectedRowIds.has(r.id);
+                  const remarksText = `تم تسليم عدد * ${r.totalReports || 1}   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى`;
 
                   return (
                     <tr
@@ -451,19 +461,19 @@ export function AramexExcelGenerator({
                         />
                       </td>
 
-                      {/* No. */}
+                      {/* Attention / No. */}
                       <td className="p-2.5 text-center font-mono text-muted text-[11px]">
                         {r.serialNumber || idx + 1}
                       </td>
 
-                      {/* Student & Recipient */}
+                      {/* Name (Arabic preferred) */}
                       <td className="p-2.5">
-                        <div className="font-bold text-foreground text-xs leading-tight">
-                          {r.studentNameEn}
+                        <div className="font-bold text-foreground text-xs leading-tight" dir="rtl">
+                          {r.studentNameAr || r.studentNameEn}
                         </div>
                         {r.studentNameAr && (
-                          <div className="text-[11px] text-muted font-medium mt-0.5" dir="rtl">
-                            {r.studentNameAr}
+                          <div className="text-[11px] text-muted font-medium mt-0.5">
+                            {r.studentNameEn}
                           </div>
                         )}
                         {r.recipient && r.recipient !== r.studentNameAr && r.recipient !== r.studentNameEn && (
@@ -481,13 +491,6 @@ export function AramexExcelGenerator({
                         )}
                       </td>
 
-                      {/* Original Governorate */}
-                      <td className="p-2.5 text-center">
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-surface-soft border border-border text-[10px] font-semibold text-muted">
-                          {r.governorate || "-"}
-                        </span>
-                      </td>
-
                       {/* Full Address (Editable Column) */}
                       <td className="p-1.5 bg-orange-500/[0.02]">
                         <textarea
@@ -502,31 +505,39 @@ export function AramexExcelGenerator({
                       {/* City Dropdown (Aramex Selection Column) */}
                       <td className="p-1.5 bg-sky-500/[0.02]">
                         <select
-                          value={r.selectedCity}
+                          value={r.selectedCityGov}
                           onChange={(e) => handleCityChange(r.id, e.target.value)}
                           className={cn(
                             "w-full h-8 px-2 rounded-lg border text-xs font-bold outline-none cursor-pointer transition-all",
-                            r.selectedCity && r.selectedCity !== "Other / أخرى"
+                            r.selectedCityGov
                               ? "border-sky-400/80 bg-sky-50/50 dark:bg-sky-950/30 text-sky-900 dark:text-sky-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                               : "border-amber-400/80 bg-amber-50/50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100 focus:border-amber-500",
                           )}
                         >
-                          <option value="" disabled>
-                            -- Select City --
-                          </option>
-                          {ARAMEX_EGYPT_CITIES.map((cityOption) => (
-                            <option key={cityOption} value={cityOption}>
-                              {cityOption}
+                          {ARAMEX_CITIES_LIST.map((c) => (
+                            <option key={c.cityGov} value={c.cityGov}>
+                              {c.cityGov}
                             </option>
                           ))}
                         </select>
+                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted">
+                          <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
+                            [{r.cityOption?.code || "---"}]
+                          </span>
+                          <span>{r.cityOption?.city || ""}</span>
+                          <span>•</span>
+                          <span>{r.cityOption?.gov || ""}</span>
+                        </div>
                       </td>
 
-                      {/* Total Reports */}
-                      <td className="p-2.5 text-center">
-                        <span className="inline-flex items-center justify-center size-6 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
-                          {r.totalReports || 1}
-                        </span>
+                      {/* Remarks & Total Reports */}
+                      <td className="p-2.5">
+                        <div className="text-[11px] font-medium text-foreground bg-surface-soft/60 p-2 rounded-lg border border-border/60 leading-relaxed" dir="rtl">
+                          {remarksText}
+                        </div>
+                        <div className="mt-1 text-[10px] text-muted">
+                          عدد الشهادات: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{r.totalReports || 1}</strong>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -557,4 +568,3 @@ export function AramexExcelGenerator({
     </div>
   );
 }
-

@@ -1,83 +1,20 @@
 import * as XLSX from "xlsx";
 import type { StudentWithReceipt } from "./certificates-parser";
+import {
+  ARAMEX_CITIES_LIST,
+  ARAMEX_MATCH_RULES,
+  type AramexCityOption,
+} from "./aramex-cities-data";
 
-export const ARAMEX_EGYPT_CITIES: string[] = [
-  "Cairo",
-  "Giza",
-  "Alexandria",
-  "6th of October",
-  "Cheikh Zayed",
-  "Hadayek Alahram",
-  "Hadayek October",
-  "Haram",
-  "Dokki",
-  "Zamalek",
-  "Maadi",
-  "Mokattam",
-  "Nasr City",
-  "Heliopolis",
-  "New Cairo",
-  "Rehab City",
-  "Madinaty",
-  "Shorouk",
-  "Badr City",
-  "Obour",
-  "Helwan",
-  "Tura",
-  "Nozha",
-  "New Nozha",
-  "Banha",
-  "Qalyub",
-  "Qalyubia",
-  "10th of Ramadan",
-  "Zagazig",
-  "Sharkia",
-  "Tanta",
-  "Gharbiya",
-  "Mansoura",
-  "Dakahlia",
-  "Damietta",
-  "Ras El Bar",
-  "New Damietta",
-  "Port Said",
-  "Ismailia",
-  "Suez",
-  "Alexandria - East",
-  "Alexandria - West",
-  "Sidi Bishr",
-  "Stanley",
-  "Borg El Arab",
-  "Damanhour",
-  "Kafr El Dawar",
-  "Beheira",
-  "Kafr El Sheikh",
-  "Shebin El Kom",
-  "Sadat City",
-  "Menofia",
-  "Fayoum",
-  "Beni Suef",
-  "Fashn",
-  "Minya",
-  "Mallawi",
-  "Assiut",
-  "Sohag",
-  "Sohag El Gedida",
-  "Qena",
-  "Luxor",
-  "Aswan",
-  "Hurghada",
-  "El Gouna",
-  "Safaga",
-  "Ras Ghareb",
-  "Red Sea",
-  "Sharm El Sheikh",
-  "South Sinai",
-  "Marsa Matrouh",
-  "Arish",
-  "North Sinai",
-  "Smart Village",
-  "Other / أخرى",
-];
+export { ARAMEX_CITIES_LIST, type AramexCityOption };
+
+export const ARAMEX_CITY_MAP: Map<string, AramexCityOption> = new Map(
+  ARAMEX_CITIES_LIST.map((c) => [c.cityGov.toLowerCase(), c]),
+);
+
+export const DEFAULT_ARAMEX_CITY: AramexCityOption =
+  ARAMEX_CITIES_LIST.find((c) => c.cityGov === "Cairo - Cairo") ||
+  ARAMEX_CITIES_LIST[0];
 
 export interface AramexRowItem {
   id: string;
@@ -99,65 +36,135 @@ export interface AramexRowItem {
   floor?: string | number;
   landmark?: string;
   fullAddress: string;
-  selectedCity: string;
+  selectedCityGov: string; // e.g. "Pyramids Gardens - Giza"
+  cityOption: AramexCityOption;
   awb?: string;
 }
 
 /**
- * Builds a comprehensive Full Address (فل ادريس) string combining:
- * Street, Floor, Apartment, Landmark, Area, City, Governorate
+ * Converts Western digits to Arabic-Indic digits (٠-٩).
+ */
+export function toArabicDigits(val: string | number | undefined | null): string {
+  const str = String(val ?? "").trim();
+  const arabicDigits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  return str.replace(/\d/g, (d) => arabicDigits[Number(d)] ?? d);
+}
+
+/**
+ * Translates floor number into standard Arabic representation:
+ * 0 -> "الدور الأرضي"
+ * 1 -> "الدور الأول"
+ * 2 -> "الدور الثاني"
+ * ...
+ * 211 -> "الدور رقم ٢١١"
+ */
+export function translateFloorToArabic(floorVal: string | number | undefined | null): string {
+  if (floorVal === undefined || floorVal === null) return "";
+  const raw = String(floorVal).trim();
+  if (!raw || raw === "-") return "";
+
+  // If already starts with الدور, keep it
+  if (/^الدور/i.test(raw)) return raw;
+
+  // Check for textual mentions of ground floor
+  if (/ارضي|أرضي|ground/i.test(raw)) return "الدور الأرضي";
+
+  const num = parseInt(raw, 10);
+  if (isNaN(num)) {
+    return `الدور ${raw}`;
+  }
+
+  const ordinalMap: Record<number, string> = {
+    0: "الدور الأرضي",
+    1: "الدور الأول",
+    2: "الدور الثاني",
+    3: "الدور الثالث",
+    4: "الدور الرابع",
+    5: "الدور الخامس",
+    6: "الدور السادس",
+    7: "الدور السابع",
+    8: "الدور الثامن",
+    9: "الدور التاسع",
+    10: "الدور العاشر",
+    11: "الدور الحادي عشر",
+    12: "الدور الثاني عشر",
+    13: "الدور الثالث عشر",
+    14: "الدور الرابع عشر",
+    15: "الدور الخامس عشر",
+    16: "الدور السادس عشر",
+    17: "الدور السابع عشر",
+    18: "الدور الثامن عشر",
+    19: "الدور التاسع عشر",
+    20: "الدور العشرون",
+  };
+
+  if (ordinalMap[num]) return ordinalMap[num];
+
+  // For numbers above 20 (like 211), it says "الدور رقم ٢١١"
+  return `الدور رقم ${toArabicDigits(raw)}`;
+}
+
+/**
+ * Translates apartment into standard Arabic representation:
+ * 424 -> "الشقة رقم ٤٢٤"
+ */
+export function translateApartmentToArabic(aptVal: string | number | undefined | null): string {
+  if (aptVal === undefined || aptVal === null) return "";
+  const raw = String(aptVal).trim();
+  if (!raw || raw === "-") return "";
+
+  // If already starts with الشقة or شقة, return as is
+  if (/^(الشقة|شقة)/i.test(raw)) return raw;
+
+  return `الشقة رقم ${toArabicDigits(raw)}`;
+}
+
+/**
+ * Builds Full Address (فل ادريس) combining:
+ * Governorate، City، Area، Street، Apartment (translated)، Floor (translated)، Landmark
+ * Joined strictly by Arabic comma "، ".
  */
 export function buildFullAddress(item: {
+  governorate?: string;
+  city?: string;
+  area?: string;
   street?: string;
   apartment?: string | number;
   floor?: string | number;
   landmark?: string;
-  area?: string;
-  city?: string;
-  governorate?: string;
 }): string {
   const parts: string[] = [];
 
-  const street = (item.street || "").trim();
-  if (street) {
-    parts.push(street);
-  }
-
-  const floor = item.floor !== undefined && item.floor !== null ? String(item.floor).trim() : "";
-  if (floor) {
-    parts.push(/دور|floor/i.test(floor) ? floor : `الدور ${floor}`);
-  }
-
-  const apt = item.apartment !== undefined && item.apartment !== null ? String(item.apartment).trim() : "";
-  if (apt) {
-    parts.push(/شقة|شقه|apt|apartment/i.test(apt) ? apt : `شقة ${apt}`);
-  }
-
-  const landmark = (item.landmark || "").trim();
-  if (landmark) {
-    parts.push(/علامة|علامه|بجوار|near|landmark/i.test(landmark) ? landmark : `علامة مميزة: ${landmark}`);
-  }
-
-  const area = (item.area || "").trim();
-  if (area) {
-    parts.push(area);
-  }
+  const gov = (item.governorate || "").trim();
+  if (gov) parts.push(gov);
 
   const city = (item.city || "").trim();
   if (city && !parts.some((p) => p.toLowerCase().includes(city.toLowerCase()))) {
     parts.push(city);
   }
 
-  const gov = (item.governorate || "").trim();
-  if (gov && !parts.some((p) => p.toLowerCase().includes(gov.toLowerCase()))) {
-    parts.push(gov);
+  const area = (item.area || "").trim();
+  if (area && !parts.some((p) => p.toLowerCase().includes(area.toLowerCase()))) {
+    parts.push(area);
   }
 
-  return parts.filter(Boolean).join(" - ");
+  const street = (item.street || "").trim();
+  if (street) parts.push(street);
+
+  const translatedApt = translateApartmentToArabic(item.apartment);
+  if (translatedApt) parts.push(translatedApt);
+
+  const translatedFloor = translateFloorToArabic(item.floor);
+  if (translatedFloor) parts.push(translatedFloor);
+
+  const landmark = (item.landmark || "").trim();
+  if (landmark) parts.push(landmark);
+
+  return parts.filter(Boolean).join("، ");
 }
 
 /**
- * Detects the most appropriate Aramex Egypt City based on full address and original fields.
+ * Detects the most appropriate Aramex Egypt City option from official Aramex list.
  */
 export function detectAramexCity(item: {
   governorate?: string;
@@ -165,211 +172,106 @@ export function detectAramexCity(item: {
   area?: string;
   street?: string;
   fullAddress?: string;
-}): string {
-  const text = [
-    item.city || "",
-    item.area || "",
-    item.fullAddress || "",
-    item.street || "",
-    item.governorate || "",
-  ]
-    .join(" ")
-    .toLowerCase();
+}): AramexCityOption {
+  const gov = (item.governorate || "").trim().toLowerCase();
+  const city = (item.city || "").trim().toLowerCase();
+  const area = (item.area || "").trim().toLowerCase();
+  const street = (item.street || "").trim().toLowerCase();
+  const fullAddress = (item.fullAddress || "").trim().toLowerCase();
 
-  // Exact matching against city list
+  const combined = `${gov} ${city} ${area} ${street} ${fullAddress}`.toLowerCase();
+
+  // 1. Direct rule pattern checks (e.g. "Giza، Hadayek Alahram" -> "Pyramids Gardens - Giza")
+  for (const rule of ARAMEX_MATCH_RULES) {
+    const pat = rule.pattern.toLowerCase().replace(/[,،]/g, " ").trim();
+    const patWords = pat.split(/\s+/).filter(Boolean);
+    if (patWords.length > 0 && patWords.every((w) => combined.includes(w))) {
+      const match = ARAMEX_CITY_MAP.get(rule.cityGov.toLowerCase());
+      if (match) return match;
+    }
+  }
+
+  // 2. Direct city match in ARAMEX_CITIES_LIST
   if (item.city) {
-    const rawCity = item.city.trim();
-    const foundDirect = ARAMEX_EGYPT_CITIES.find(
-      (c) => c.toLowerCase() === rawCity.toLowerCase(),
+    const rawCity = item.city.trim().toLowerCase();
+    const exactOption = ARAMEX_CITIES_LIST.find(
+      (c) =>
+        c.city.toLowerCase() === rawCity ||
+        c.cityGov.toLowerCase() === rawCity ||
+        c.cityGov.toLowerCase().startsWith(`${rawCity} -`),
     );
-    if (foundDirect) return foundDirect;
+    if (exactOption) return exactOption;
   }
 
-  // Specific district and area keywords
-  if (text.includes("hadayek alahram") || text.includes("حدائق الاهرام") || text.includes("حدائق الأهرام")) {
-    return "Hadayek Alahram";
-  }
-  if (text.includes("hadayek october") || text.includes("حدائق اكتوبر") || text.includes("حدائق أكتوبر")) {
-    return "Hadayek October";
-  }
-  if (text.includes("zayed") || text.includes("زايد") || text.includes("cheikh zayed") || text.includes("الشيخ زايد")) {
-    return "Cheikh Zayed";
-  }
-  if (text.includes("october") || text.includes("اكتوبر") || text.includes("أكتوبر") || text.includes("6 october")) {
-    return "6th of October";
-  }
-  if (text.includes("rehab") || text.includes("الرحاب")) {
-    return "Rehab City";
-  }
-  if (text.includes("madinaty") || text.includes("مدينتي") || text.includes("مدينتى")) {
-    return "Madinaty";
-  }
-  if (text.includes("shorouk") || text.includes("الشروق")) {
-    return "Shorouk";
-  }
-  if (text.includes("badr") || text.includes("مدينة بدر") || text.includes("بدر")) {
-    return "Badr City";
-  }
-  if (text.includes("obour") || text.includes("العبور")) {
-    return "Obour";
-  }
-  if (text.includes("new cairo") || text.includes("التجمع") || text.includes("القاهرة الجديدة") || text.includes("fifth settlement")) {
-    return "New Cairo";
-  }
-  if (text.includes("nasr city") || text.includes("مدينة نصر")) {
-    return "Nasr City";
-  }
-  if (text.includes("heliopolis") || text.includes("مصر الجديدة")) {
-    return "Heliopolis";
-  }
-  if (text.includes("new nozha") || text.includes("النزهة الجديدة")) {
-    return "New Nozha";
-  }
-  if (text.includes("nozha") || text.includes("النزهة") || text.includes("النزهه")) {
-    return "Nozha";
-  }
-  if (text.includes("maadi") || text.includes("المعادي") || text.includes("المعادى")) {
-    return "Maadi";
-  }
-  if (text.includes("mokattam") || text.includes("المقطم")) {
-    return "Mokattam";
-  }
-  if (text.includes("haram") || text.includes("الهرم")) {
-    return "Haram";
-  }
-  if (text.includes("dokki") || text.includes("الدقي") || text.includes("الدقى")) {
-    return "Dokki";
-  }
-  if (text.includes("zamalek") || text.includes("الزمالك")) {
-    return "Zamalek";
-  }
-  if (text.includes("helwan") || text.includes("حلوان")) {
-    return "Helwan";
-  }
-  if (text.includes("tura") || text.includes("طرة") || text.includes("طره")) {
-    return "Tura";
-  }
-  if (text.includes("10th of ramadan") || text.includes("العاشر من رمضان")) {
-    return "10th of Ramadan";
-  }
-  if (text.includes("sidi bishr") || text.includes("سيدي بشر")) {
-    return "Sidi Bishr";
-  }
-  if (text.includes("stanley") || text.includes("ستانلي")) {
-    return "Stanley";
-  }
-  if (text.includes("borg el arab") || text.includes("برج العرب")) {
-    return "Borg El Arab";
-  }
-  if (text.includes("alexandria") || text.includes("alex") || text.includes("اسكندرية") || text.includes("الإسكندرية")) {
-    return "Alexandria";
-  }
-  if (text.includes("ras el bar") || text.includes("رأس البر") || text.includes("راس البر")) {
-    return "Ras El Bar";
-  }
-  if (text.includes("new damietta") || text.includes("دمياط الجديدة")) {
-    return "New Damietta";
-  }
-  if (text.includes("damietta") || text.includes("دمياط")) {
-    return "Damietta";
-  }
-  if (text.includes("mansoura") || text.includes("المنصورة")) {
-    return "Mansoura";
-  }
-  if (text.includes("tanta") || text.includes("طنطا")) {
-    return "Tanta";
-  }
-  if (text.includes("zagazig") || text.includes("الزقازيق")) {
-    return "Zagazig";
-  }
-  if (text.includes("banha") || text.includes("بنها")) {
-    return "Banha";
-  }
-  if (text.includes("qalyub") || text.includes("قليوب")) {
-    return "Qalyub";
-  }
-  if (text.includes("qalyubia") || text.includes("قليوبية") || text.includes("القليوبية") || text.includes("qaliubiya")) {
-    return "Qalyubia";
-  }
-  if (text.includes("ismailia") || text.includes("الإسماعيلية") || text.includes("الاسماعيلية")) {
-    return "Ismailia";
-  }
-  if (text.includes("suez") || text.includes("السويس")) {
-    return "Suez";
-  }
-  if (text.includes("port said") || text.includes("بورسعيد")) {
-    return "Port Said";
-  }
-  if (text.includes("el gouna") || text.includes("الجونة")) {
-    return "El Gouna";
-  }
-  if (text.includes("hurghada") || text.includes("الغردقة")) {
-    return "Hurghada";
-  }
-  if (text.includes("sharm") || text.includes("شرم الشيخ")) {
-    return "Sharm El Sheikh";
-  }
-  if (text.includes("fashn") || text.includes("الفشن")) {
-    return "Fashn";
-  }
-  if (text.includes("beni suef") || text.includes("بني سويف")) {
-    return "Beni Suef";
-  }
-  if (text.includes("minya") || text.includes("المنيا")) {
-    return "Minya";
-  }
-  if (text.includes("mallawi") || text.includes("ملوي")) {
-    return "Mallawi";
-  }
-  if (text.includes("assiut") || text.includes("أسيوط") || text.includes("اسيوط")) {
-    return "Assiut";
-  }
-  if (text.includes("sohag el gedida") || text.includes("سوهاج الجديدة")) {
-    return "Sohag El Gedida";
-  }
-  if (text.includes("sohag") || text.includes("سوهاج")) {
-    return "Sohag";
-  }
-  if (text.includes("qena") || text.includes("قنا")) {
-    return "Qena";
-  }
-  if (text.includes("luxor") || text.includes("الأقصر") || text.includes("الاقصر")) {
-    return "Luxor";
-  }
-  if (text.includes("aswan") || text.includes("أسوان") || text.includes("اسوان")) {
-    return "Aswan";
-  }
-  if (text.includes("damanhour") || text.includes("دمنهور")) {
-    return "Damanhour";
-  }
-  if (text.includes("shebin el kom") || text.includes("شبين الكوم")) {
-    return "Shebin El Kom";
-  }
-  if (text.includes("sadat") || text.includes("السادات")) {
-    return "Sadat City";
-  }
-  if (text.includes("fayoum") || text.includes("الفيوم")) {
-    return "Fayoum";
-  }
-  if (text.includes("smart village") || text.includes("القرية الذكية")) {
-    return "Smart Village";
-  }
-  if (text.includes("giza") || text.includes("الجيزة")) {
-    return "Giza";
-  }
-  if (text.includes("cairo") || text.includes("القاهرة")) {
-    return "Cairo";
+  // 3. District / area keyword match
+  if (combined.includes("hadayek alahram") || combined.includes("حدائق الاهرام") || combined.includes("حدائق الأهرام")) {
+    const found = ARAMEX_CITY_MAP.get("pyramids gardens - giza");
+    if (found) return found;
   }
 
-  // Fallback to governorate if matched
+  if (combined.includes("october") || combined.includes("اكتوبر") || combined.includes("أكتوبر")) {
+    const found = ARAMEX_CITY_MAP.get("october city - giza");
+    if (found) return found;
+  }
+
+  if (combined.includes("zayed") || combined.includes("زايد")) {
+    const found = ARAMEX_CITY_MAP.get("sheikh zayed city - giza");
+    if (found) return found;
+  }
+
+  if (combined.includes("nasr city") || combined.includes("مدينة نصر")) {
+    const found = ARAMEX_CITY_MAP.get("nasr city - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("new cairo") || combined.includes("التجمع") || combined.includes("القاهرة الجديدة")) {
+    const found = ARAMEX_CITY_MAP.get("new cairo - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("rehab") || combined.includes("الرحاب")) {
+    const found = ARAMEX_CITY_MAP.get("el rehab - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("madinaty") || combined.includes("مدينتي") || combined.includes("مدينتى")) {
+    const found = ARAMEX_CITY_MAP.get("madinaty - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("shorouk") || combined.includes("الشروق")) {
+    const found = ARAMEX_CITY_MAP.get("al shorouk - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("obour") || combined.includes("العبور")) {
+    const found = ARAMEX_CITY_MAP.get("al obour city - qaliubia");
+    if (found) return found;
+  }
+
+  if (combined.includes("maadi") || combined.includes("المعادي") || combined.includes("المعادى")) {
+    const found = ARAMEX_CITY_MAP.get("maadi - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("mokattam") || combined.includes("المقطم")) {
+    const found = ARAMEX_CITY_MAP.get("mokattam - cairo");
+    if (found) return found;
+  }
+
+  if (combined.includes("alexandria") || combined.includes("اسكندرية") || combined.includes("الإسكندرية")) {
+    const found = ARAMEX_CITY_MAP.get("alexandria - alexandria");
+    if (found) return found;
+  }
+
+  // 4. Fallback matching on governorate
   if (item.governorate) {
-    const govFound = ARAMEX_EGYPT_CITIES.find(
-      (c) => c.toLowerCase() === item.governorate!.trim().toLowerCase(),
-    );
-    if (govFound) return govFound;
+    const rawGov = item.governorate.trim().toLowerCase();
+    const govOption = ARAMEX_CITIES_LIST.find((c) => c.gov.toLowerCase() === rawGov);
+    if (govOption) return govOption;
   }
 
-  return "Cairo"; // Default fallback
+  return DEFAULT_ARAMEX_CITY;
 }
 
 /**
@@ -378,16 +280,16 @@ export function detectAramexCity(item: {
 export function convertStudentsToAramexRows(students: StudentWithReceipt[]): AramexRowItem[] {
   return students.map((s, idx) => {
     const fullAddress = buildFullAddress({
+      governorate: s.governorate,
+      city: s.city,
+      area: s.area,
       street: s.street,
       apartment: s.apartment,
       floor: s.floor,
       landmark: s.landmark,
-      area: s.area,
-      city: s.city,
-      governorate: s.governorate,
     });
 
-    const detectedCity = detectAramexCity({
+    const detectedCityOption = detectAramexCity({
       governorate: s.governorate,
       city: s.city,
       area: s.area,
@@ -415,94 +317,113 @@ export function convertStudentsToAramexRows(students: StudentWithReceipt[]): Ara
       floor: s.floor || "",
       landmark: s.landmark || "",
       fullAddress,
-      selectedCity: detectedCity,
+      selectedCityGov: detectedCityOption.cityGov,
+      cityOption: detectedCityOption,
       awb: s.awb || "",
     };
   });
 }
 
 /**
- * Generates an Excel workbook from AramexRowItem array with all required columns.
+ * Generates the official Aramex Excel Workbook matching the carrier's exact template.
+ * Includes:
+ * - 4 empty header rows
+ * - Customer Details & Shipper Details section banners
+ * - Official column headers
+ * - Auto-populated Remarks: "تم تسليم عدد * X   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى"
  */
-export function generateAramexWorkbook(rows: AramexRowItem[], sheetTitle = "Aramex-Shipments"): XLSX.WorkBook {
-  const headers = [
-    "No.",
-    "New Request ID",
-    "Student Name EN",
-    "Student Name AR",
-    "National ID",
-    "Phone Number",
-    "Phone 2",
-    "Recipient",
-    "Governorate",
-    "Original City",
-    "Area",
-    "Street",
-    "Apartment",
-    "Floor",
-    "Landmark",
-    "Full Address", // العامود الجديد
-    "City", // عامود سيتى المختار لأرامكس
-    "Total Reports",
-    "Report List",
-    "AWB",
+export function generateAramexWorkbook(rows: AramexRowItem[], sheetTitle = "Sheet1"): XLSX.WorkBook {
+  const row0 = Array(17).fill("");
+  const row1 = Array(17).fill("");
+  const row2 = Array(17).fill("");
+  const row3 = Array(17).fill("");
+
+  const row4 = Array(17).fill("");
+  row4[0] = "Customer Details";
+  row4[12] = "Shipper Details";
+
+  const row5Headers = [
+    "HAWB",
+    "Name",
+    "Attention",
+    "Full Address",
+    "City - Governorate (Please select from the list)",
+    "City",
+    "Destination",
+    "Government",
+    "Reference / Unique",
+    "Mobile Number",
+    "Tel Number",
+    "Landline Number",
+    "Origin City (Please select from the list)",
+    "Account Number",
+    "Shipper Reference",
+    "Commodity Description",
+    "Remarks",
   ];
 
-  const excelRows: (string | number | null)[][] = [headers];
+  const excelRows: (string | number | null)[][] = [
+    row0,
+    row1,
+    row2,
+    row3,
+    row4,
+    row5Headers,
+  ];
 
-  for (const r of rows) {
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx];
+    const cityOpt = r.cityOption || ARAMEX_CITY_MAP.get(r.selectedCityGov.toLowerCase()) || DEFAULT_ARAMEX_CITY;
+    const attentionNum = r.serialNumber !== undefined && r.serialNumber !== "" ? r.serialNumber : idx + 1;
+    const nameVal = r.studentNameAr || r.studentNameEn || "";
+    const totalReports = r.totalReports !== undefined && r.totalReports !== "" ? r.totalReports : 1;
+    const remarksText = `تم تسليم عدد * ${totalReports}   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى`;
+
     excelRows.push([
-      r.serialNumber || "",
-      r.newRequestId || "",
-      r.studentNameEn || "",
-      r.studentNameAr || "",
-      r.nationalId || "",
-      r.phone || "",
-      r.phone2 || "",
-      r.recipient || "",
-      r.governorate || "",
-      r.originalCity || "",
-      r.area || "",
-      r.street || "",
-      r.apartment !== undefined && r.apartment !== null ? String(r.apartment) : "",
-      r.floor !== undefined && r.floor !== null ? String(r.floor) : "",
-      r.landmark || "",
-      r.fullAddress || "",
-      r.selectedCity || "",
-      r.totalReports || 1,
-      r.reportList || "",
-      r.awb || "",
+      "", // HAWB
+      nameVal, // Name (Arabic candidate name preferred)
+      attentionNum, // Attention
+      r.fullAddress, // Full Address
+      cityOpt.cityGov, // City - Governorate (Please select from the list)
+      cityOpt.city, // City
+      cityOpt.code, // Destination
+      cityOpt.gov, // Government
+      r.originalCity || r.area || "", // Reference / Unique
+      r.phone || "", // Mobile Number
+      r.phone2 || r.phone || "", // Tel Number
+      "", // Landline Number
+      "Alexandria", // Origin City (Please select from the list)
+      "233677", // Account Number
+      "3930356", // Shipper Reference
+      "", // Commodity Description
+      remarksText, // Remarks
     ]);
   }
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(excelRows);
 
-  // Column widths
+  // Set official column widths for Aramex sheet
   ws["!cols"] = [
-    { wch: 6 }, // No
-    { wch: 16 }, // Request ID
-    { wch: 32 }, // Name EN
-    { wch: 28 }, // Name AR
-    { wch: 18 }, // National ID
-    { wch: 16 }, // Phone
-    { wch: 16 }, // Phone 2
-    { wch: 26 }, // Recipient
-    { wch: 14 }, // Gov
-    { wch: 16 }, // Original City
-    { wch: 16 }, // Area
-    { wch: 35 }, // Street
-    { wch: 10 }, // Apartment
-    { wch: 8 },  // Floor
-    { wch: 35 }, // Landmark
-    { wch: 55 }, // Full Address
-    { wch: 20 }, // City (Aramex)
-    { wch: 12 }, // Total Reports
-    { wch: 35 }, // Report List
-    { wch: 16 }, // AWB
+    { wch: 12 }, // HAWB
+    { wch: 32 }, // Name
+    { wch: 10 }, // Attention
+    { wch: 65 }, // Full Address
+    { wch: 30 }, // City - Governorate
+    { wch: 22 }, // City
+    { wch: 12 }, // Destination
+    { wch: 15 }, // Government
+    { wch: 20 }, // Reference / Unique
+    { wch: 16 }, // Mobile Number
+    { wch: 16 }, // Tel Number
+    { wch: 16 }, // Landline Number
+    { wch: 18 }, // Origin City
+    { wch: 16 }, // Account Number
+    { wch: 18 }, // Shipper Reference
+    { wch: 20 }, // Commodity Description
+    { wch: 75 }, // Remarks
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
   return wb;
 }
-
