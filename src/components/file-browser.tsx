@@ -1320,6 +1320,112 @@ export function FileBrowser({
     [handleExamDossierStickerAction],
   );
 
+  const handleFloorBagStickerAction = useCallback(
+    async (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      action: "show" | "print",
+      orientation: "portrait" | "landscape" = "landscape",
+    ) => {
+      if (e) e.stopPropagation();
+      if (!target.id || busyStickerId) return;
+
+      setBusyStickerId(target.id);
+      setStickerAction(action);
+      const toastId = toast.loading(
+        action === "show"
+          ? (locale === "ar"
+            ? `جاري تجهيز معاينة استيكر الكيسة الكبيرة (A4 بالعرض) لدور "${target.name || "Floor"}"...`
+            : `Loading Floor Large Bag A4 Placard preview for "${target.name || "Floor"}"...`)
+          : (locale === "ar"
+            ? `جاري تجهيز استيكر الكيسة الكبيرة (A4 بالعرض) لدور "${target.name || "Floor"}" للطباعة...`
+            : `Preparing Floor Large Bag A4 Placard for "${target.name || "Floor"}" for printing...`),
+      );
+
+      try {
+        const res = await fetch(`/api/stickers/${encodeURIComponent(target.id)}?type=floor_bag&orientation=${orientation}`);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(
+            errorData.message ||
+              (locale === "ar" ? "فشل إنشاء استيكر كيسة الدور" : "Failed to generate floor large bag sticker PDF"),
+          );
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+
+        if (action === "show") {
+          setPreviewStickerState({
+            open: true,
+            url: objectUrl,
+            title: `${target.name || "Floor"} - LARGE BAG (A4)`,
+            customTitle: locale === "ar" ? `استيكر الكيسة الكبيرة A4 — دور ${target.name || ""}` : undefined,
+            customDescription: locale === "ar" ? "ملصق الكيسة الخارجية الكبيرة للدور بحجم A4 بالعرض مع كافة أرقام القاعات." : undefined,
+          });
+          toast.success(
+            locale === "ar" ? "تم فتح نافذة المعاينة بنجاح" : "Floor large bag placard preview opened",
+            { id: toastId },
+          );
+        } else {
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.right = "0";
+          iframe.style.bottom = "0";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "0";
+          iframe.src = objectUrl;
+          document.body.appendChild(iframe);
+          iframe.onload = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch {
+              const w = window.open(objectUrl, "_blank");
+              w?.focus();
+              w?.print();
+            }
+          };
+          toast.success(
+            locale === "ar" ? "تم إرسال استيكر كيسة الدور للطباعة بنجاح" : "Floor bag placard sent to printer",
+            { id: toastId },
+          );
+        }
+      } catch (err: any) {
+        console.error("[floor-bag-sticker] Failed:", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : locale === "ar"
+            ? "حدث خطأ أثناء معالجة استيكر كيسة الدور"
+            : "Error processing floor bag sticker",
+          { id: toastId },
+        );
+      } finally {
+        setBusyStickerId(null);
+        setStickerAction(null);
+      }
+    },
+    [busyStickerId, locale],
+  );
+
+  const handleShowFloorBagSticker = useCallback(
+    (e: React.MouseEvent | null, target: { id: string; name?: string | null }) =>
+      handleFloorBagStickerAction(e, target, "show", "landscape"),
+    [handleFloorBagStickerAction],
+  );
+
+  const handlePrintFloorBagSticker = useCallback(
+    (
+      e: React.MouseEvent | null,
+      target: { id: string; name?: string | null },
+      orientation: "portrait" | "landscape" = "landscape",
+    ) => handleFloorBagStickerAction(e, target, "print", orientation),
+    [handleFloorBagStickerAction],
+  );
+
   const handleExamStickerAction = useCallback(
     async (
       e: React.MouseEvent | null,
@@ -1774,6 +1880,28 @@ export function FileBrowser({
       });
       return cat === "building_excel";
     });
+  }, [selectedItems, breadcrumbs]);
+
+  const hasSelectedFloors = useMemo(() => {
+    return selectedItems.some((it) => {
+      if (!it.isFolder) return false;
+      const cat = getFolderRegisterCategory({
+        folder: it,
+        breadcrumbs,
+      });
+      return cat === "proctor" || isFloorFolderName(it.name);
+    });
+  }, [selectedItems, breadcrumbs]);
+
+  const selectedFloorCount = useMemo(() => {
+    return selectedItems.filter((it) => {
+      if (!it.isFolder) return false;
+      const cat = getFolderRegisterCategory({
+        folder: it,
+        breadcrumbs,
+      });
+      return cat === "proctor" || isFloorFolderName(it.name);
+    }).length;
   }, [selectedItems, breadcrumbs]);
 
   const displayItems = useMemo(() => {
@@ -2272,8 +2400,8 @@ export function FileBrowser({
   const [batchStickersOpen, setBatchStickersOpen] = useState(false);
   const [busyBatchStickers, setBusyBatchStickers] = useState(false);
   const [batchStickerAction, setBatchStickerAction] = useState<"show" | "print" | null>(null);
-  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam" | "head" | "exam_dossier">("regular");
-  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam" | "head" | "exam_dossier">("regular");
+  const [batchStickerType, setBatchStickerType] = useState<"regular" | "exam" | "head" | "exam_dossier" | "floor_bag">("regular");
+  const [batchStickersInitialType, setBatchStickersInitialType] = useState<"regular" | "exam" | "head" | "exam_dossier" | "floor_bag">("regular");
 
   const handleBatchStickersAction = useCallback(
     async ({
@@ -2283,7 +2411,7 @@ export function FileBrowser({
       orientation,
     }: {
       action: "show" | "print";
-      type?: "regular" | "exam" | "head" | "exam_dossier";
+      type?: "regular" | "exam" | "head" | "exam_dossier" | "floor_bag";
       includeChildren?: boolean;
       orientation?: "landscape" | "portrait";
     }) => {
@@ -2317,6 +2445,8 @@ export function FileBrowser({
               ? `جاري تجهيز استيكرات الهيد (${targetFolders.length} مبنى) للمعاينة...`
               : type === "exam_dossier"
               ? `جاري تجهيز استيكرات مظروف الامتحانات (${targetFolders.length} مبنى) للمعاينة...`
+              : type === "floor_bag"
+              ? `جاري تجهيز استيكرات كيسة الدور الكبيرة (${targetFolders.length} دور) للمعاينة...`
               : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للمعاينة...`
             : `Generating sticker preview for ${targetFolders.length} folder(s)...`)
           : (locale === "ar"
@@ -2326,6 +2456,8 @@ export function FileBrowser({
               ? `جاري تجهيز استيكرات الهيد (${targetFolders.length} مبنى) للطباعة...`
               : type === "exam_dossier"
               ? `جاري تجهيز استيكرات مظروف الامتحانات (${targetFolders.length} مبنى) للطباعة...`
+              : type === "floor_bag"
+              ? `جاري تجهيز استيكرات كيسة الدور الكبيرة (${targetFolders.length} دور) للطباعة...`
               : `جاري تجهيز استيكرات (${targetFolders.length} مجلد) للطباعة...`
             : `Preparing stickers for ${targetFolders.length} folder(s)...`),
       );
@@ -2382,6 +2514,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? `استيكرات مظروف الامتحانات — (${targetFolders.length} مبنى)`
                   : `Exam Papers Stickers (${targetFolders.length} Buildings)`
+                : type === "floor_bag"
+                ? locale === "ar"
+                  ? `استيكرات كيسة الدور A4 — (${targetFolders.length} دور)`
+                  : `Floor Large Bag Placards (${targetFolders.length} Floors)`
                 : locale === "ar"
                 ? `استيكرات مجمعة (${targetFolders.length} مجلد)`
                 : `Batch Stickers (${targetFolders.length} Folders)`,
@@ -2398,6 +2534,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? `استيكرات مظروف الامتحانات الرسمي — ${targetFolders.length} مبنى`
                   : `Official Exam Papers Stickers — ${targetFolders.length} Buildings`
+                : type === "floor_bag"
+                ? locale === "ar"
+                  ? `استيكرات كيسة الدور الخارجية الكبيرة (A4 بالعرض) — ${targetFolders.length} دور`
+                  : `Official Floor Large Outer Bag Placards (A4 Landscape) — ${targetFolders.length} Floors`
                 : undefined,
             customDescription:
               type === "exam"
@@ -2412,6 +2552,10 @@ export function FileBrowser({
                 ? locale === "ar"
                   ? "استيكر مظروف الامتحانات بمقاس ربع صفحة A4 لحفظ وتوزيع أوراق الاختبارات."
                   : "Exam papers sticker at quarter-A4 size for exam test papers dossier."
+                : type === "floor_bag"
+                ? locale === "ar"
+                  ? "ملصقات الأكياس الكبيرة للأدوار بمقاس A4 بالعرض مع كافة أرقام القاعات ومحتويات الدور."
+                  : "Large outer bag placards for floors at A4 landscape with all room numbers and floor contents."
                 : undefined,
           });
           toast.success(
@@ -3113,6 +3257,52 @@ export function FileBrowser({
                 }
               >
                 <span>{locale === "ar" ? "بالعرض" : "Landscape"}</span>
+              </button>
+            </div>
+          )}
+          {isCurrentFolderFloor && currentFolder && (
+            <div className="inline-flex items-center rounded-xl border border-sky-500/40 bg-sky-500/10 p-0.5 shadow-xs">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-sky-800 dark:text-sky-200 border-e border-sky-500/25 select-none">
+                <Layers className="size-3.5 text-sky-600 dark:text-sky-400" />
+                <span className="hidden sm:inline">
+                  {locale === "ar" ? "كيسة الدور (A4)" : "Floor Bag (A4)"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => handleShowFloorBagSticker(e, currentFolder)}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-sky-500/20 text-sky-800 dark:text-sky-200 cursor-pointer transition-all"
+                title={
+                  locale === "ar"
+                    ? `معاينة استيكر الكيسة الكبيرة لدور "${currentFolder.name}" (مقاس A4 بالعرض)`
+                    : `Preview floor large bag placard for "${currentFolder.name}" (A4 Landscape)`
+                }
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "show" ? (
+                  <Loader2 className="size-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                ) : (
+                  <Eye className="size-3.5 text-sky-600 dark:text-sky-400" />
+                )}
+                <span>{locale === "ar" ? "معاينة" : "Show"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handlePrintFloorBagSticker(e, currentFolder, "landscape")}
+                disabled={busyStickerId === currentFolder.id}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg hover:bg-sky-500/20 text-sky-800 dark:text-sky-200 cursor-pointer transition-all border-s border-sky-500/25"
+                title={
+                  locale === "ar"
+                    ? `طباعة استيكر الكيسة الكبيرة لدور "${currentFolder.name}" مباشرة (مقاس A4 بالعرض)`
+                    : `Print floor large bag placard for "${currentFolder.name}" directly (A4 Landscape)`
+                }
+              >
+                {busyStickerId === currentFolder.id && stickerAction === "print" ? (
+                  <Loader2 className="size-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                ) : (
+                  <Printer className="size-3.5 text-sky-600 dark:text-sky-400" />
+                )}
+                <span>{locale === "ar" ? "طباعة A4 بالعرض" : "Print A4 Landscape"}</span>
               </button>
             </div>
           )}
@@ -3821,6 +4011,8 @@ export function FileBrowser({
                           onPrintExamDossierSticker={(folder, orientation) => handlePrintExamDossierSticker(null, folder, orientation)}
                           onShowExamStickers={(folder) => handleShowExamStickers(null, folder)}
                           onPrintExamStickers={(folder, orientation) => handlePrintExamStickers(null, folder, orientation)}
+                          onShowFloorBagSticker={(folder) => handleShowFloorBagSticker(null, folder)}
+                          onPrintFloorBagSticker={(folder, orientation) => handlePrintFloorBagSticker(null, folder, orientation)}
                           onOpenProctorDialog={handleOpenProctorDialog}
                           onShowProctorFile={handleShowProctorFile}
                           onPrintProctorFile={handlePrintProctorFile}
@@ -4091,6 +4283,47 @@ export function FileBrowser({
                           breadcrumbs,
                           isCurrentFolder: false,
                         });
+                        const isFloor = regCategory === "proctor" || isFloorFolderName(item.name);
+                        if (!isFloor) return null;
+                        return (
+                          <div className="inline-flex items-center rounded-lg border border-sky-500/40 bg-sky-500/10 p-0.5 text-xs shadow-2xs">
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-sky-800 dark:text-sky-200 border-e border-sky-500/25 select-none">
+                              <Layers className="size-3 text-sky-600 dark:text-sky-400" />
+                              <span>{locale === "ar" ? "كيسة A4" : "Bag A4"}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleShowFloorBagSticker(e, item)}
+                              disabled={busyStickerId === item.id}
+                              className="inline-flex items-center justify-center size-6 rounded hover:bg-sky-500/20 text-sky-800 dark:text-sky-200 cursor-pointer"
+                              title={locale === "ar" ? `معاينة استيكر الكيسة الكبيرة (A4 بالعرض) لدور "${item.name}"` : `Preview floor large bag A4 placard for "${item.name}"`}
+                            >
+                              {busyStickerId === item.id && stickerAction === "show" ? (
+                                <Loader2 className="size-3 animate-spin text-sky-600" />
+                              ) : (
+                                <Eye className="size-3 text-sky-600 dark:text-sky-400" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handlePrintFloorBagSticker(e, item, "landscape")}
+                              disabled={busyStickerId === item.id}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-sky-500/20 text-sky-800 dark:text-sky-200 cursor-pointer border-s border-sky-500/25"
+                              title={locale === "ar" ? `طباعة استيكر الكيسة الكبيرة (A4 بالعرض) لدور "${item.name}"` : `Print floor large bag A4 placard for "${item.name}"`}
+                            >
+                              <Printer className="size-3 text-sky-600 dark:text-sky-400" />
+                              <span className="text-[10px]">{locale === "ar" ? "A4 بالعرض" : "A4 Land"}</span>
+                            </button>
+                          </div>
+                        );
+                      })()}
+
+                      {(() => {
+                        const regCategory = getFolderRegisterCategory({
+                          folder: item,
+                          breadcrumbs,
+                          isCurrentFolder: false,
+                        });
                         if (!regCategory) return null;
 
                         const regFile = findRegisterFileInItems(regCategory, folderChildren[item.id]);
@@ -4290,6 +4523,8 @@ export function FileBrowser({
                     onPrintExamDossierSticker={handlePrintExamDossierSticker}
                     onShowExamStickers={handleShowExamStickers}
                     onPrintExamStickers={handlePrintExamStickers}
+                    onShowFloorBagSticker={handleShowFloorBagSticker}
+                    onPrintFloorBagSticker={handlePrintFloorBagSticker}
                     onOpenProctorDialog={handleOpenProctorDialog}
                     onShowProctorFile={handleShowProctorFile}
                     onPrintProctorFile={handlePrintProctorFile}
@@ -4832,6 +5067,68 @@ export function FileBrowser({
               </div>
             )}
 
+            {/* Floor Large Bag Stickers Action Button (shown when floor folders are selected) */}
+            {hasSelectedFloors && (
+              <div className="inline-flex items-center rounded-xl border border-sky-500/40 bg-sky-500/10 p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "floor_bag", orientation: "landscape" })}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-sky-800 dark:text-sky-200 hover:bg-sky-500/20 rounded-s-lg border-e border-sky-500/25 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات الكيسة الكبيرة (A4 بالعرض) للأدوار المحددة"
+                      : "Print Floor Large Bag Stickers (A4 Landscape) for selected floors"
+                  }
+                >
+                  <Layers className="size-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>
+                    {locale === "ar"
+                      ? `كيسة الدور A4 (${selectedFloorCount > 0 ? selectedFloorCount : 1})`
+                      : `Floor Bag A4 (${selectedFloorCount > 0 ? selectedFloorCount : 1})`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "show", type: "floor_bag", orientation: "landscape" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center justify-center size-7 rounded hover:bg-sky-500/25 text-sky-800 dark:text-sky-200 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "معاينة استيكرات كيسة الدور A4 بالعرض للأدوار المحددة (Show)"
+                      : "Preview Floor Large Bag A4 placards for selected floors (Show)"
+                  }
+                  aria-label="Preview Floor Bag Stickers"
+                >
+                  {busyBatchStickers && batchStickerAction === "show" && batchStickerType === "floor_bag" ? (
+                    <Loader2 className="size-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                  ) : (
+                    <Eye className="size-3.5 text-sky-600 dark:text-sky-400" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBatchStickersAction({ action: "print", type: "floor_bag", orientation: "landscape" })}
+                  disabled={busyBatchStickers}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-e-lg hover:bg-sky-500/25 text-sky-800 dark:text-sky-200 transition-all cursor-pointer"
+                  title={
+                    locale === "ar"
+                      ? "طباعة استيكرات كيسة الدور A4 بالعرض للأدوار المحددة (Print)"
+                      : "Print Floor Large Bag A4 placards for selected floors"
+                  }
+                  aria-label="Print Floor Bag Stickers"
+                >
+                  {busyBatchStickers && batchStickerAction === "print" && batchStickerType === "floor_bag" ? (
+                    <Loader2 className="size-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                  ) : (
+                    <Printer className="size-3.5 text-sky-600 dark:text-sky-400" />
+                  )}
+                  <span>{locale === "ar" ? "طباعة A4" : "Print A4"}</span>
+                </button>
+              </div>
+            )}
+
             <div className="inline-flex items-center rounded-xl border border-border bg-surface-soft p-0.5 shadow-sm">
               <Button
                 variant="primary"
@@ -5007,6 +5304,8 @@ function ItemMenu({
   onPrintExamDossierSticker,
   onShowExamStickers,
   onPrintExamStickers,
+  onShowFloorBagSticker,
+  onPrintFloorBagSticker,
   onOpenProctorDialog,
   onShowProctorFile,
   onPrintProctorFile,
@@ -5037,6 +5336,8 @@ function ItemMenu({
   onPrintExamDossierSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (folder: DriveItem) => void;
   onPrintExamStickers?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
+  onShowFloorBagSticker?: (folder: DriveItem) => void;
+  onPrintFloorBagSticker?: (folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
@@ -5455,6 +5756,53 @@ function ItemMenu({
                 </>
               );
             })()}
+            {item.isFolder && onShowFloorBagSticker && (() => {
+              const regCat = registerCategory ?? getFolderRegisterCategory({
+                folder: item,
+                breadcrumbs,
+                isCurrentFolder: false,
+              });
+              const isFloor = regCat === "proctor" || isFloorFolderName(item.name);
+              if (!isFloor) return null;
+              return (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item cursor-pointer text-sky-700 dark:text-sky-400 font-semibold"
+                    onClick={() => {
+                      onShowFloorBagSticker(item);
+                      onClose();
+                    }}
+                  >
+                    <Layers className="size-4 text-sky-600 dark:text-sky-400" />
+                    <span>
+                      {locale === "ar"
+                        ? "معاينة استيكر الكيسة الكبيرة (A4 بالعرض)"
+                        : "Preview Floor Large Bag A4 Placard"}
+                    </span>
+                  </button>
+                  {onPrintFloorBagSticker && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item cursor-pointer text-sky-700 dark:text-sky-400 font-semibold"
+                      onClick={() => {
+                        onPrintFloorBagSticker(item, "landscape");
+                        onClose();
+                      }}
+                    >
+                      <Printer className="size-4" />
+                      <span>
+                        {locale === "ar"
+                          ? "طباعة استيكر الكيسة الكبيرة (A4 بالعرض)"
+                          : "Print Floor Large Bag (A4 Landscape)"}
+                      </span>
+                    </button>
+                  )}
+                </>
+              );
+            })()}
             {item.isFolder && onOpenProctorDialog && (() => {
               const regCategory = registerCategory ?? getFolderRegisterCategory({
                 folder: item,
@@ -5746,6 +6094,8 @@ interface TreeRowProps {
   onPrintExamDossierSticker?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onShowExamStickers?: (e: React.MouseEvent | null, folder: DriveItem) => void;
   onPrintExamStickers?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
+  onShowFloorBagSticker?: (e: React.MouseEvent | null, folder: DriveItem) => void;
+  onPrintFloorBagSticker?: (e: React.MouseEvent | null, folder: DriveItem, orientation?: "portrait" | "landscape") => void;
   onOpenProctorDialog?: (folder: DriveItem) => void;
   onShowProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
   onPrintProctorFile?: (file: DriveItem, folder?: DriveItem) => void;
@@ -5805,6 +6155,8 @@ function TreeRow({
   onPrintExamDossierSticker,
   onShowExamStickers,
   onPrintExamStickers,
+  onShowFloorBagSticker,
+  onPrintFloorBagSticker,
   onOpenProctorDialog,
   onShowProctorFile,
   onPrintProctorFile,
@@ -6306,6 +6658,45 @@ function TreeRow({
                         </div>
                       )}
 
+                      {/* Button 5: Floor Large Bag Sticker (A4 Landscape) */}
+                      {isFloorFolder && onShowFloorBagSticker && onPrintFloorBagSticker && (
+                        <div className="inline-flex items-center rounded-lg border border-sky-500/40 bg-sky-500/10 p-0.5 shadow-2xs">
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-sky-800 dark:text-sky-200 border-e border-sky-500/25 select-none">
+                            <Layers className="size-3 text-sky-600 dark:text-sky-400" />
+                            <span className="hidden sm:inline">
+                              {locale === "ar" ? "كيسة الدور A4" : "Floor Bag A4"}
+                            </span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onShowFloorBagSticker(e, item)}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center justify-center size-6 rounded hover:bg-sky-500/20 text-sky-800 dark:text-sky-200 transition-all cursor-pointer"
+                            title={locale === "ar" ? `معاينة استيكر الكيسة الكبيرة (A4 بالعرض) لدور "${item.name}"` : `Preview floor large bag A4 placard for "${item.name}" (Show)`}
+                            aria-label="Preview Floor Bag Sticker"
+                          >
+                            {busyStickerId === item.id && stickerAction === "show" ? (
+                              <Loader2 className="size-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                            ) : (
+                              <Eye className="size-3.5 text-sky-600 dark:text-sky-400" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => onPrintFloorBagSticker(e, item, "landscape")}
+                            disabled={busyStickerId === item.id}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-semibold rounded hover:bg-sky-500/20 text-sky-800 dark:text-sky-200 transition-all cursor-pointer border-s border-sky-500/25"
+                            title={locale === "ar" ? `طباعة استيكر الكيسة الكبيرة (A4 بالعرض) لدور "${item.name}"` : `Print floor large bag A4 placard for "${item.name}"`}
+                            aria-label="Print Floor Bag Sticker A4"
+                          >
+                            <Printer className="size-3 text-sky-600 dark:text-sky-400" />
+                            <span className="text-[10px] font-bold">{locale === "ar" ? "A4 بالعرض" : "A4 Land"}</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Register File / Chip */}
                       {(() => {
                         if (!regCategory) return null;
@@ -6490,6 +6881,8 @@ function TreeRow({
                   onPrintHeadSticker={(folder, orientation) => onPrintHeadSticker?.(null, folder, orientation)}
                   onShowExamStickers={(folder) => onShowExamStickers?.(null, folder)}
                   onPrintExamStickers={(folder, orientation) => onPrintExamStickers?.(null, folder, orientation)}
+                  onShowFloorBagSticker={(folder) => onShowFloorBagSticker?.(null, folder)}
+                  onPrintFloorBagSticker={(folder, orientation) => onPrintFloorBagSticker?.(null, folder, orientation)}
                   onOpenProctorDialog={onOpenProctorDialog}
                   onShowProctorFile={onShowProctorFile}
                   onPrintProctorFile={onPrintProctorFile}
@@ -6573,6 +6966,8 @@ function TreeRow({
               onPrintExamDossierSticker={onPrintExamDossierSticker}
               onShowExamStickers={onShowExamStickers}
               onPrintExamStickers={onPrintExamStickers}
+              onShowFloorBagSticker={onShowFloorBagSticker}
+              onPrintFloorBagSticker={onPrintFloorBagSticker}
               onOpenProctorDialog={onOpenProctorDialog}
               onShowProctorFile={onShowProctorFile}
               onPrintProctorFile={onPrintProctorFile}

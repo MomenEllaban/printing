@@ -6,7 +6,7 @@ import { Button, Modal } from "./ui";
 import { useI18n } from "./locale-provider";
 import type { DriveItem } from "@/lib/types";
 
-export type BatchStickerType = "regular" | "exam" | "head" | "exam_dossier";
+export type BatchStickerType = "regular" | "exam" | "head" | "exam_dossier" | "floor_bag";
 
 interface BatchStickersDialogProps {
   open: boolean;
@@ -100,6 +100,10 @@ export function BatchStickersDialog({
           ? locale === "ar"
             ? `تجهيز استيكرات ربع A4 لمظروف أوراق الامتحان مع علامة "CONTAINS EXAMINATION PAPERS" لـ ${effectiveFolders.length} مجلد/مبنى.`
             : `Prepare quarter-A4 exam papers dossier stickers with examination papers checklist for ${effectiveFolders.length} building(s).`
+          : stickerType === "floor_bag"
+          ? locale === "ar"
+            ? `تجهيز استيكرات A4 بالعرض للكيسة الكبيرة الخاصة بالأدوار مع أرقام القاعات لـ ${effectiveFolders.length} دور/مجلد.`
+            : `Prepare A4 Landscape placards for large floor bags showing all included rooms for ${effectiveFolders.length} floor(s).`
           : locale === "ar"
           ? `تجهيز استيكرات A4 رسمية تحمل شعار EST وإجمالي الطلاب لـ ${effectiveFolders.length} مجلد محدد.`
           : `Prepare official A4 EST placards with logo and total student counts for ${effectiveFolders.length} selected folder(s).`
@@ -123,6 +127,8 @@ export function BatchStickersDialog({
                   ? "border-rose-500/30 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10"
                   : stickerType === "exam_dossier"
                   ? "border-teal-500/30 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                  : stickerType === "floor_bag"
+                  ? "border-sky-500/30 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10"
                   : "border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10"
               }`}
             >
@@ -145,6 +151,8 @@ export function BatchStickersDialog({
                   ? "bg-rose-600 hover:bg-rose-700"
                   : stickerType === "exam_dossier"
                   ? "bg-teal-600 hover:bg-teal-700"
+                  : stickerType === "floor_bag"
+                  ? "bg-sky-600 hover:bg-sky-700"
                   : "bg-indigo-600 hover:bg-indigo-700"
               }`}
             >
@@ -160,13 +168,13 @@ export function BatchStickersDialog({
       }
     >
       <div className="space-y-4">
-        {/* Type Selector: Regular vs Exam vs Head Stickers vs Exam Dossier */}
+        {/* Type Selector: Regular vs Exam vs Head Stickers vs Exam Dossier vs Floor Large Bag */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-foreground block">
             {locale === "ar" ? "نوع الاستيكرات المطلوب طباعتها:" : "Sticker Type:"}
           </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5">
             <button
               type="button"
               onClick={() => setStickerType("regular")}
@@ -244,6 +252,29 @@ export function BatchStickersDialog({
                 {locale === "ar"
                   ? "استيكر ربع A4 لمظروف أوراق الامتحان وقائمة التسليم."
                   : "Quarter-A4 exam test papers sticker with handover checklist."}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStickerType("floor_bag");
+                setOrientation("landscape");
+              }}
+              className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-start transition-all cursor-pointer ${
+                stickerType === "floor_bag"
+                  ? "border-sky-600 bg-sky-500/10 ring-2 ring-sky-500/20"
+                  : "border-border bg-surface hover:bg-surface-soft"
+              }`}
+            >
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Layers className="size-3.5 text-sky-600" />
+                {locale === "ar" ? "كيسة الدور (A4 بالعرض)" : "Floor Bag (A4)"}
+              </span>
+              <span className="text-[11px] text-muted">
+                {locale === "ar"
+                  ? "استيكر A4 بالعرض للكيسة الكبيرة الخاصة بالدور مع أرقام القاعات."
+                  : "A4 Landscape placard for floor large outer bag."}
               </span>
             </button>
           </div>

@@ -15,6 +15,7 @@ export interface StickerPdfOptions {
   paperMode?: "custom" | "a4";
   orientation?: "portrait" | "landscape";
   includeBuildingHead?: boolean;
+  isFloorBag?: boolean;
 }
 
 export interface BatchStickerPdfOptions {
@@ -24,6 +25,7 @@ export interface BatchStickerPdfOptions {
   paperMode?: "custom" | "a4";
   orientation?: "portrait" | "landscape";
   includeBuildingHead?: boolean;
+  isFloorBag?: boolean;
 }
 
 const MM_TO_PT = 2.83464567;
@@ -99,6 +101,7 @@ export async function generateStickerPdf(options: StickerPdfOptions): Promise<Ui
     widthMm: options.widthMm,
     heightMm: options.heightMm,
     includeBuildingHead: options.includeBuildingHead,
+    isFloorBag: options.isFloorBag || content.isFloorBag,
   });
 }
 
@@ -143,11 +146,13 @@ export async function generateBatchStickerPdf(options: BatchStickerPdfOptions): 
     };
 
     for (const content of contents) {
+      const isFloorLargeBag = Boolean(content.isFloorBag || options.isFloorBag);
       const isQuarter =
-        content.level === "room" ||
-        content.level === "floor" ||
-        content.level === "building_head" ||
-        Boolean(content.isHead);
+        !isFloorLargeBag &&
+        (content.level === "room" ||
+          content.level === "floor" ||
+          content.level === "building_head" ||
+          Boolean(content.isHead));
 
       if (isQuarter) {
         pendingQuarterItems.push(content);
@@ -338,9 +343,21 @@ function drawA4PlacardPage(params: {
     color: COLOR_CHARCOAL,
   });
 
-  // Top-Right Corner: Exam Papers Indicator if applicable
+  // Top-Right Corner: Exam Papers / Outer Bag Indicator if applicable
   if (content.isExamDossier) {
     const badgeText = "★ CONTAINS EXAMINATION PAPERS ★";
+    const badgeSize = isLandscape ? 12 : 13;
+    const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
+    const badgeX = pageWidth - margin - badgeW - 16;
+    page.drawText(badgeText, {
+      x: badgeX,
+      y: cornerTagY + 4,
+      size: badgeSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+  } else if (content.isFloorBag) {
+    const badgeText = "★ FLOOR LARGE OUTER BAG ★";
     const badgeSize = isLandscape ? 12 : 13;
     const badgeW = font.widthOfTextAtSize(badgeText, badgeSize);
     const badgeX = pageWidth - margin - badgeW - 16;
@@ -374,6 +391,8 @@ function drawA4PlacardPage(params: {
       ? "BUILDING HEAD DOSSIER"
       : content.isExamDossier
       ? "EXAMINATION PAPERS DOSSIER"
+      : content.isFloorBag
+      ? ""
       : isFloor
       ? "FLOOR EXAMINATION DOSSIER (SENIOR)"
       : "";
@@ -559,11 +578,50 @@ function drawA4PlacardPage(params: {
     const subText =
       content.childNames && content.childNames.length > 0
         ? `INCLUDED ROOMS (${childRoomsCount}) : ${content.childNames.join("  •  ")}`
+        : typeof content.totalStudents === "number" && content.totalStudents > 0
+        ? `${content.totalStudents} TOTAL REGISTERED CANDIDATES`
         : childRoomsCount > 0
           ? `TOTAL INCLUDED ROOMS : ${childRoomsCount} ROOMS IN THIS FLOOR`
           : undefined;
 
-    if (isLandscape) {
+    if (content.isFloorBag) {
+      // Grand full-width layout (identical to Building placard, customized for the Floor)
+      const heroBoxHeight = Math.min(240, availBodyHeight * 0.60);
+      const summaryHeight = availBodyHeight - heroBoxHeight - 16;
+      const sY = bodyTop - summaryHeight;
+
+      const colWidth = (bodyWidth - (cards.length - 1) * 12) / cards.length;
+      for (let i = 0; i < cards.length; i++) {
+        const cardX = isLandscape ? bodyStartX + i * (colWidth + 12) : bodyStartX;
+        const cardY = isLandscape ? sY : sY + (cards.length - 1 - i) * ((summaryHeight - 16) / cards.length + 8);
+        const cardW = isLandscape ? colWidth : bodyWidth;
+        const cardH = isLandscape ? summaryHeight : (summaryHeight - 16) / cards.length;
+
+        renderSummaryCard({
+          page,
+          font,
+          x: cardX,
+          y: cardY,
+          width: cardW,
+          height: cardH,
+          label: cards[i].label,
+          value: cards[i].value,
+        });
+      }
+
+      renderHeroCard({
+        page,
+        font,
+        x: bodyStartX,
+        y: bodyBottom,
+        width: bodyWidth,
+        height: heroBoxHeight,
+        badgeText: "FLOOR",
+        valueText: content.floor || "",
+        subText,
+        accentColor: COLOR_GOLD,
+      });
+    } else if (isLandscape) {
       // 4 horizontal summary cards
       const colWidth = (bodyWidth - 36) / 4;
       for (let i = 0; i < 4; i++) {
@@ -951,9 +1009,9 @@ function renderHeroCard(params: {
   // Top header banner in hero box
   const bannerHeight = Math.max(30, Math.min(38, height * 0.20));
   const bannerY = y + height - bannerHeight;
-  const isBuildingBadge = badgeText.toUpperCase().includes("BUILDING");
-  const bannerBgColor = isBuildingBadge ? rgb(0.88, 0.88, 0.88) : COLOR_CHARCOAL;
-  const bannerTextColor = isBuildingBadge ? COLOR_CHARCOAL : COLOR_WHITE;
+  const isLightBadge = badgeText.toUpperCase().includes("BUILDING") || badgeText.toUpperCase().includes("FLOOR");
+  const bannerBgColor = isLightBadge ? rgb(0.88, 0.88, 0.88) : COLOR_CHARCOAL;
+  const bannerTextColor = isLightBadge ? COLOR_CHARCOAL : COLOR_WHITE;
 
   page.drawRectangle({
     x: x + 2,

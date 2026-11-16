@@ -219,6 +219,22 @@ export async function GET(request: Request, context: Context) {
         orientation,
       });
       safeFilename = `Building-Exam-Papers-Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
+    } else if (stickerType === "floor_bag") {
+      const floorBagContent = {
+        ...stickerContent,
+        level: "floor" as const,
+        isFloorBag: true,
+      };
+      pdfBytes = await generateStickerPdf({
+        content: floorBagContent,
+        lines: stickerContent.lines,
+        widthMm,
+        heightMm,
+        paperMode: "a4",
+        orientation: "landscape",
+        isFloorBag: true,
+      });
+      safeFilename = `Floor-Large-Bag-Sticker-${targetName.replace(/[/\\?%*:|"<>]/g, "_")}.pdf`;
     } else if (stickerType === "exam") {
       const isFloor =
         stickerContent.level === "floor" ||

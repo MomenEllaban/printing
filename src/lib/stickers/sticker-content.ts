@@ -45,6 +45,7 @@ export interface StickerContent {
   fields: StickerFieldItem[];
   isHead?: boolean;
   isExamDossier?: boolean;
+  isFloorBag?: boolean;
   // Dynamic subfolder counts
   childCount?: number;
   childLabel?: string;
