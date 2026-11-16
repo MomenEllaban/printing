@@ -910,7 +910,46 @@ function drawA4PlacardPage(params: {
 }
 
 /**
+ * Helper to split text into lines that each fit within a maximum width.
+ * Splits on word boundaries cleanly without breaking words where possible.
+ */
+function wrapTextToLines(
+  text: string,
+  font: any,
+  fontSize: number,
+  maxWidth: number,
+): string[] {
+  if (!text) return [];
+  const clean = text.trim();
+  if (!clean) return [];
+
+  const words = clean.split(/\s+/);
+  if (words.length <= 1) {
+    return [clean];
+  }
+
+  const lines: string[] = [];
+  let currentLine = words[0];
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    const testLine = `${currentLine} ${word}`;
+    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+    if (testWidth <= maxWidth) {
+      currentLine = testLine;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
+
+/**
  * Helper to render a summary information card (Center, Floor, Building, Governorate).
+ * Wraps long text across multiple lines to prevent horizontal overlap,
+ * filling the generous vertical space with balanced, prominent typography.
  */
 function renderSummaryCard(params: {
   page: any;
@@ -937,30 +976,109 @@ function renderSummaryCard(params: {
 
   // Label
   const labelText = `${label.toUpperCase()} :`;
-  const labelSize = Math.max(9, Math.min(11, height * 0.22));
+  const labelSize = Math.max(8.5, Math.min(10.5, height * 0.18));
+  const labelY = y + height - labelSize - 8;
   page.drawText(labelText, {
     x: x + 10,
-    y: y + height - labelSize - 8,
+    y: labelY,
     size: labelSize,
     font,
     color: COLOR_MUTED,
   });
 
-  // Value - Auto-scale
-  const availValWidth = width - 20;
-  let valSize = Math.max(11, Math.min(18, height * 0.38));
-  let valWidth = font.widthOfTextAtSize(value, valSize);
-  if (valWidth > availValWidth) {
-    valSize = Math.max(8.5, (availValWidth / valWidth) * valSize);
+  if (!value || !value.trim()) return;
+
+  const cleanVal = value.trim();
+  const padX = 10;
+  const availValWidth = width - padX * 2;
+  const topValY = labelY - 6;
+  const bottomValY = y + 8;
+  const availValHeight = Math.max(16, topValY - bottomValY);
+
+  // 1. Check if single line fits comfortably at a prominent size (13 to 17pt)
+  const maxSingleSize = Math.min(17, Math.max(13, height * 0.30));
+  const singleLineWidthAtMaxSize = font.widthOfTextAtSize(cleanVal, maxSingleSize);
+
+  if (singleLineWidthAtMaxSize <= availValWidth) {
+    // Fits on 1 line at full size
+    const lineY = bottomValY + (availValHeight - maxSingleSize) / 2 + 1;
+    page.drawText(cleanVal, {
+      x: x + padX,
+      y: lineY,
+      size: maxSingleSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+    return;
   }
 
-  page.drawText(value, {
-    x: x + 10,
-    y: y + 10,
-    size: valSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
+  // 2. Check if single line fits with moderate scaling (down to 12.5pt)
+  const minSingleLineSize = 12.5;
+  const singleLineWidthAtMin = font.widthOfTextAtSize(cleanVal, minSingleLineSize);
+  if (singleLineWidthAtMin <= availValWidth) {
+    const fittedSize = Math.max(minSingleLineSize, (availValWidth / singleLineWidthAtMaxSize) * maxSingleSize);
+    const lineY = bottomValY + (availValHeight - fittedSize) / 2 + 1;
+    page.drawText(cleanVal, {
+      x: x + padX,
+      y: lineY,
+      size: fittedSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+    return;
+  }
+
+  // 3. For longer values (e.g. "Integrated Thebes American College In Cairo"), wrap across multiple lines
+  // Test candidate font sizes from 13 down to 8.5
+  const candidateSizes = [13, 12, 11, 10.5, 10, 9.5, 9, 8.5];
+  let bestLines: string[] = [cleanVal];
+  let bestSize = 8.5;
+  let bestLineSpacing = bestSize * 1.22;
+  let found = false;
+
+  for (const s of candidateSizes) {
+    const lines = wrapTextToLines(cleanVal, font, s, availValWidth);
+    const spacing = s * 1.22;
+    const totalH = (lines.length - 1) * spacing + s;
+    const allLinesFit = lines.every((l) => font.widthOfTextAtSize(l, s) <= availValWidth + 0.5);
+
+    if (allLinesFit && totalH <= availValHeight) {
+      bestLines = lines;
+      bestSize = s;
+      bestLineSpacing = spacing;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    // Fallback: use size 8.5 and wrap
+    bestSize = 8.5;
+    bestLineSpacing = bestSize * 1.20;
+    bestLines = wrapTextToLines(cleanVal, font, bestSize, availValWidth);
+  }
+
+  // Draw lines vertically centered in the available space
+  const totalBlockH = (bestLines.length - 1) * bestLineSpacing + bestSize;
+  const startTopY = bottomValY + (availValHeight + totalBlockH) / 2 - bestSize;
+
+  for (let i = 0; i < bestLines.length; i++) {
+    const curLine = bestLines[i];
+    let curSize = bestSize;
+    let curW = font.widthOfTextAtSize(curLine, curSize);
+    if (curW > availValWidth) {
+      curSize = Math.max(7, (availValWidth / curW) * curSize);
+      curW = font.widthOfTextAtSize(curLine, curSize);
+    }
+    const lineY = startTopY - i * bestLineSpacing;
+    page.drawText(curLine, {
+      x: x + padX,
+      y: lineY,
+      size: curSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+  }
 }
 
 /**
@@ -1109,44 +1227,128 @@ function renderHeroCard(params: {
       });
     } else {
       const singleText = subText || detailText || "";
-      const subSize = Math.max(11, Math.min(14, subBarHeight * 0.42));
-      let subW = font.widthOfTextAtSize(singleText, subSize);
-      let finalSubSize = subSize;
-      if (subW > width - 16) {
-        finalSubSize = Math.max(8.5, ((width - 16) / subW) * subSize);
-        subW = font.widthOfTextAtSize(singleText, finalSubSize);
+      const baseSubSize = Math.max(10, Math.min(13, subBarHeight * 0.42));
+      const singleW = font.widthOfTextAtSize(singleText, baseSubSize);
+
+      if (singleW <= width - 24) {
+        page.drawText(singleText, {
+          x: x + (width - singleW) / 2,
+          y: subBarY + (subBarHeight - baseSubSize) / 2 + 1,
+          size: baseSubSize,
+          font,
+          color: COLOR_CHARCOAL,
+        });
+      } else {
+        // Wrap subText across 2 lines if possible
+        const wrappedSub = wrapTextToLines(singleText, font, 9.5, width - 24);
+        if (wrappedSub.length <= 2) {
+          const subLineH = 11;
+          const totalSubH = (wrappedSub.length - 1) * subLineH + 9.5;
+          const subStartY = subBarY + (subBarHeight + totalSubH) / 2 - 9.5;
+          for (let i = 0; i < wrappedSub.length; i++) {
+            let lSize = 9.5;
+            let lw = font.widthOfTextAtSize(wrappedSub[i], lSize);
+            if (lw > width - 16) {
+              lSize = Math.max(7.5, ((width - 16) / lw) * lSize);
+              lw = font.widthOfTextAtSize(wrappedSub[i], lSize);
+            }
+            page.drawText(wrappedSub[i], {
+              x: x + (width - lw) / 2,
+              y: subStartY - i * subLineH,
+              size: lSize,
+              font,
+              color: COLOR_CHARCOAL,
+            });
+          }
+        } else {
+          // Scale down single line to fit without overflowing
+          const scaledSubSize = Math.max(7.5, ((width - 24) / singleW) * baseSubSize);
+          const scaledW = font.widthOfTextAtSize(singleText, scaledSubSize);
+          page.drawText(singleText, {
+            x: x + (width - scaledW) / 2,
+            y: subBarY + (subBarHeight - scaledSubSize) / 2 + 1,
+            size: scaledSubSize,
+            font,
+            color: COLOR_CHARCOAL,
+          });
+        }
       }
-      page.drawText(singleText, {
-        x: x + (width - subW) / 2,
-        y: subBarY + (subBarHeight - finalSubSize) / 2 + 1,
-        size: finalSubSize,
-        font,
-        color: COLOR_CHARCOAL,
-      });
     }
   }
 
-  // Giant Value (e.g. 204 or Pharmacy)
+  // Giant Value (e.g. 204 or Pharmacy or long school name)
   const availValueHeight = bannerY - y - 16 - subBarHeight;
   const availValueWidth = width - 30;
   let valueSize = Math.max(24, Math.min(84, availValueHeight * 0.70));
   let valWidth = font.widthOfTextAtSize(valueText, valueSize);
 
-  if (valWidth > availValueWidth) {
-    valueSize = Math.max(18, (availValueWidth / valWidth) * valueSize);
-    valWidth = font.widthOfTextAtSize(valueText, valueSize);
+  if (valWidth <= availValueWidth) {
+    const valX = x + (width - valWidth) / 2;
+    const valY = y + subBarHeight + (availValueHeight - valueSize) / 2 + 4;
+    page.drawText(valueText, {
+      x: valX,
+      y: valY,
+      size: valueSize,
+      font,
+      color: COLOR_CHARCOAL,
+    });
+  } else {
+    // Value text is longer than availValueWidth - check if moderate scaling down fits (down to 28pt)
+    const scaledSize = Math.max(28, (availValueWidth / valWidth) * valueSize);
+    const scaledW = font.widthOfTextAtSize(valueText, scaledSize);
+
+    if (scaledW <= availValueWidth) {
+      const valX = x + (width - scaledW) / 2;
+      const valY = y + subBarHeight + (availValueHeight - scaledSize) / 2 + 4;
+      page.drawText(valueText, {
+        x: valX,
+        y: valY,
+        size: scaledSize,
+        font,
+        color: COLOR_CHARCOAL,
+      });
+    } else {
+      // Long multi-word name (e.g. school/building name) -> wrap into 2 or 3 lines
+      const heroCandidateSizes = [32, 28, 24, 20, 18, 16];
+      let heroLines: string[] = [valueText];
+      let heroFontSize = 18;
+      let heroSpacing = heroFontSize * 1.22;
+
+      for (const hs of heroCandidateSizes) {
+        const hLines = wrapTextToLines(valueText, font, hs, availValueWidth);
+        const hSpacing = hs * 1.22;
+        const hTotalH = (hLines.length - 1) * hSpacing + hs;
+        const allFit = hLines.every((l) => font.widthOfTextAtSize(l, hs) <= availValueWidth);
+
+        if (allFit && hTotalH <= availValueHeight) {
+          heroLines = hLines;
+          heroFontSize = hs;
+          heroSpacing = hSpacing;
+          break;
+        }
+      }
+
+      const totalHeroH = (heroLines.length - 1) * heroSpacing + heroFontSize;
+      const heroTopY = y + subBarHeight + (availValueHeight + totalHeroH) / 2 - heroFontSize;
+
+      for (let i = 0; i < heroLines.length; i++) {
+        const line = heroLines[i];
+        let lSize = heroFontSize;
+        let lw = font.widthOfTextAtSize(line, lSize);
+        if (lw > availValueWidth) {
+          lSize = Math.max(12, (availValueWidth / lw) * lSize);
+          lw = font.widthOfTextAtSize(line, lSize);
+        }
+        page.drawText(line, {
+          x: x + (width - lw) / 2,
+          y: heroTopY - i * heroSpacing,
+          size: lSize,
+          font,
+          color: COLOR_CHARCOAL,
+        });
+      }
+    }
   }
-
-  const valX = x + (width - valWidth) / 2;
-  const valY = y + subBarHeight + (availValueHeight - valueSize) / 2 + 4;
-
-  page.drawText(valueText, {
-    x: valX,
-    y: valY,
-    size: valueSize,
-    font,
-    color: COLOR_CHARCOAL,
-  });
 }
 
 /**
