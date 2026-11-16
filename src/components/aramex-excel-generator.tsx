@@ -36,7 +36,7 @@ import {
   generateAramexWorkbook,
   detectAramexCity,
 } from "@/lib/aramex-utils";
-import type { StudentWithReceipt } from "@/lib/certificates-parser";
+import { type StudentWithReceipt, parseCertificateWorkbook } from "@/lib/certificates-parser";
 import { toast } from "sonner";
 
 export interface ServerBatchInfo {
@@ -99,12 +99,30 @@ export function AramexExcelGenerator({
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const parsed = parseCertificateWorkbook(wb, file.name);
+        if (parsed && parsed.length > 0) {
+          const converted = convertStudentsToAramexRows(parsed);
+          setRows(converted);
+          toast.success(
+            locale === "ar"
+              ? `تم استخراج ${converted.length} شحنة بالعناوين الكاملة وأرقام الهواتف مباشرة!`
+              : `Loaded ${converted.length} shipments with full addresses directly!`,
+          );
+        }
+      } catch (err: any) {
+        console.warn("Local parse error:", err);
+      }
+
       if (onUploadBatch) {
         await onUploadBatch(file);
       }
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [onUploadBatch],
+    [onUploadBatch, locale],
   );
 
   // Update a single cell in a row

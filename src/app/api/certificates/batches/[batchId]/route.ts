@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { requireSession, enforceRateLimit, jsonError, parseJson } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
 import { ensureCertificateBatchTable } from "@/lib/certificates-drive";
-import { buildCrossSheetArabicMap, parseCertificateWorkbook } from "@/lib/certificates-parser";
+import { parseCertificateWorkbook } from "@/lib/certificates-parser";
 import { getDriveContextWithRoot } from "@/lib/auth";
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
@@ -30,7 +30,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
     // Auto-enrich Arabic student names and Shipping address fields if missing from earlier uploads
     const students = Array.isArray(batch.studentsData) ? (batch.studentsData as any[]) : [];
     const missingArabic = students.some((s) => !s.studentNameAr);
-    const missingAddress = students.length > 0 && !students.some((s) => Boolean(s.street || s.floor || s.governorate || s.apartment));
+    // Needs address enrichment if missing street, floor, apartment, or secondary phone
+    const missingAddress = students.length > 0 && students.some((s) => !s.street || !s.floor || !s.apartment || !s.phone || !s.phone2);
 
     if ((missingArabic || missingAddress) && students.length > 0) {
       try {
@@ -47,11 +48,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
             if (driveRes.data) {
               wb = XLSX.read(Buffer.from(driveRes.data as ArrayBuffer), { type: "buffer" });
             }
-          } catch {}
+          } catch (driveErr) {
+            console.warn("[certificates:batches:get] drive file fetch failed:", driveErr);
+          }
         }
 
-        // 2. Fallback to local files in development
-        if (!wb && process.env.NODE_ENV !== "production") {
+        // 2. Fallback to local files in workspace
+        if (!wb) {
           const candidateNames = [
             batch.fileName,
             `${batch.name}.xlsx`,
@@ -61,11 +64,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
 
           for (const name of candidateNames) {
             try {
-              const fp = path.join(/*turbopackIgnore: true*/ process.cwd(), name);
-              if (fs.existsSync(/*turbopackIgnore: true*/ fp)) {
-                const buf = fs.readFileSync(/*turbopackIgnore: true*/ fp);
+              const fp = path.join(process.cwd(), name);
+              if (fs.existsSync(fp)) {
+                const buf = fs.readFileSync(fp);
                 wb = XLSX.read(buf, { type: "buffer" });
                 break;
+              }
+            } catch {}
+          }
+
+          // If still no wb, look for any xlsx file containing Aramex or reports in cwd
+          if (!wb) {
+            try {
+              const files = fs.readdirSync(process.cwd());
+              for (const f of files) {
+                if (f.endsWith(".xlsx") && !f.startsWith("~") && (f.includes("Aramex") || f.includes("Report") || f.includes("Batch"))) {
+                  const fp = path.join(process.cwd(), f);
+                  const buf = fs.readFileSync(fp);
+                  const candidateWb = XLSX.read(buf, { type: "buffer" });
+                  const candParsed = parseCertificateWorkbook(candidateWb, "Candidate");
+                  // Check if candParsed matches students
+                  if (candParsed.some((cp) => students.some((s) => s.nationalId && s.nationalId === cp.nationalId))) {
+                    wb = candidateWb;
+                    break;
+                  }
+                }
               }
             } catch {}
           }
@@ -74,9 +97,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
         if (wb) {
           const freshParsed = parseCertificateWorkbook(wb, batch.name);
           if (freshParsed && freshParsed.length > 0) {
-            // Build lookup maps by nationalId, email, name from the fresh parse
             const freshById = new Map<string, any>();
-            const freshByEmail = new Map<string, any>();
             const freshByName = new Map<string, any>();
 
             for (const fp of freshParsed) {
@@ -88,12 +109,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
             for (let i = 0; i < students.length; i++) {
               const s = students[i];
               const cleanId = s.nationalId ? String(s.nationalId).trim() : "";
-              const cleanEmail = s.email ? String(s.email).trim().toLowerCase() : "";
               const cleanEn = s.studentName ? String(s.studentName).trim().toLowerCase() : "";
 
               const match =
                 (cleanId && freshById.get(cleanId)) ||
-                (cleanEmail && freshByEmail.get(cleanEmail)) ||
                 (cleanEn && freshByName.get(cleanEn)) ||
                 freshParsed[i];
 
@@ -102,17 +121,50 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
                   s.studentNameAr = match.studentNameAr;
                   updated = true;
                 }
-                if (!s.governorate && match.governorate) { s.governorate = match.governorate; updated = true; }
-                if (!s.city && match.city) { s.city = match.city; updated = true; }
-                if (!s.area && match.area) { s.area = match.area; updated = true; }
-                if (!s.street && match.street) { s.street = match.street; updated = true; }
-                if (!s.apartment && match.apartment) { s.apartment = match.apartment; updated = true; }
-                if (!s.floor && match.floor) { s.floor = match.floor; updated = true; }
-                if (!s.landmark && match.landmark) { s.landmark = match.landmark; updated = true; }
-                if (!s.recipient && match.recipient) { s.recipient = match.recipient; updated = true; }
-                if (!s.phone && match.phone) { s.phone = match.phone; updated = true; }
-                if (!s.phone2 && match.phone2) { s.phone2 = match.phone2; updated = true; }
-                if (!s.totalReports && match.totalReports) { s.totalReports = match.totalReports; updated = true; }
+                if (match.governorate && s.governorate !== match.governorate) {
+                  s.governorate = match.governorate;
+                  updated = true;
+                }
+                if (match.city && (!s.city || s.city !== match.city)) {
+                  s.city = match.city;
+                  updated = true;
+                }
+                if (match.area && s.area !== match.area) {
+                  s.area = match.area;
+                  updated = true;
+                }
+                if (match.street && s.street !== match.street) {
+                  s.street = match.street;
+                  updated = true;
+                }
+                if (match.apartment && s.apartment !== match.apartment) {
+                  s.apartment = match.apartment;
+                  updated = true;
+                }
+                if (match.floor && s.floor !== match.floor) {
+                  s.floor = match.floor;
+                  updated = true;
+                }
+                if (match.landmark && s.landmark !== match.landmark) {
+                  s.landmark = match.landmark;
+                  updated = true;
+                }
+                if (match.recipient && s.recipient !== match.recipient) {
+                  s.recipient = match.recipient;
+                  updated = true;
+                }
+                if (match.phone && s.phone !== match.phone) {
+                  s.phone = match.phone;
+                  updated = true;
+                }
+                if (match.phone2 && s.phone2 !== match.phone2) {
+                  s.phone2 = match.phone2;
+                  updated = true;
+                }
+                if (match.totalReports && s.totalReports !== match.totalReports) {
+                  s.totalReports = match.totalReports;
+                  updated = true;
+                }
               }
             }
 
