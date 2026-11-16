@@ -161,4 +161,38 @@ describe("aramex-utils", () => {
       "تم تسليم عدد * 2   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى",
     );
   });
+
+  it("dynamically re-detects city when fullAddress changes", () => {
+    // 1. User types Hurghada address
+    const hurghada = detectAramexCity({
+      fullAddress: "Red Sea، Hurghada، El Kawther، شارع المطار",
+    });
+    expect(hurghada.cityGov).toBe("Hurghada - Red Sea");
+    expect(hurghada.city).toBe("Hurghada");
+    expect(hurghada.code).toBe("HUR");
+    expect(hurghada.gov).toBe("Red Sea");
+
+    // 2. User edits address to Fashn
+    const fashn = detectAramexCity({
+      fullAddress: "Beni Suef، Fashn، الفشن، شارع الإبراهيميه، برج زهور الحياة",
+    });
+    expect(fashn.cityGov).toBe("Al Fashn - Bani Swif");
+    expect(fashn.city).toBe("Al Fashn");
+    expect(fashn.code).toBe("FSH");
+
+    // 3. User types Hadayek Alahram
+    const pyg = detectAramexCity({
+      fullAddress: "Giza، Hadayek Alahram، منطقه ح، شارع العشرين 424ح",
+    });
+    expect(pyg.cityGov).toBe("Pyramids Gardens - Giza");
+    expect(pyg.code).toBe("PYG");
+
+    // 4. User types Shorouk
+    const shk = detectAramexCity({
+      fullAddress: "Cairo، Shorouk، الشروق، كمبوند النخيل",
+    });
+    expect(shk.code).toBe("SHK");
+    expect(shk.city).toContain("Shorouk");
+    expect(shk.gov).toBe("Cairo");
+  });
 });

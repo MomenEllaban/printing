@@ -8,13 +8,70 @@ import {
 
 export { ARAMEX_CITIES_LIST, type AramexCityOption };
 
-export const ARAMEX_CITY_MAP: Map<string, AramexCityOption> = new Map(
-  ARAMEX_CITIES_LIST.map((c) => [c.cityGov.toLowerCase(), c]),
-);
+export function normalizeCityKey(str: string | undefined | null): string {
+  if (!str) return "";
+  return String(str).replace(/[\u00A0\s]+/g, " ").trim().toLowerCase();
+}
+
+export const ARAMEX_CITY_MAP: Map<string, AramexCityOption> = new Map();
+for (const c of ARAMEX_CITIES_LIST) {
+  ARAMEX_CITY_MAP.set(normalizeCityKey(c.cityGov), c);
+  ARAMEX_CITY_MAP.set(normalizeCityKey(c.city), c);
+}
 
 export const DEFAULT_ARAMEX_CITY: AramexCityOption =
-  ARAMEX_CITIES_LIST.find((c) => c.cityGov === "Cairo - Cairo") ||
+  ARAMEX_CITY_MAP.get("cairo - cairo") ||
   ARAMEX_CITIES_LIST[0];
+
+const SORTED_ARAMEX_CITIES = [...ARAMEX_CITIES_LIST].sort(
+  (a, b) => b.city.length - a.city.length,
+);
+
+const ARABIC_CITY_SYNONYMS: { keywords: string[]; cityGov: string }[] = [
+  { keywords: ["حدائق الاهرام", "حدائق الأهرام", "hadayek alahram", "hadayek al ahram", "الاهرام", "الأهرام"], cityGov: "Pyramids Gardens - Giza" },
+  { keywords: ["اكتوبر", "أكتوبر", "october"], cityGov: "October City - Giza" },
+  { keywords: ["زايد", "zayed"], cityGov: "Sheikh Zayed City - Giza" },
+  { keywords: ["مدينة نصر", "nasr city"], cityGov: "Nasr City - Cairo" },
+  { keywords: ["التجمع", "القاهرة الجديدة", "new cairo"], cityGov: "New Cairo - Cairo" },
+  { keywords: ["الرحاب", "rehab"], cityGov: "El Rehab - Cairo" },
+  { keywords: ["مدينتي", "مدينتى", "madinaty"], cityGov: "Madinaty - Cairo" },
+  { keywords: ["الشروق", "shorouk"], cityGov: "Al Shorouk - Cairo" },
+  { keywords: ["العبور", "obour"], cityGov: "Al Obour City - Qaliubia" },
+  { keywords: ["المعادي", "المعادى", "maadi"], cityGov: "Maadi - Cairo" },
+  { keywords: ["المقطم", "mokattam"], cityGov: "Mokattam - Cairo" },
+  { keywords: ["الفشن", "فشن", "fashn"], cityGov: "Al Fashn - Bani Swif" },
+  { keywords: ["الهرم", "haram"], cityGov: "AL Haram - Giza" },
+  { keywords: ["الغردقة", "غردقة", "hurghada"], cityGov: "Hurghada - Red Sea" },
+  { keywords: ["شرم الشيخ", "sharm"], cityGov: "Sharm El Sheikh - South Sinai" },
+  { keywords: ["بني سويف", "بنى سويف", "beni suef", "bani swif"], cityGov: "Bani Swif - Bani Swif" },
+  { keywords: ["الاسكندرية", "الإسكندرية", "اسكندرية", "إسكندرية", "alexandria", "سيدي بشر", "ستانلي"], cityGov: "Alexandria - Alexandria" },
+  { keywords: ["السويس", "سويس", "suez"], cityGov: "Suez - Suez" },
+  { keywords: ["الاسماعيلية", "الإسماعيلية", "اسماعيلية", "ismailia"], cityGov: "Ismailia - Ismailia" },
+  { keywords: ["بورسعيد", "بور سعيد", "port said"], cityGov: "Port Said - Port Said" },
+  { keywords: ["طنطا", "tanta"], cityGov: "Tanta - AL Gharbia" },
+  { keywords: ["المنصورة", "منصورة", "mansoura"], cityGov: "El Mansoura - Daqahlia" },
+  { keywords: ["الزقازيق", "زقازيق", "zagazig"], cityGov: "Zagazig - AL Sharqia" },
+  { keywords: ["سوهاج", "sohag"], cityGov: "New Sohag City - Sohag City" },
+  { keywords: ["اسيوط", "أسيوط", "assiut", "asyut"], cityGov: "Assiut - Assiut" },
+  { keywords: ["المنيا", "منيا", "minya", "menia"], cityGov: "Menia City - Menia City" },
+  { keywords: ["قنا", "qena"], cityGov: "Qena - Qena" },
+  { keywords: ["الاقصر", "الأقصر", "اقصر", "luxor"], cityGov: "Luxor - Luxor" },
+  { keywords: ["اسوان", "أسوان", "aswan"], cityGov: "Aswan - Aswan" },
+  { keywords: ["كفر الشيخ", "kafr el sheikh"], cityGov: "Kafr El Sheikh - Kafr Al Sheikh" },
+  { keywords: ["دمنهور", "damanhur"], cityGov: "Damanhur - El Beheira" },
+  { keywords: ["بنها", "banha"], cityGov: "Banha - Qaliubia" },
+  { keywords: ["طرة", "طره", "tura", "torah"], cityGov: "Torah - Cairo" },
+  { keywords: ["مصر الجديدة", "heliopolis", "النزهة", "nozha"], cityGov: "El Nozha - Cairo" },
+  { keywords: ["الدقي", "الدقى", "dokki"], cityGov: "Dokki - Giza" },
+  { keywords: ["المهندسين", "mohandessin"], cityGov: "Mohandessin - Giza" },
+  { keywords: ["العجوزة", "agouza"], cityGov: "Agouza - Giza" },
+  { keywords: ["العاشر من رمضان", "10th of ramadan"], cityGov: "10th of Ramadan City - AL Sharqia" },
+  { keywords: ["15 مايو", "١٥ مايو", "15 of may"], cityGov: "15 of May City - Cairo" },
+  { keywords: ["بدر", "badr city"], cityGov: "Badr City - Cairo" },
+  { keywords: ["راس البر", "رأس البر", "ras el bar"], cityGov: "Ras Elbar - Dommiat" },
+  { keywords: ["دمياط الجديدة", "new damietta"], cityGov: "New Damietta City - Dommiat" },
+  { keywords: ["دمياط", "damietta"], cityGov: "Damiatta - Dommiat" },
+];
 
 export interface AramexRowItem {
   id: string;
@@ -181,12 +238,28 @@ export function detectAramexCity(item: {
     const pat = rule.pattern.toLowerCase().replace(/[,،]/g, " ").trim();
     const patWords = pat.split(/\s+/).filter(Boolean);
     if (patWords.length > 0 && patWords.every((w) => combined.includes(w))) {
-      const match = ARAMEX_CITY_MAP.get(rule.cityGov.toLowerCase());
+      const match = ARAMEX_CITY_MAP.get(normalizeCityKey(rule.cityGov));
       if (match) return match;
     }
   }
 
-  // 2. Direct city match in ARAMEX_CITIES_LIST
+  // 2. Arabic & English common synonym matching
+  for (const item of ARABIC_CITY_SYNONYMS) {
+    if (item.keywords.some((k) => combined.includes(k))) {
+      const match = ARAMEX_CITY_MAP.get(normalizeCityKey(item.cityGov));
+      if (match) return match;
+    }
+  }
+
+  // 3. Match against all 346 official Aramex cities (longest first)
+  for (const c of SORTED_ARAMEX_CITIES) {
+    const rawCity = c.city.toLowerCase().trim();
+    if (rawCity.length >= 3 && combined.includes(rawCity)) {
+      return c;
+    }
+  }
+
+  // 4. Direct city match in ARAMEX_CITIES_LIST
   if (item.city) {
     const rawCity = item.city.trim().toLowerCase();
     const exactOption = ARAMEX_CITIES_LIST.find(
@@ -198,68 +271,7 @@ export function detectAramexCity(item: {
     if (exactOption) return exactOption;
   }
 
-  // 3. District / area keyword match
-  if (combined.includes("hadayek alahram") || combined.includes("حدائق الاهرام") || combined.includes("حدائق الأهرام")) {
-    const found = ARAMEX_CITY_MAP.get("pyramids gardens - giza");
-    if (found) return found;
-  }
-
-  if (combined.includes("october") || combined.includes("اكتوبر") || combined.includes("أكتوبر")) {
-    const found = ARAMEX_CITY_MAP.get("october city - giza");
-    if (found) return found;
-  }
-
-  if (combined.includes("zayed") || combined.includes("زايد")) {
-    const found = ARAMEX_CITY_MAP.get("sheikh zayed city - giza");
-    if (found) return found;
-  }
-
-  if (combined.includes("nasr city") || combined.includes("مدينة نصر")) {
-    const found = ARAMEX_CITY_MAP.get("nasr city - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("new cairo") || combined.includes("التجمع") || combined.includes("القاهرة الجديدة")) {
-    const found = ARAMEX_CITY_MAP.get("new cairo - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("rehab") || combined.includes("الرحاب")) {
-    const found = ARAMEX_CITY_MAP.get("el rehab - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("madinaty") || combined.includes("مدينتي") || combined.includes("مدينتى")) {
-    const found = ARAMEX_CITY_MAP.get("madinaty - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("shorouk") || combined.includes("الشروق")) {
-    const found = ARAMEX_CITY_MAP.get("al shorouk - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("obour") || combined.includes("العبور")) {
-    const found = ARAMEX_CITY_MAP.get("al obour city - qaliubia");
-    if (found) return found;
-  }
-
-  if (combined.includes("maadi") || combined.includes("المعادي") || combined.includes("المعادى")) {
-    const found = ARAMEX_CITY_MAP.get("maadi - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("mokattam") || combined.includes("المقطم")) {
-    const found = ARAMEX_CITY_MAP.get("mokattam - cairo");
-    if (found) return found;
-  }
-
-  if (combined.includes("alexandria") || combined.includes("اسكندرية") || combined.includes("الإسكندرية")) {
-    const found = ARAMEX_CITY_MAP.get("alexandria - alexandria");
-    if (found) return found;
-  }
-
-  // 4. Fallback matching on governorate
+  // 5. Fallback matching on governorate
   if (item.governorate) {
     const rawGov = item.governorate.trim().toLowerCase();
     const govOption = ARAMEX_CITIES_LIST.find((c) => c.gov.toLowerCase() === rawGov);

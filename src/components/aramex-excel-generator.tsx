@@ -34,6 +34,7 @@ import {
   ARAMEX_CITIES_LIST,
   ARAMEX_CITY_MAP,
   DEFAULT_ARAMEX_CITY,
+  normalizeCityKey,
   type AramexRowItem,
   type AramexCityOption,
   convertStudentsToAramexRows,
@@ -162,16 +163,31 @@ export function AramexExcelGenerator({
     [onUploadBatch, locale],
   );
 
-  // Update a single cell in a row
+  // Update a single cell in a row (with real-time automatic City re-detection on Full Address edit)
   const handleUpdateRowField = useCallback(
     (id: string, field: keyof AramexRowItem, value: any) => {
       setRows((prev) =>
         prev.map((r) => {
           if (r.id !== id) return r;
-          return {
+          const updated: AramexRowItem = {
             ...r,
             [field]: value,
           };
+
+          // Whenever Full Address is edited, automatically re-detect and update City - Governorate, City, Destination, and Government!
+          if (field === "fullAddress") {
+            const detected = detectAramexCity({
+              governorate: updated.governorate,
+              city: updated.originalCity,
+              area: updated.area,
+              street: updated.street,
+              fullAddress: String(value || ""),
+            });
+            updated.selectedCityGov = detected.cityGov;
+            updated.cityOption = detected;
+          }
+
+          return updated;
         }),
       );
     },
@@ -180,7 +196,7 @@ export function AramexExcelGenerator({
 
   // Update a single row's Selected City Option
   const handleCityChange = useCallback((id: string, newCityGov: string) => {
-    const opt = ARAMEX_CITY_MAP.get(newCityGov.toLowerCase()) || DEFAULT_ARAMEX_CITY;
+    const opt = ARAMEX_CITY_MAP.get(normalizeCityKey(newCityGov)) || DEFAULT_ARAMEX_CITY;
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
@@ -226,7 +242,7 @@ export function AramexExcelGenerator({
       return;
     }
 
-    const opt = ARAMEX_CITY_MAP.get(bulkCityGov.toLowerCase()) || DEFAULT_ARAMEX_CITY;
+    const opt = ARAMEX_CITY_MAP.get(normalizeCityKey(bulkCityGov)) || DEFAULT_ARAMEX_CITY;
 
     setRows((prev) =>
       prev.map((r) => {
@@ -737,10 +753,10 @@ export function AramexExcelGenerator({
                   <th className="w-12 p-2.5 text-center">Attention</th>
                   <th className="min-w-[190px] p-2.5 text-start">Name</th>
                   <th className="min-w-[340px] p-2.5 text-start bg-red-500/5 text-red-700 dark:text-red-300 font-extrabold">
-                    Full Address (فل ادريس)
+                    Full Address
                   </th>
                   <th className="min-w-[220px] p-2.5 text-start bg-sky-500/5 text-sky-700 dark:text-sky-300 font-extrabold">
-                    City - Governorate
+                    City - Governorate (Please select from the list)
                   </th>
                   <th className="w-28 p-2.5 text-center">City / Dest / Gov</th>
                   <th className="min-w-[120px] p-2.5 text-start">Reference / Unique</th>
@@ -753,7 +769,7 @@ export function AramexExcelGenerator({
                     className="w-28 p-2.5 text-center border-l border-border"
                     style={{ backgroundColor: "#E2EFDA", color: "#385723" }}
                   >
-                    Origin City
+                    Origin City (Please select from the list)
                   </th>
                   <th
                     className="w-24 p-2.5 text-center"
@@ -777,7 +793,7 @@ export function AramexExcelGenerator({
                     className="min-w-[280px] p-2.5 text-start"
                     style={{ backgroundColor: "#E2EFDA", color: "#385723" }}
                   >
-                    Remarks (ملاحظات الاستلام)
+                    Remarks
                   </th>
                 </tr>
               </thead>
@@ -843,7 +859,7 @@ export function AramexExcelGenerator({
                             )}
                             {r.recipient && r.recipient !== r.studentNameAr && r.recipient !== r.studentNameEn && (
                               <div className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">
-                                <span className="font-semibold">المستلم:</span> {r.recipient}
+                                <span className="font-semibold">Recipient:</span> {r.recipient}
                               </div>
                             )}
                           </div>
@@ -967,7 +983,7 @@ export function AramexExcelGenerator({
                           {remarksText}
                         </div>
                         <div className="mt-1 text-[10px] text-[#385723] flex items-center justify-between">
-                          <span>عدد الشهادات: <strong className="font-bold text-emerald-800 dark:text-emerald-300">{totalReports}</strong></span>
+                          <span>Certificates: <strong className="font-bold text-emerald-800 dark:text-emerald-300">{totalReports}</strong></span>
                           {r.newRequestId && <span className="font-mono text-[10px] opacity-75">{r.newRequestId}</span>}
                         </div>
                       </td>

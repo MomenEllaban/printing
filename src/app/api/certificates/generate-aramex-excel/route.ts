@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import JSZip from "jszip";
 import type { AramexRowItem } from "@/lib/aramex-utils";
-import { ARAMEX_CITY_MAP, DEFAULT_ARAMEX_CITY, buildFullAddress } from "@/lib/aramex-utils";
+import { ARAMEX_CITY_MAP, DEFAULT_ARAMEX_CITY, buildFullAddress, normalizeCityKey } from "@/lib/aramex-utils";
 
 function escapeXml(unsafe: any): string {
   if (unsafe === undefined || unsafe === null) return "";
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       const rowNum = idx + 7;
       const cityOpt =
         r.cityOption ||
-        ARAMEX_CITY_MAP.get((r.selectedCityGov || "").toLowerCase()) ||
+        ARAMEX_CITY_MAP.get(normalizeCityKey(r.selectedCityGov || "")) ||
         DEFAULT_ARAMEX_CITY;
 
       const nameVal = r.studentNameAr || r.studentNameEn || "";
