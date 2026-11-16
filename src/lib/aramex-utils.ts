@@ -66,8 +66,18 @@ export function translateFloorToArabic(floorVal: string | number | undefined | n
   // If already starts with الدور, keep it
   if (/^الدور/i.test(raw)) return raw;
 
-  // Check for textual mentions of ground floor
+  // Check for textual mentions of ground or ordinals
   if (/ارضي|أرضي|ground/i.test(raw)) return "الدور الأرضي";
+  if (/^(الأول|الاول|أول|اول|first)$/i.test(raw)) return "الدور الأول";
+  if (/^(الثاني|التاني|ثاني|تاني|second)$/i.test(raw)) return "الدور الثاني";
+  if (/^(الثالث|التالت|ثالث|تالت|third)$/i.test(raw)) return "الدور الثالث";
+  if (/^(الرابع|رابع|fourth)$/i.test(raw)) return "الدور الرابع";
+  if (/^(الخامس|خامس|fifth)$/i.test(raw)) return "الدور الخامس";
+  if (/^(السادس|سادس|sixth)$/i.test(raw)) return "الدور السادس";
+  if (/^(السابع|سابع|seventh)$/i.test(raw)) return "الدور السابع";
+  if (/^(الثامن|التامن|ثامن|تامن|eighth)$/i.test(raw)) return "الدور الثامن";
+  if (/^(التاسع|تاسع|ninth)$/i.test(raw)) return "الدور التاسع";
+  if (/^(العاشر|عاشر|tenth)$/i.test(raw)) return "الدور العاشر";
 
   const num = parseInt(raw, 10);
   if (isNaN(num)) {
@@ -113,8 +123,9 @@ export function translateApartmentToArabic(aptVal: string | number | undefined |
   const raw = String(aptVal).trim();
   if (!raw || raw === "-") return "";
 
-  // If already starts with الشقة or شقة, return as is
-  if (/^(الشقة|شقة)/i.test(raw)) return raw;
+  // If already starts with الشقة or شقة, return formatted
+  if (/^الشقة/i.test(raw)) return raw;
+  if (/^شقة/i.test(raw)) return `ال${raw}`;
 
   return `الشقة رقم ${toArabicDigits(raw)}`;
 }
@@ -133,34 +144,18 @@ export function buildFullAddress(item: {
   floor?: string | number;
   landmark?: string;
 }): string {
-  const parts: string[] = [];
-
   const gov = (item.governorate || "").trim();
-  if (gov) parts.push(gov);
-
   const city = (item.city || "").trim();
-  if (city && !parts.some((p) => p.toLowerCase().includes(city.toLowerCase()))) {
-    parts.push(city);
-  }
-
   const area = (item.area || "").trim();
-  if (area && !parts.some((p) => p.toLowerCase().includes(area.toLowerCase()))) {
-    parts.push(area);
-  }
-
   const street = (item.street || "").trim();
-  if (street) parts.push(street);
-
-  const translatedApt = translateApartmentToArabic(item.apartment);
-  if (translatedApt) parts.push(translatedApt);
-
-  const translatedFloor = translateFloorToArabic(item.floor);
-  if (translatedFloor) parts.push(translatedFloor);
-
+  const apt = translateApartmentToArabic(item.apartment);
+  const floor = translateFloorToArabic(item.floor);
   const landmark = (item.landmark || "").trim();
-  if (landmark) parts.push(landmark);
 
-  return parts.filter(Boolean).join("، ");
+  // Exactly in this order:
+  // Governorate، City، Area، Street، Apartment (translated)، Floor (translated)، Landmark
+  const parts: string[] = [gov, city, area, street, apt, floor, landmark].filter(Boolean);
+  return parts.join("، ");
 }
 
 /**

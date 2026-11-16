@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import JSZip from "jszip";
 import type { AramexRowItem } from "@/lib/aramex-utils";
-import { ARAMEX_CITY_MAP, DEFAULT_ARAMEX_CITY } from "@/lib/aramex-utils";
+import { ARAMEX_CITY_MAP, DEFAULT_ARAMEX_CITY, buildFullAddress } from "@/lib/aramex-utils";
 
 function escapeXml(unsafe: any): string {
   if (unsafe === undefined || unsafe === null) return "";
@@ -72,7 +72,18 @@ export async function POST(req: NextRequest) {
       const refUnique = r.originalCity || r.area || "";
       const mobileVal = r.phone || "";
       const telVal = r.phone2 || r.phone || "";
-      const fullAddressVal = r.fullAddress || "";
+      const fullAddressVal =
+        r.fullAddress && r.fullAddress.includes("،")
+          ? r.fullAddress
+          : buildFullAddress({
+              governorate: r.governorate,
+              city: r.originalCity,
+              area: r.area,
+              street: r.street,
+              apartment: r.apartment,
+              floor: r.floor,
+              landmark: r.landmark,
+            }) || r.fullAddress || "";
 
       const rowXml =
         `<row r="${rowNum}" spans="1:30" ht="16.35" customHeight="1">` +

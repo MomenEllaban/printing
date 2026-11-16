@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { requireSession, enforceRateLimit, jsonError, parseJson } from "@/lib/api-utils";
 import { prisma } from "@/lib/prisma";
 import { ensureCertificateBatchTable } from "@/lib/certificates-drive";
-import { buildCrossSheetArabicMap } from "@/lib/certificates-parser";
+import { buildCrossSheetArabicMap, parseCertificateWorkbook } from "@/lib/certificates-parser";
 import { getDriveContextWithRoot } from "@/lib/auth";
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
@@ -27,15 +27,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
     const batch = await prisma.certificateStickerBatch.findUnique({ where: { id: batchId } });
     if (!batch) throw new AppError("Batch not found", { status: 404, code: "invalidRequest" });
 
-    // Auto-enrich Arabic student names if missing from earlier uploads
+    // Auto-enrich Arabic student names and Shipping address fields if missing from earlier uploads
     const students = Array.isArray(batch.studentsData) ? (batch.studentsData as any[]) : [];
     const missingArabic = students.some((s) => !s.studentNameAr);
+    const missingAddress = students.length > 0 && !students.some((s) => Boolean(s.street || s.floor || s.governorate || s.apartment));
 
-    if (missingArabic && students.length > 0) {
+    if ((missingArabic || missingAddress) && students.length > 0) {
       try {
-        let arabicMap: { byId: Map<string, string>; byEmail: Map<string, string>; byName: Map<string, string> } | null = null;
+        let wb: XLSX.WorkBook | null = null;
 
-        // 1. Try Google Drive first (works in production on Vercel and local)
+        // 1. Try Google Drive first
         if (batch.driveFileId) {
           try {
             const { drive } = await getDriveContextWithRoot();
@@ -44,19 +45,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
               { responseType: "arraybuffer" },
             );
             if (driveRes.data) {
-              const wb = XLSX.read(Buffer.from(driveRes.data as ArrayBuffer), { type: "buffer" });
-              arabicMap = buildCrossSheetArabicMap(wb);
+              wb = XLSX.read(Buffer.from(driveRes.data as ArrayBuffer), { type: "buffer" });
             }
           } catch {}
         }
 
         // 2. Fallback to local files in development
-        if (!arabicMap && process.env.NODE_ENV !== "production") {
+        if (!wb && process.env.NODE_ENV !== "production") {
           const candidateNames = [
             batch.fileName,
             `${batch.name}.xlsx`,
-            "Data for MoE - Nov Batch 2 11.11.2026.xlsx",
             "Aramex-Official_Report-Batch 1 Online - 07.11.2026.xlsx",
+            "Data for MoE - Nov Batch 2 11.11.2026.xlsx",
           ].filter(Boolean) as string[];
 
           for (const name of candidateNames) {
@@ -64,47 +64,68 @@ export async function GET(request: Request, { params }: { params: Promise<{ batc
               const fp = path.join(/*turbopackIgnore: true*/ process.cwd(), name);
               if (fs.existsSync(/*turbopackIgnore: true*/ fp)) {
                 const buf = fs.readFileSync(/*turbopackIgnore: true*/ fp);
-                const wb = XLSX.read(buf, { type: "buffer" });
-                const m = buildCrossSheetArabicMap(wb);
-                if (m.byId.size > 0 || m.byEmail.size > 0 || m.byName.size > 0) {
-                  arabicMap = m;
-                  break;
-                }
+                wb = XLSX.read(buf, { type: "buffer" });
+                break;
               }
             } catch {}
           }
         }
 
-        if (arabicMap && (arabicMap.byId.size > 0 || arabicMap.byEmail.size > 0 || arabicMap.byName.size > 0)) {
-          let updated = false;
-          for (const s of students) {
-            if (!s.studentNameAr) {
+        if (wb) {
+          const freshParsed = parseCertificateWorkbook(wb, batch.name);
+          if (freshParsed && freshParsed.length > 0) {
+            // Build lookup maps by nationalId, email, name from the fresh parse
+            const freshById = new Map<string, any>();
+            const freshByEmail = new Map<string, any>();
+            const freshByName = new Map<string, any>();
+
+            for (const fp of freshParsed) {
+              if (fp.nationalId) freshById.set(String(fp.nationalId).trim(), fp);
+              if (fp.studentName) freshByName.set(String(fp.studentName).trim().toLowerCase(), fp);
+            }
+
+            let updated = false;
+            for (let i = 0; i < students.length; i++) {
+              const s = students[i];
               const cleanId = s.nationalId ? String(s.nationalId).trim() : "";
               const cleanEmail = s.email ? String(s.email).trim().toLowerCase() : "";
               const cleanEn = s.studentName ? String(s.studentName).trim().toLowerCase() : "";
 
-              const ar =
-                (cleanId && arabicMap.byId.get(cleanId)) ||
-                (cleanEmail && arabicMap.byEmail.get(cleanEmail)) ||
-                (cleanEn && arabicMap.byName.get(cleanEn)) ||
-                "";
+              const match =
+                (cleanId && freshById.get(cleanId)) ||
+                (cleanEmail && freshByEmail.get(cleanEmail)) ||
+                (cleanEn && freshByName.get(cleanEn)) ||
+                freshParsed[i];
 
-              if (ar) {
-                s.studentNameAr = ar;
-                updated = true;
+              if (match) {
+                if (!s.studentNameAr && match.studentNameAr) {
+                  s.studentNameAr = match.studentNameAr;
+                  updated = true;
+                }
+                if (!s.governorate && match.governorate) { s.governorate = match.governorate; updated = true; }
+                if (!s.city && match.city) { s.city = match.city; updated = true; }
+                if (!s.area && match.area) { s.area = match.area; updated = true; }
+                if (!s.street && match.street) { s.street = match.street; updated = true; }
+                if (!s.apartment && match.apartment) { s.apartment = match.apartment; updated = true; }
+                if (!s.floor && match.floor) { s.floor = match.floor; updated = true; }
+                if (!s.landmark && match.landmark) { s.landmark = match.landmark; updated = true; }
+                if (!s.recipient && match.recipient) { s.recipient = match.recipient; updated = true; }
+                if (!s.phone && match.phone) { s.phone = match.phone; updated = true; }
+                if (!s.phone2 && match.phone2) { s.phone2 = match.phone2; updated = true; }
+                if (!s.totalReports && match.totalReports) { s.totalReports = match.totalReports; updated = true; }
               }
             }
-          }
 
-          if (updated) {
-            batch.studentsData = students;
-            try {
-              await prisma.certificateStickerBatch.update({
-                where: { id: batch.id },
-                data: { studentsData: students as any },
-              });
-            } catch (saveErr) {
-              console.warn("[certificates:batches:get] failed to persist enriched arabic names", saveErr);
+            if (updated) {
+              batch.studentsData = students;
+              try {
+                await prisma.certificateStickerBatch.update({
+                  where: { id: batch.id },
+                  data: { studentsData: students as any },
+                });
+              } catch (saveErr) {
+                console.warn("[certificates:batches:get] failed to persist enriched data", saveErr);
+              }
             }
           }
         }

@@ -27,7 +27,8 @@ describe("aramex-utils", () => {
   });
 
   it("builds a full address containing all address components joined by Arabic comma", () => {
-    const full = buildFullAddress({
+    // Example 1 from user
+    const full1 = buildFullAddress({
       governorate: "Giza",
       city: "Hadayek Alahram",
       area: "منطقه ح",
@@ -37,8 +38,23 @@ describe("aramex-utils", () => {
       landmark: "يوجد بالعمارة ماركت البقال و بجوار كنيسه السيده العذراء مريم و الانبا رويس",
     });
 
-    expect(full).toBe(
+    expect(full1).toBe(
       "Giza، Hadayek Alahram، منطقه ح، شارع العشرين 424ح الدور الاول شقه 9، الشقة رقم ٤٢٤، الدور الأول، يوجد بالعمارة ماركت البقال و بجوار كنيسه السيده العذراء مريم و الانبا رويس",
+    );
+
+    // Example 2 from user (Beni Suef / Fashn)
+    const full2 = buildFullAddress({
+      governorate: "Beni Suef",
+      city: "Fashn",
+      area: "الفشن",
+      street: "شارع الإبراهيميه",
+      apartment: "1",
+      floor: "3",
+      landmark: "برج مستشفي زهور الحياه",
+    });
+
+    expect(full2).toBe(
+      "Beni Suef، Fashn، الفشن، شارع الإبراهيميه، الشقة رقم ١، الدور الثالث، برج مستشفي زهور الحياه",
     );
   });
 
