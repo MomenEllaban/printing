@@ -29,6 +29,7 @@ import { useI18n } from "@/components/locale-provider";
 import { cn } from "@/lib/cn";
 import { StickerPreviewModal } from "@/components/sticker-preview-modal";
 import { BoxManifestDialog } from "@/components/box-manifest-dialog";
+import { AramexExcelGenerator } from "@/components/aramex-excel-generator";
 import type { CertificateStudentData } from "@/lib/stickers/certificate-stickers-pdf";
 import { parseCertificateWorkbook, type StudentWithReceipt } from "@/lib/certificates-parser";
 
@@ -77,6 +78,9 @@ export default function CertificateStickersPage() {
 
   const [batchToDelete, setBatchToDelete] = useState<ServerBatch | null>(null);
   const [deletingBatch, setDeletingBatch] = useState(false);
+
+  // Main Page Tabs: "stickers" | "aramex"
+  const [mainTab, setMainTab] = useState<"stickers" | "aramex">("stickers");
 
   // Aramex shipping mode & row selection states
   const [isAramexMode, setIsAramexMode] = useState<boolean>(false);
@@ -486,12 +490,12 @@ export default function CertificateStickersPage() {
             </span>
             <div>
               <h1 className="text-2xl font-black tracking-tight text-foreground">
-                {locale === "ar" ? "استيكرات الشهادات والتقارير" : "Certificate & Report Stickers"}
+                {locale === "ar" ? "شهادات" : "Certificates"}
               </h1>
               <p className="text-xs text-muted">
                 {locale === "ar"
-                  ? "ارفع ملفات Excel من Google Drive/جهازك ليتم حفظها في Drive وقاعدة البيانات مع تتبع الاستلام من أي جهاز."
-                  : "Upload Excel files to be stored in Google Drive and the database, with receipt tracking from any device."}
+                  ? "إدارة استيكرات الشهادات وتقارير الدرجات وتوليد شيتات شحن أرامكس المعتمدة."
+                  : "Manage certificate stickers, score reports, and generate official Aramex shipping sheets."}
               </p>
             </div>
           </div>
@@ -508,6 +512,41 @@ export default function CertificateStickersPage() {
           </Button>
         </div>
       </div>
+
+      {/* Main Page Navigation Tabs: Stickers vs. Aramex Excel Sheet */}
+      <div className="flex items-center gap-2 border-b border-border pb-2">
+        <button
+          type="button"
+          onClick={() => setMainTab("stickers")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer",
+            mainTab === "stickers"
+              ? "bg-emerald-600 text-white shadow-xs"
+              : "bg-surface-elevated text-muted hover:text-foreground border border-border hover:border-emerald-500/40",
+          )}
+        >
+          <Award className="size-4" />
+          <span>{locale === "ar" ? "ستيكرات" : "Stickers"}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab("aramex")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer",
+            mainTab === "aramex"
+              ? "bg-orange-600 text-white shadow-xs"
+              : "bg-surface-elevated text-muted hover:text-foreground border border-border hover:border-orange-500/40",
+          )}
+        >
+          <Truck className="size-4" />
+          <span>{locale === "ar" ? "شيت اكسيل اراميكس" : "Aramex Excel Sheet"}</span>
+        </button>
+      </div>
+
+      {/* TAB 1: STICKERS WORKSPACE */}
+      {mainTab === "stickers" && (
+        <>
 
       <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
         <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-4">
@@ -938,6 +977,19 @@ export default function CertificateStickersPage() {
         <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
           {locale === "ar" ? "لا توجد بيانات طلاب في هذا الباتش." : "No student data in this batch."}
         </div>
+      )}
+        </>
+      )}
+
+      {/* TAB 2: ARAMEX EXCEL SHEET GENERATOR */}
+      {mainTab === "aramex" && (
+        <AramexExcelGenerator
+          batches={serverBatches}
+          activeBatchId={activeBatchId}
+          onSelectBatch={(id) => void loadServerBatch(id)}
+          activeBatchStudents={students}
+          loadingBatches={loadingServerBatches}
+        />
       )}
 
       {previewOpen && pdfPreviewBlobUrl && (
