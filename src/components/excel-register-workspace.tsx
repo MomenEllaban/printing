@@ -547,24 +547,24 @@ export function ExcelRegisterWorkspace({
               className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-2xl shadow-md overflow-hidden text-slate-900 dark:text-slate-100"
             >
               {/* Top Examination Banner with Official Logo */}
-              <div className="p-5 border-b-2 border-slate-900 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60">
+              <div className="p-4 sm:p-5 border-b border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                   {/* Logo & Examination Title */}
                   <div className="flex items-center gap-3.5">
                     <img
                       src={`data:image/jpeg;base64,${EST_LOGO_BASE64}`}
                       alt="EST Official Logo"
-                      className="h-[92px] w-auto object-contain rounded drop-shadow-xs"
+                      className="h-[72px] w-auto object-contain rounded drop-shadow-2xs opacity-95"
                     />
                     <div>
-                      <h3 className="text-sm sm:text-base font-black tracking-wider text-slate-900 dark:text-white uppercase">
+                      <h3 className="text-sm sm:text-base font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">
                         Proctor Attendance & Assignment Register
                       </h3>
                       <div className="mt-1 flex items-center gap-1.5 text-xs">
-                        <span className="font-extrabold px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px]">
+                        <span className="font-semibold px-2 py-0.5 rounded bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900 text-[10px]">
                           Center :
                         </span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
                           {centerClean}
                         </span>
                       </div>
@@ -622,42 +622,46 @@ export function ExcelRegisterWorkspace({
                       const shouldRenderRoomCell = roomSpan !== undefined;
                       const roomDisplay = resolvedRoomMap.get(rowIdx) || r.room || "";
 
+                      const isEven = rowIdx % 2 === 1;
+
                       return (
                         <tr
                           key={rowIdx}
                           className={cn(
-                            "hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors",
-                            isSenior && "bg-amber-50/40 dark:bg-amber-950/20 font-bold",
+                            "transition-colors",
+                            isEven ? "bg-slate-50/70 dark:bg-slate-900/40" : "bg-white dark:bg-slate-950",
+                            "hover:bg-slate-100/70 dark:hover:bg-slate-800/50",
+                            isSenior && "bg-amber-50/40 dark:bg-amber-950/20 font-semibold",
                             isRoaming && "bg-sky-50/30 dark:bg-sky-950/15",
                           )}
                         >
-                          <td className="py-2.5 px-2 text-center font-bold text-slate-500 border-e border-slate-200 dark:border-slate-800">
+                          <td className="py-2 px-2 text-center font-medium text-slate-500 border-e border-slate-200 dark:border-slate-800">
                             {r.no}
                           </td>
-                          <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-slate-100 border-e border-slate-200 dark:border-slate-800">
+                          <td className="py-2 px-3 font-semibold text-slate-900 dark:text-slate-100 border-e border-slate-200 dark:border-slate-800">
                             {r.name}
                           </td>
-                          <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800">
+                          <td className="py-2 px-2 text-center border-e border-slate-200 dark:border-slate-800">
                             <span
                               className={cn(
-                                "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold",
+                                "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold",
                                 isSenior
                                   ? "bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300"
                                   : isRoaming
                                   ? "bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 border border-sky-300"
                                   : isHead
-                                  ? "bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-300"
+                                  ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-400"
                                   : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300",
                               )}
                             >
                               {r.proctorType}
                             </span>
                           </td>
-                          <td className="py-2.5 px-2 font-mono text-[11px] text-center text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800">
+                          <td className="py-2 px-2 font-mono text-[11px] text-center text-slate-600 dark:text-slate-400 border-e border-slate-200 dark:border-slate-800">
                             {r.mobile}
                           </td>
-                          <td className="py-2.5 px-2 text-center border-e border-slate-200 dark:border-slate-800">
-                            <span className="font-bold text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          <td className="py-2 px-2 text-center border-e border-slate-200 dark:border-slate-800">
+                            <span className="font-semibold text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                               {r.ipEp || "EP"}
                             </span>
                           </td>
@@ -666,9 +670,9 @@ export function ExcelRegisterWorkspace({
                           {shouldRenderRoomCell && (
                             <td
                               rowSpan={roomSpan}
-                              className="py-3 px-3 text-center align-middle font-bold border-e border-slate-300 dark:border-slate-700 bg-sky-50/50 dark:bg-sky-950/20 text-slate-900 dark:text-slate-100"
+                              className="py-3 px-3 text-center align-middle font-bold border-e border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100"
                             >
-                              <div className="font-extrabold text-xs sm:text-sm tracking-wide text-slate-900 dark:text-slate-100">
+                              <div className="font-bold text-xs sm:text-sm tracking-wide text-slate-800 dark:text-slate-100">
                                 {roomDisplay}
                               </div>
                             </td>
@@ -712,10 +716,10 @@ export function ExcelRegisterWorkspace({
               </div>
 
               {/* Official Building Head Footer Bar (Clean, without screen signatures) */}
-              <div className="px-5 py-3 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-base text-slate-700 dark:text-slate-300">
+              <div className="px-5 py-3 bg-slate-50/80 dark:bg-slate-900/70 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-500">{locale === "ar" ? "رئيس المبنى:" : "Head of Building:"} </span>
-                  <span className="font-black text-slate-900 dark:text-white">{parsed.headName}</span>
+                  <span className="font-semibold text-slate-500">{locale === "ar" ? "رئيس المبنى:" : "Head of Building:"} </span>
+                  <span className="font-bold text-slate-800 dark:text-white">{parsed.headName}</span>
                 </div>
               </div>
             </div>

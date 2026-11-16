@@ -183,7 +183,7 @@ export function PrintDocument({
   }
 
   return (
-    <div className="print-shell min-h-dvh bg-white text-black" dir="ltr" style={{ direction: "ltr" }}>
+    <div className="print-shell min-h-dvh bg-white text-slate-800" dir="ltr" style={{ direction: "ltr" }}>
       <style>{`
         @page {
           size: ${pageSize};
@@ -202,9 +202,11 @@ export function PrintDocument({
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            font-size: 10pt !important;
+            font-size: 9.5pt !important;
+            line-height: 1.25 !important;
             direction: ltr !important;
             unicode-bidi: isolate !important;
+            color: #334155 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -256,110 +258,120 @@ export function PrintDocument({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          border-bottom: 2px solid #000;
+          border-bottom: 1.5px solid #94a3b8;
           padding-top: 0;
           padding-bottom: 2px;
           margin-top: 0;
-          margin-bottom: 3px;
+          margin-bottom: 4px;
         }
-        .header-logo { width: 240px; display: flex; align-items: center; }
-        .est-logo-img { height: 96px; width: auto; object-fit: contain; display: block; }
+        .header-logo { width: 210px; display: flex; align-items: center; }
+        .est-logo-img { height: 72px; width: auto; object-fit: contain; display: block; opacity: 0.95; }
         .header-center { flex: 1; text-align: center; padding: 0 10px; }
         .est-register-title {
           margin: 0 0 3px;
-          font-size: 15.5pt;
-          font-weight: 900;
-          letter-spacing: 0.5px;
-          color: #000;
+          font-size: 13.5pt;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+          color: #1e293b;
           text-transform: uppercase;
         }
         .center-banner {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          font-size: 10.5pt;
-          color: #000;
-          background: #f1f5f9;
-          padding: 2.5px 14px;
+          font-size: 10pt;
+          color: #334155;
+          background: #f8fafc;
+          padding: 2.5px 12px;
           border-radius: 4px;
-          border: 1.5px solid #000;
+          border: 1px solid #cbd5e1;
         }
-        .center-label { font-weight: 900; color: #000; }
-        .center-val { font-weight: 700; color: #000; }
+        .center-label { font-weight: 600; color: #475569; }
+        .center-val { font-weight: 600; color: #1e293b; }
         .header-meta { width: 195px; text-align: right; }
         .meta-box {
           background: #f8fafc;
-          border: 1.5px solid #000;
+          border: 1px solid #cbd5e1;
           border-radius: 4px;
           padding: 3px 8px;
           font-size: 8.5pt;
           line-height: 1.35;
           text-align: left;
-          color: #000;
+          color: #334155;
         }
-        .meta-lbl { font-weight: 800; color: #000; display: inline-block; min-width: 60px; }
-        .meta-val { font-weight: 600; color: #1e293b; }
-        .tab-highlight { font-weight: 800; color: #000; }
-        .page-badge { font-weight: 700; color: #475569; font-size: 8pt; margin-inline-start: 3px; }
-        .exam-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0 0 6px; }
+        .meta-lbl { font-weight: 600; color: #64748b; display: inline-block; min-width: 58px; }
+        .meta-val { font-weight: 500; color: #1e293b; }
+        .tab-highlight { font-weight: 600; color: #1e293b; }
+        .page-badge { font-weight: 500; color: #64748b; font-size: 8pt; margin-inline-start: 3px; }
+        .exam-table {
+          width: 100%;
+          border-collapse: collapse;
+          table-layout: fixed;
+          margin: 0 0 6px;
+          border: 1px solid #94a3b8 !important;
+        }
         .exam-table th, .exam-table td {
-          border: 1.2px solid #000 !important;
-          padding: 4px 5px;
+          border: 1px solid #cbd5e1 !important;
+          padding: 3.5px 5px;
           vertical-align: middle;
-          color: #000 !important;
+          color: #334155 !important;
         }
         .exam-table th {
-          background-color: #e2e8f0 !important;
-          color: #000 !important;
-          font-size: 9.5pt;
-          font-weight: 900;
+          background-color: #f1f5f9 !important;
+          color: #334155 !important;
+          font-size: 8.5pt;
+          font-weight: 700;
           text-transform: uppercase;
           text-align: center;
-          letter-spacing: 0.2px;
-          height: 33px;
+          letter-spacing: 0.3px;
+          height: 30px;
         }
         .exam-table th.col-name { text-align: start; padding-inline-start: 8px; }
-        .exam-table td { height: 37px; }
-        .exam-table tr:nth-child(even) td { background-color: #fafafa; }
-        .col-no { width: 3.5%; text-align: center !important; font-weight: bold; font-size: 10.5pt; }
-        .col-name { width: 24%; font-weight: 700; font-size: 10.5pt; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .col-type { width: 8.5%; text-align: center !important; font-size: 9pt; }
-        .col-mobile { width: 10.5%; text-align: center !important; font-size: 10pt; letter-spacing: 0.2px; font-family: monospace; font-weight: 600; }
-        .col-ipep { width: 4.5%; text-align: center !important; font-weight: bold; font-size: 10.5pt; }
-        .col-room { width: 7%; text-align: center !important; font-size: 11.5pt; font-weight: 900; vertical-align: middle !important; background: #fff !important; }
+        .exam-table td { height: 35px; }
+        .exam-table tbody tr:nth-child(odd) td {
+          background-color: #ffffff !important;
+        }
+        .exam-table tbody tr:nth-child(even) td {
+          background-color: #f1f5f9 !important;
+        }
+        .col-no { width: 3.5%; text-align: center !important; font-weight: 500; font-size: 9pt; color: #475569 !important; }
+        .col-name { width: 24%; font-weight: 600; font-size: 9.5pt; color: #1e293b !important; padding-inline-start: 8px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .col-type { width: 8.5%; text-align: center !important; font-size: 8.5pt; }
+        .col-mobile { width: 10.5%; text-align: center !important; font-size: 9.5pt; letter-spacing: 0.2px; font-family: monospace; font-weight: 500; color: #475569 !important; }
+        .col-ipep { width: 4.5%; text-align: center !important; font-weight: 600; font-size: 9pt; color: #475569 !important; }
+        .col-room { width: 7%; text-align: center !important; font-size: 10pt; font-weight: 700; vertical-align: middle !important; background: #ffffff !important; color: #1e293b !important; border: 1px solid #cbd5e1 !important; }
         .col-sig { width: 14.5%; text-align: center; }
-        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 9.5pt; font-weight: 700; color: #000; white-space: nowrap !important; letter-spacing: 0.5px; }
-        .sig-line { border-bottom: 1.5px dashed #475569; height: 20px; margin: 1px 4px; }
+        .col-time { width: 6.5%; text-align: center !important; font-family: monospace; font-size: 9pt; font-weight: 500; color: #64748b !important; white-space: nowrap !important; letter-spacing: 0.3px; }
+        .sig-line { border-bottom: 1px dashed #94a3b8; height: 18px; margin: 1px 4px; }
 
-        /* Grayscale & Black-and-White Optimized Badges */
+        /* Grayscale & Soft Badges */
         .badge {
           display: inline-block;
           padding: 2px 7px;
-          font-size: 8.5pt;
-          font-weight: 700;
+          font-size: 8pt;
+          font-weight: 600;
           border-radius: 4px;
           white-space: nowrap;
-          color: #000 !important;
           letter-spacing: 0.2px;
         }
-        .senior { background: #e2e8f0 !important; color: #000 !important; border: 1.5px solid #000 !important; font-weight: 800 !important; }
-        .roaming { background: #f1f5f9 !important; color: #000 !important; border: 1.2px dashed #000 !important; font-weight: 700 !important; }
-        .proctor { background: #ffffff !important; color: #000 !important; border: 1px solid #475569 !important; font-weight: 600 !important; }
-        .head { background: #1e293b !important; color: #ffffff !important; border: 1.5px solid #000 !important; font-weight: 800 !important; }
+        .senior { background: #e2e8f0 !important; color: #1e293b !important; border: 1px solid #94a3b8 !important; font-weight: 600 !important; }
+        .roaming { background: #f8fafc !important; color: #334155 !important; border: 1px dashed #94a3b8 !important; font-weight: 600 !important; }
+        .proctor { background: #ffffff !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; font-weight: 500 !important; }
+        .head { background: #475569 !important; color: #ffffff !important; border: 1px solid #475569 !important; font-weight: 600 !important; }
 
         .official-footer {
           display: flex;
           justify-content: space-between;
           align-items: flex-end;
           margin-top: 3px;
-          padding-top: 2px;
-          border-top: 2px solid #000;
-          color: #000;
+          padding-top: 3px;
+          border-top: 1.5px solid #94a3b8;
+          color: #334155;
         }
-        .footer-head { white-space: nowrap; font-size: 18pt; line-height: 1.05; }
-        .footer-head strong { font-weight: 800; font-size: 18pt; }
-        .footer-head-name { font-weight: 900; font-size: 18pt; }
-        .footer-page { text-align: right; font-weight: 800; white-space: nowrap; font-size: 11pt; line-height: 1.1; }
+        .footer-head { white-space: nowrap; font-size: 11pt; line-height: 1.2; color: #334155; }
+        .footer-head strong { font-weight: 600; font-size: 11pt; color: #64748b; }
+        .footer-head-name { font-weight: 700; font-size: 11.5pt; color: #1e293b; }
+        .footer-page { text-align: right; font-weight: 600; white-space: nowrap; font-size: 9.5pt; line-height: 1.2; color: #64748b; }
       `}</style>
 
       {/* Interactive Toolbar for Screen view */}
@@ -555,7 +567,7 @@ export function PrintDocument({
                             </span>
                           </td>
                           <td className="col-mobile font-mono">{row.mobile}</td>
-                          <td className="col-ipep text-center font-bold">{row.ipEp}</td>
+                          <td className="col-ipep text-center">{row.ipEp}</td>
                           {shouldRenderRoomCell && (
                             <td rowSpan={roomSpan} className="col-room">
                               {roomDisplay}
