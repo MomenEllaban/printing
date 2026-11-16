@@ -297,6 +297,19 @@ export function convertStudentsToAramexRows(students: StudentWithReceipt[]): Ara
       fullAddress,
     });
 
+    const p1 = String(s.phone || "").trim();
+    const p2 = String(s.phone2 || "").trim();
+    let mobile = p1;
+    let tel = p2;
+
+    if (p2.startsWith("01") && !p1.startsWith("01")) {
+      mobile = p2;
+      tel = p1;
+    } else if (p1 && p2 && p1.startsWith("20") && p2.startsWith("01")) {
+      mobile = p2;
+      tel = p1;
+    }
+
     return {
       id: s.id || String(s.serialNumber || idx + 1),
       serialNumber: s.serialNumber || idx + 1,
@@ -304,8 +317,8 @@ export function convertStudentsToAramexRows(students: StudentWithReceipt[]): Ara
       studentNameEn: s.studentName,
       studentNameAr: s.studentNameAr,
       nationalId: s.nationalId,
-      phone: s.phone,
-      phone2: s.phone2,
+      phone: mobile,
+      phone2: tel,
       recipient: s.recipient || s.studentNameAr || s.studentName,
       totalReports: s.totalReports || 1,
       reportList: s.reportsList || "",

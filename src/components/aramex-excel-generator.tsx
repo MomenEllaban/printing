@@ -15,6 +15,12 @@ import {
   FolderOpen,
   ArrowUpDown,
   Filter,
+  Eye,
+  Pencil,
+  Phone,
+  Check,
+  Copy,
+  Loader2,
 } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { useI18n } from "@/components/locale-provider";
@@ -63,6 +69,8 @@ export function AramexExcelGenerator({
   const [selectedCityFilter, setSelectedCityFilter] = useState<string>("all");
   const [bulkCityGov, setBulkCityGov] = useState<string>("");
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   // Initialize or re-generate rows when active students change
   useEffect(() => {
@@ -80,18 +88,21 @@ export function AramexExcelGenerator({
     [batches, activeBatchId],
   );
 
-  // Update a single row's Full Address
-  const handleFullAddressChange = useCallback((id: string, newAddress: string) => {
-    setRows((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        return {
-          ...r,
-          fullAddress: newAddress,
-        };
-      }),
-    );
-  }, []);
+  // Update a single cell in a row
+  const handleUpdateRowField = useCallback(
+    (id: string, field: keyof AramexRowItem, value: any) => {
+      setRows((prev) =>
+        prev.map((r) => {
+          if (r.id !== id) return r;
+          return {
+            ...r,
+            [field]: value,
+          };
+        }),
+      );
+    },
+    [],
+  );
 
   // Update a single row's Selected City Option
   const handleCityChange = useCallback((id: string, newCityGov: string) => {
@@ -162,8 +173,8 @@ export function AramexExcelGenerator({
     );
   }, [bulkCityGov, selectedRowIds, locale]);
 
-  // Download Aramex Excel Workbook matching the official carrier format
-  const handleDownloadExcel = useCallback(() => {
+  // Download Aramex Excel Workbook matching the official carrier format with 100% template fidelity
+  const handleDownloadExcel = useCallback(async () => {
     if (rows.length === 0) {
       toast.error(locale === "ar" ? "لا توجد بيانات لتصديرها" : "No data to export");
       return;
@@ -173,14 +184,49 @@ export function AramexExcelGenerator({
       /[^a-zA-Z0-9_\u0600-\u06FF]/g,
       "_",
     );
-    const wb = generateAramexWorkbook(rows, "Sheet1");
-    XLSX.writeFile(wb, `Aramex_Shipments_${batchLabel}.xlsx`);
+    const fileName = `Aramex_Shipments_${batchLabel}`;
 
-    toast.success(
-      locale === "ar"
-        ? "تم تحميل شيت أرامكس الرسمي (Excel) بنجاح بالمطابقة الكاملة!"
-        : "Official Aramex Excel sheet downloaded successfully with 100% template fidelity!",
-    );
+    setIsExporting(true);
+    try {
+      // Call server endpoint to populate the official Aramex_PDU_Template_City_Auto_Fixed (2).xlsx template
+      const res = await fetch("/api/certificates/generate-aramex-excel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, fileName }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Server template generation failed, falling back to local workbook generation");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${fileName}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(
+        locale === "ar"
+          ? "تم تحميل شيت أرامكس المعتمد بنجاح بالمطابقة الكاملة للقالب الرسمي!"
+          : "Official Aramex Excel sheet downloaded successfully!",
+      );
+    } catch (err: any) {
+      console.warn("Falling back to client-side XLSX generation:", err);
+      // Client-side fallback using generateAramexWorkbook
+      const wb = generateAramexWorkbook(rows, "PDU_Data");
+      XLSX.writeFile(wb, `${fileName}.xlsx`);
+      toast.success(
+        locale === "ar"
+          ? "تم تحميل شيت أرامكس بنجاح!"
+          : "Aramex sheet downloaded successfully!",
+      );
+    } finally {
+      setIsExporting(false);
+    }
   }, [rows, activeBatch, locale]);
 
   // Selection toggle
@@ -229,7 +275,7 @@ export function AramexExcelGenerator({
 
   return (
     <div className="space-y-6">
-      {/* Step 1: Sheet Selection & Overview Card */}
+      {/* Step 1: Sheet Selection & Overview Header */}
       <div className="rounded-2xl border border-border bg-surface p-5 shadow-xs">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/60 pb-4">
           <div>
@@ -239,28 +285,29 @@ export function AramexExcelGenerator({
               </span>
               <div>
                 <h2 className="text-base font-extrabold text-foreground">
-                  {locale === "ar" ? "توليد وتجهيز شيت إكسيل أرامكس" : "Aramex Excel Sheet Generator"}
+                  {locale === "ar" ? "شيت إكسيل أرامكس الرسمي (PDU Template)" : "Official Aramex PDU Sheet Generator"}
                 </h2>
                 <p className="text-xs text-muted">
                   {locale === "ar"
-                    ? "اختر الشيت المطلوب لتحويل عناوينه إلى (Full Address) وتوليد شيت أرامكس الرسمي بكامل خاناته وملاحظات الاستلام."
-                    : "Select a sheet to generate full address and build the official Aramex shipment sheet."}
+                    ? "معاينة وتعديل وتوليد شيت أرامكس الرسمي بكامل خاناته وصيغ الحسابات وملاحظات الاستلام."
+                    : "Preview, edit, and export official Aramex shipping manifests with automated city matching."}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Batch Selector Dropdown */}
+          {/* Action Toolbar */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Batch Selector Dropdown */}
             <div className="flex items-center gap-2">
               <label htmlFor="batch-select" className="text-xs font-bold text-muted">
-                {locale === "ar" ? "الشيت المستهدف:" : "Target Sheet:"}
+                {locale === "ar" ? "الشيت:" : "Sheet:"}
               </label>
               <select
                 id="batch-select"
                 value={activeBatchId || ""}
                 onChange={(e) => onSelectBatch(e.target.value)}
-                className="h-9 px-3 rounded-xl border border-border bg-surface-elevated text-xs font-semibold text-foreground focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none cursor-pointer max-w-[260px] truncate"
+                className="h-9 px-3 rounded-xl border border-border bg-surface-elevated text-xs font-semibold text-foreground focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none cursor-pointer max-w-[240px] truncate"
               >
                 <option value="" disabled>
                   {locale === "ar" ? "-- اختر شيت من القائمة --" : "-- Select a Sheet --"}
@@ -273,14 +320,32 @@ export function AramexExcelGenerator({
               </select>
             </div>
 
+            {/* Toggle Preview / Edit Mode */}
+            {rows.length > 0 && (
+              <Button
+                variant={isEditing ? "primary" : "secondary"}
+                onClick={() => setIsEditing(!isEditing)}
+                className={cn(
+                  "h-9 gap-1.5 text-xs font-bold cursor-pointer",
+                  isEditing ? "bg-amber-600 hover:bg-amber-700 text-white" : "",
+                )}
+                title={locale === "ar" ? "التبديل بين وضع المعاينة والتعديل المباشر" : "Toggle Edit / Preview Mode"}
+              >
+                {isEditing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+                <span>{isEditing ? (locale === "ar" ? "وضع المعاينة" : "Preview") : (locale === "ar" ? "تعديل الشيت" : "Edit Sheet")}</span>
+              </Button>
+            )}
+
+            {/* Download Button */}
             {rows.length > 0 && (
               <Button
                 variant="primary"
-                onClick={handleDownloadExcel}
+                onClick={() => void handleDownloadExcel()}
+                disabled={isExporting}
                 className="h-9 gap-1.5 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white cursor-pointer shadow-xs"
               >
-                <Download className="size-4" />
-                <span>{locale === "ar" ? "تحميل شيت أرامكس Excel" : "Download Aramex Excel"}</span>
+                {isExporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                <span>{locale === "ar" ? "تحميل شيت أرامكس المعتمد" : "Download Aramex Excel"}</span>
               </Button>
             )}
           </div>
@@ -316,10 +381,10 @@ export function AramexExcelGenerator({
 
             <div className="rounded-xl border border-border bg-surface-soft/40 p-3">
               <span className="text-[11px] font-medium text-muted block">
-                {locale === "ar" ? "الشحنات المحددة للتعديل" : "Selected Rows"}
+                {locale === "ar" ? "إجمالي الشهادات للتسليم" : "Total Reports"}
               </span>
               <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                {selectedRowIds.size}
+                {rows.reduce((sum, r) => sum + (Number(r.totalReports) || 1), 0)}
               </span>
             </div>
           </div>
@@ -340,7 +405,7 @@ export function AramexExcelGenerator({
           </p>
         </div>
       ) : (
-        /* Step 2: Interactive Table Workspace */
+        /* Step 2: Interactive Table Workspace (Preview & Edit) */
         <div className="rounded-2xl border border-border bg-surface shadow-xs overflow-hidden">
           {/* Table Controls & Filters Toolbar */}
           <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-3 bg-surface-soft/40">
@@ -413,7 +478,28 @@ export function AramexExcelGenerator({
             </div>
           </div>
 
-          {/* The Aramex Shipments Table */}
+          {/* Mode Indicator Banner */}
+          {isEditing && (
+            <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs text-amber-800 dark:text-amber-200">
+              <div className="flex items-center gap-2">
+                <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="font-semibold">
+                  {locale === "ar"
+                    ? "وضع التعديل المباشر نشط: يمكنك تعديل الاسم، العنوان الكامل، المدينة، وأرقام التليفونات في أي صف مباشرة."
+                    : "Edit Mode Active: You can edit student names, full addresses, cities, and phone numbers directly."}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => setIsEditing(false)}
+                className="h-6 text-xs text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 cursor-pointer"
+              >
+                {locale === "ar" ? "إنهاء التعديل" : "Done Editing"}
+              </Button>
+            </div>
+          )}
+
+          {/* The Aramex Shipments Table (Official Aramex Columns) */}
           <div className="overflow-x-auto" dir="ltr" style={{ direction: "ltr" }}>
             <table className="w-full border-collapse text-xs text-start" dir="ltr" style={{ direction: "ltr" }}>
               <thead>
@@ -426,19 +512,21 @@ export function AramexExcelGenerator({
                       className="size-3.5 rounded border-border text-orange-600 focus:ring-orange-500 cursor-pointer"
                     />
                   </th>
-                  <th className="w-12 p-2.5 text-center">#</th>
-                  <th className="min-w-[190px] p-2.5 text-start">Student Name (Arabic)</th>
-                  <th className="w-32 p-2.5 text-start">Phones</th>
-                  <th className="min-w-[280px] p-2.5 text-start bg-orange-500/5 text-orange-700 dark:text-orange-300 font-extrabold">
+                  <th className="w-12 p-2.5 text-center">Attention (#)</th>
+                  <th className="min-w-[190px] p-2.5 text-start">Name (اسم الطالب بالعربي)</th>
+                  <th className="min-w-[320px] p-2.5 text-start bg-orange-500/5 text-orange-700 dark:text-orange-300 font-extrabold">
                     Full Address (فل ادريس)
                   </th>
                   <th className="min-w-[220px] p-2.5 text-start bg-sky-500/5 text-sky-700 dark:text-sky-300 font-extrabold">
-                    City - Governorate (سيتى)
+                    City - Governorate
                   </th>
-                  <th className="min-w-[220px] p-2.5 text-start">Remarks (الملاحظات وعدد الشهادات)</th>
+                  <th className="w-28 p-2.5 text-center">City / Dest / Gov</th>
+                  <th className="w-32 p-2.5 text-start">Mobile Number</th>
+                  <th className="w-32 p-2.5 text-start">Tel Number</th>
+                  <th className="min-w-[260px] p-2.5 text-start">Remarks (الملاحظات وعدد الشهادات)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border font-medium">
                 {filteredRows.map((r, idx) => {
                   const isSelected = selectedRowIds.has(r.id);
                   const remarksText = `تم تسليم عدد * ${r.totalReports || 1}   * شهادة برجاء التوقيع +رقم البطاقة  على البوليصة  وارسالها مرة اخرى`;
@@ -468,42 +556,62 @@ export function AramexExcelGenerator({
 
                       {/* Name (Arabic preferred) */}
                       <td className="p-2.5">
-                        <div className="font-bold text-foreground text-xs leading-tight" dir="rtl">
-                          {r.studentNameAr || r.studentNameEn}
-                        </div>
-                        {r.studentNameAr && (
-                          <div className="text-[11px] text-muted font-medium mt-0.5">
-                            {r.studentNameEn}
+                        {isEditing ? (
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              value={r.studentNameAr || ""}
+                              onChange={(e) => handleUpdateRowField(r.id, "studentNameAr", e.target.value)}
+                              placeholder="الاسم بالعربي..."
+                              className="w-full h-7 px-2 text-xs font-bold rounded border border-border bg-surface text-foreground"
+                              dir="rtl"
+                            />
+                            <input
+                              type="text"
+                              value={r.studentNameEn || ""}
+                              onChange={(e) => handleUpdateRowField(r.id, "studentNameEn", e.target.value)}
+                              placeholder="Name in English..."
+                              className="w-full h-6 px-2 text-[11px] rounded border border-border bg-surface text-muted"
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="font-bold text-foreground text-xs leading-tight" dir="rtl">
+                              {r.studentNameAr || r.studentNameEn}
+                            </div>
+                            {r.studentNameAr && (
+                              <div className="text-[11px] text-muted font-medium mt-0.5">
+                                {r.studentNameEn}
+                              </div>
+                            )}
+                            {r.recipient && r.recipient !== r.studentNameAr && r.recipient !== r.studentNameEn && (
+                              <div className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5">
+                                <span className="font-semibold">المستلم:</span> {r.recipient}
+                              </div>
+                            )}
                           </div>
                         )}
-                        {r.recipient && r.recipient !== r.studentNameAr && r.recipient !== r.studentNameEn && (
-                          <div className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5">
-                            <span className="font-semibold">المستلم:</span> {r.recipient}
+                      </td>
+
+                      {/* Full Address */}
+                      <td className="p-2 bg-orange-500/[0.02]">
+                        {isEditing ? (
+                          <textarea
+                            rows={3}
+                            value={r.fullAddress}
+                            onChange={(e) => handleUpdateRowField(r.id, "fullAddress", e.target.value)}
+                            className="w-full p-2 text-xs rounded-lg border border-border/80 bg-surface text-foreground font-medium focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none resize-none leading-relaxed"
+                            placeholder="Complete address..."
+                          />
+                        ) : (
+                          <div className="text-xs text-foreground font-medium leading-relaxed max-w-[420px] select-text">
+                            {r.fullAddress}
                           </div>
                         )}
                       </td>
 
-                      {/* Phone Numbers */}
-                      <td className="p-2.5 font-mono text-[11px] text-muted">
-                        <div>{r.phone || "-"}</div>
-                        {r.phone2 && r.phone2 !== r.phone && (
-                          <div className="text-[10px] text-muted-foreground mt-0.5">{r.phone2}</div>
-                        )}
-                      </td>
-
-                      {/* Full Address (Editable Column) */}
-                      <td className="p-1.5 bg-orange-500/[0.02]">
-                        <textarea
-                          rows={2}
-                          value={r.fullAddress}
-                          onChange={(e) => handleFullAddressChange(r.id, e.target.value)}
-                          className="w-full p-1.5 text-xs rounded-lg border border-border/80 bg-surface text-foreground font-medium focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none resize-none leading-relaxed"
-                          placeholder="Complete address..."
-                        />
-                      </td>
-
-                      {/* City Dropdown (Aramex Selection Column) */}
-                      <td className="p-1.5 bg-sky-500/[0.02]">
+                      {/* City - Governorate Dropdown */}
+                      <td className="p-2 bg-sky-500/[0.02]">
                         <select
                           value={r.selectedCityGov}
                           onChange={(e) => handleCityChange(r.id, e.target.value)}
@@ -520,23 +628,59 @@ export function AramexExcelGenerator({
                             </option>
                           ))}
                         </select>
-                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted">
-                          <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
-                            [{r.cityOption?.code || "---"}]
-                          </span>
-                          <span>{r.cityOption?.city || ""}</span>
-                          <span>•</span>
-                          <span>{r.cityOption?.gov || ""}</span>
+                      </td>
+
+                      {/* City / Dest / Gov Auto-Calculated Details */}
+                      <td className="p-2 text-center">
+                        <div className="font-mono font-bold text-sky-600 dark:text-sky-400 text-xs">
+                          [{r.cityOption?.code || "---"}]
+                        </div>
+                        <div className="text-[11px] font-semibold text-foreground mt-0.5">
+                          {r.cityOption?.city || "-"}
+                        </div>
+                        <div className="text-[10px] text-muted">
+                          {r.cityOption?.gov || "-"}
                         </div>
                       </td>
 
+                      {/* Mobile Number */}
+                      <td className="p-2 font-mono text-[11px]">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={r.phone || ""}
+                            onChange={(e) => handleUpdateRowField(r.id, "phone", e.target.value)}
+                            placeholder="Mobile..."
+                            className="w-full h-7 px-2 text-xs rounded border border-border bg-surface text-foreground font-mono"
+                          />
+                        ) : (
+                          <div className="text-foreground font-semibold">{r.phone || "-"}</div>
+                        )}
+                      </td>
+
+                      {/* Tel Number */}
+                      <td className="p-2 font-mono text-[11px]">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={r.phone2 || ""}
+                            onChange={(e) => handleUpdateRowField(r.id, "phone2", e.target.value)}
+                            placeholder="Tel..."
+                            className="w-full h-7 px-2 text-xs rounded border border-border bg-surface text-foreground font-mono"
+                          />
+                        ) : (
+                          <div className="text-muted">{r.phone2 || r.phone || "-"}</div>
+                        )}
+                      </td>
+
                       {/* Remarks & Total Reports */}
-                      <td className="p-2.5">
+                      <td className="p-2">
                         <div className="text-[11px] font-medium text-foreground bg-surface-soft/60 p-2 rounded-lg border border-border/60 leading-relaxed" dir="rtl">
                           {remarksText}
                         </div>
-                        <div className="mt-1 text-[10px] text-muted">
-                          عدد الشهادات: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{r.totalReports || 1}</strong>
+                        <div className="mt-1 text-[10px] text-muted flex items-center justify-between">
+                          <span>عدد الشهادات: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{r.totalReports || 1}</strong></span>
+                          {r.newRequestId && <span className="font-mono text-[10px] text-muted-foreground">{r.newRequestId}</span>}
                         </div>
                       </td>
                     </tr>
@@ -556,10 +700,11 @@ export function AramexExcelGenerator({
 
             <Button
               variant="primary"
-              onClick={handleDownloadExcel}
+              onClick={() => void handleDownloadExcel()}
+              disabled={isExporting}
               className="h-8 gap-1.5 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white cursor-pointer shadow-xs"
             >
-              <Download className="size-3.5" />
+              {isExporting ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
               <span>{locale === "ar" ? "تحميل شيت أرامكس المعتمد (Excel)" : "Download Aramex Excel (.xlsx)"}</span>
             </Button>
           </div>
